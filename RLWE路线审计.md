@@ -56,7 +56,15 @@ N=2048 时只有 1 个素数、没有特殊素数，所以一直是**巧合正�
 | **C. 自研** | `com.fusepir.rlwe.*` → `coding/rlwe-java/`（自己写的 RLWE） | ❌ 否（已弃用） |
 
 LWE 不在本次范围：`com.fusepir` 的 `cape.he.*`（`coding/lwe-java/`）是自研 LWE，
-**MPC4J 全仓库没有 LWE 实现**，且 LWE 不是 RLWE，保留。
+且 LWE 不是 RLWE，保留。
+
+> ⚠️ **2026-09-19 修正**：原先写"**MPC4J 全仓库没有 LWE 实现**"**不准确**。
+> 实际是：MPC4J 没有**可复用的 `LWE.Enc/Dec` 原语**，但它的 `cppir` 家族
+> （ChalametPIR / SimplePIR / FrodoPIR / Piano / Plinko）**本身就是 LWE / 矩阵型 PIR**
+> ——例如 `ChalametCpKsPirClient` 里就有 `private IntVector[] bs; // b = s·A`、`cs; // c = s·M`、
+> `seedMatrixA`、`matrixM`，并有 `GaussianLweParam`（n=1024/1408、σ=6.4）参数枚举。
+> 另外 `cppir/ks/chalamet` 里的 `Arity3ByteFusePosition` 就是我们说的 **BFF（k=3）**。
+> **结论不变**（CAPE 的 LWE 层仍用 `lwe-java/`），但理由要写对。
 
 ---
 

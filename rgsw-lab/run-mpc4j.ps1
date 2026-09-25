@@ -34,12 +34,15 @@ New-Item -ItemType Directory -Force -Path $out | Out-Null
 # Only the sources that depend on MPC4J. The other files in this package belong
 # to the self-built RGSW/rlwe-java path and must NOT be pulled in here.
 $srcDir = Join-Path $here 'src\main\java\com\fusepir\rgsw'
-$srcFiles = @('Mpc4jRgsw.java', 'Mpc4jCapability.java', 'BlindRotateOps.java', 'LweRlweBridge.java', 'RgswPolyTest.java', 'RgswPolyDiag.java', 'BlindRotateComplete.java', 'LweToRgswOps.java', 'SizeProbe.java') |
+$srcFiles = @('Mpc4jRgsw.java', 'Mpc4jCapability.java', 'BlindRotateOps.java', 'LweRlweBridge.java', 'RgswPolyTest.java', 'RgswPolyDiag.java', 'BlindRotateComplete.java', 'LweToRgswOps.java', 'SizeProbe.java', 'BlindRotateStress.java', 'AnswerPathMini.java', 'LweRlweConversion.java') |
     ForEach-Object { Join-Path $srcDir $_ } |
     Where-Object { Test-Path $_ }
 
+# LweRlweConversion 要用 cape.he（lwe-java 的 LWE 层），把它的源码目录挂到 sourcepath 上。
+$lweSrc = Join-Path (Split-Path -Parent $lib) 'lwe-java\src\main\java'
+
 Write-Host "[compile] MPC4J-based sources (classpath = coding\lib)"
-& $javacPath -encoding UTF-8 -cp $cp -d $out $srcFiles
+& $javacPath -encoding UTF-8 -cp $cp -sourcepath $lweSrc -d $out $srcFiles
 if ($LASTEXITCODE -ne 0) { Write-Error 'compile failed'; exit $LASTEXITCODE }
 
 Write-Host "[run] $Class $progArgs"

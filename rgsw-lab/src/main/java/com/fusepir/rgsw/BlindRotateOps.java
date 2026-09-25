@@ -71,14 +71,37 @@ public final class BlindRotateOps {
     public static Ciphertext blindRotate(Mpc4jRgsw m, Mpc4jRgsw.Rgsw[] bkSecrets, Ciphertext acc,
                                          long[] a, long b) {
         Ciphertext cur = acc;
+        long twoN = 2L * m.n;
         for (int i = 0; i < a.length; i++) {
+            // a_i ≡ 0 (mod 2N) ⇒ X^{a_i} = 1 ⇒ CMUX 的两支是同一条密文 ⇒ 这一轮是恒等变换，跳过。
+            //
+            // ⚠️ 不能真的走一遍 CMUX：那时 rotated 与 cur 内容相同，diff = 0，
+            // externalProduct 会拿到全零明文，SEAL 抛 "result ciphertext is transparent"。
+            // 而 a 由 PRG 派生、取值在 [0,2N)，所以 a_i = 0 **必然会出现**：
+            //   N=2048、d=512 时单次查询至少命中一个 0 的概率 ≈ 1 − (1 − 1/4096)^512 ≈ 12%
+            //   N=16384（q_L=2^15）、d=512 时 ≈ 1.5%
+            // d 越小越不容易撞上——这正是"小参数巧合能跑、真实参数才炸"的又一例。
+            if (Math.floorMod(a[i], twoN) == 0) {
+                continue;
+            }
             Ciphertext rotated = m.multiplyPowerOfX(cur, a[i]);
             cur = m.cmux(bkSecrets[i], cur, rotated);
         }
         return m.multiplyPowerOfX(cur, -b);
     }
 
-    /** q_L = 2N 下的 LWE 加密：b = ⟨a,s⟩ + r mod 2N。 */
+    /**
+     * q_L = 2N 下的 LWE 加密：{@code b = ⟨a,s⟩ + r mod 2N}。
+     *
+     * <p>⚠️ <b>这是"无噪声索引"约定，是本项目的工程决定，不是论文原文。</b>
+     * 见 {@code coding/README.md} 3.7 —— 小规模跑通阶段采用候选 (b)：Δ=1、不引入误差项 {@code e}。
+     * 真实 LWE 是 {@code b = ⟨a,s⟩ + r + e}，而本实现的盲旋转对 {@code e} <b>零容忍</b>
+     * （实测 {@code e=±1} 就整体推移一格、取到相邻记录，见 README 3.4）。
+     *
+     * <p><b>后果</b>：用这个函数造出来的"LWE 密文"<b>不满足 LWE 的噪声模型</b>，
+     * 因此<b>不能引用 LWE 的安全性论证</b>。仅用于正确性验证与流程跑通。
+     * 补真实噪声后，所有基于它的测试结论都必须重跑。
+     */
     public static long[][] lweEncryptIndex(int[] s, long r, int qL, Random rnd) {
         long[] a = new long[s.length];
         long sum = 0;
