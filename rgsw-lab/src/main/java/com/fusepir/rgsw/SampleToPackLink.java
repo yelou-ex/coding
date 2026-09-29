@@ -69,6 +69,9 @@ public final class SampleToPackLink {
         System.out.println();
         System.out.printf("    %-7s %-12s %-12s %-12s %s%n", "j", "真值 P[j]", "b 缩放后", "b−⟨a,s⟩", "残差");
         long maxResidual = 0;
+        long sumAbs = 0;
+        long sumSigned = 0;
+        int count = 0;
         for (int j : probes) {
             long[][] sample = LweRlweBridge.sampleExtract(m, ct, j);
             for (int pi = 0; pi < L; pi++) bRes[pi] = sample[pi][0];
@@ -85,8 +88,13 @@ public final class SampleToPackLink {
             if (diff > t / 2) diff -= t;
             if (diff < -t / 2) diff += t;
             maxResidual = Math.max(maxResidual, Math.abs(diff));
+            sumAbs += Math.abs(diff);
+            sumSigned += diff;
+            count++;
             System.out.printf("    %-7d %-12d %-12d %-12d %+d%n", j, want, bScaled, got, diff);
         }
+        System.out.printf("    残差统计：|残差| 均值 %.1f，有符号均值 %+.1f（≈0 说明取整无偏），最大 %d%n",
+            (double) sumAbs / count, (double) sumSigned / count, maxResidual);
 
         // 判据 1：残差必须远小于明文半窗（否则连"可解码"都不成立）
         failed += report("① 缩放后仍可正确解码（残差远小于明文半窗 t/2）",
@@ -112,17 +120,29 @@ public final class SampleToPackLink {
         System.out.println();
         System.out.println("[判定] 符号与结构：**正确**（残差是缩放噪声，不是约定错）；");
         System.out.println("       可解码性：**成立**（残差 ≪ t/2）；");
-        System.out.println("       位精确性：**不成立**（噪声 15~34 倍于位值 1）—— 这才是全程同态的 Pack 真正的障碍。");
+        System.out.printf("       位精确性：**不成立**（噪声最大 %d 倍于位值 1）—— 这才是全程同态的 Pack 真正的障碍。%n",
+            maxResidual);
         if (failed != 0) {
             System.exit(1);
         }
     }
 
-    /** {@code x ∈ Z_{q_R}} → {@code Z_t}：四舍五入 {@code x·t/q} 后取模 t。 */
+    /**
+     * {@code x ∈ Z_{q_R}} → {@code Z_t}：四舍五入 {@code x·t/q} 后取模 t。
+     *
+     * <p>⚠️ <b>必须用"数学 floor"而不是 {@code BigInteger.divide}。</b>
+     * {@code divide} 是<b>向零截断</b>：对负数它是向上取整，于是 {@code −x} 与 {@code +x}
+     * 的舍入方向不一致，会给残差引入<b>系统性偏置</b>（本文件第一版就踩了这个坑：
+     * 残差最大值从 ≈√N 虚高到 109）。
+     * 这里显式判余数符号，把它修成真正的 floor。
+     */
     static long scaleToT(Mpc4jRgsw m, BigInteger x) {
         BigInteger q = m.q;
-        BigInteger num = x.multiply(BigInteger.valueOf(m.t)).add(q.shiftRight(1));
-        return num.divide(q).mod(BigInteger.valueOf(m.t)).longValueExact();
+        BigInteger[] dr = x.multiply(BigInteger.valueOf(m.t))
+            .add(q.shiftRight(1))
+            .divideAndRemainder(q);
+        BigInteger quo = dr[1].signum() < 0 ? dr[0].subtract(BigInteger.ONE) : dr[0];
+        return quo.mod(BigInteger.valueOf(m.t)).longValueExact();
     }
 
     private static int report(String name, boolean ok, String detail) {
