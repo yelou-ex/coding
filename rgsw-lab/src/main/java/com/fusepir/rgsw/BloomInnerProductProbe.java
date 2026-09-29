@@ -33,7 +33,7 @@ public final class BloomInnerProductProbe {
     private static int failed = 0;
 
     public static void main(String[] args) {
-        int n = args.length > 0 ? Integer.parseInt(args[0]) : 2048;
+        int n = args.length > 0 ? Integer.parseInt(args[0]) : 8192;
         long t = 65537L;
         Mpc4jRgsw m = new Mpc4jRgsw(n, t, 0, 1 << 16);
         System.out.println("=== Bloom 二进制同态内积：槽位域 vs 系数域 ===");

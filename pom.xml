@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>cape</groupId>
+    <artifactId>cape-parent</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>CAPE 复现工程（聚合）</name>
+    <description>
+        CAPE（Communication-Efficient Conjunctive Keyword PIR）复现。
+        用 IDEA 打开【本目录】即可导入全部模块。
+
+        ⚠️ 必须用 JDK 25 运行：lib/mpc4j-crypto-fhe-seal.jar 里的 class 是 major 69 = JDK 25。
+    </description>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
+    </properties>
+
+    <modules>
+        <module>lwe-java</module>
+        <module>rlwe-java</module>
+        <module>rgsw-lab</module>
+        <module>cape-fusepir-database-handoff</module>
+    </modules>
+
+    <!--
+        未纳入聚合的模块（各自独立，不需要一起构建）：
+          rlwe-java    自研 RLWE（已弃用，仅作交叉校验）
+          rlwe-bench   性能对照基准
+          native-jni   真 SEAL 的 JNI DLL + 验证程序
+          param-probe  参数位宽探测
+          tiny-cape    零依赖的极小验证层（参数小到能手算，独立编译）
+    -->
+</project>

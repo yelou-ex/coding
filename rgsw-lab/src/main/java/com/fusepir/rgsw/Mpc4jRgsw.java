@@ -611,7 +611,7 @@ public final class Mpc4jRgsw {
     // ---------------- 自检 ----------------
 
     public static void main(String[] args) {
-        int n = args.length > 0 ? Integer.parseInt(args[0]) : 2048;
+        int n = args.length > 0 ? Integer.parseInt(args[0]) : 4096;
         System.out.println("=== RGSW on top of MPC4J (BFV) ===");
         // N 默认 2048（跑得快）；传参可跑论文规模，例如 16384。
         // 注意：以前 N 大到 16384 会 OOM——原因是 Galois 置换表被预分配成 N 行

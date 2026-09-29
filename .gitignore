@@ -16,8 +16,16 @@ _build/
 *.zip
 
 # ---- IDE ----
-.idea/
+.idea/*
+!.idea/modules.xml
+!.idea/misc.xml
+!.idea/encodings.xml
+!.idea/compiler.xml
 *.iml
+!rgsw-lab/*.iml
+!lwe-java/*.iml
+!rlwe-java/*.iml
+!cape-fusepir-database-handoff/*.iml
 .classpath
 .project
 *.swp
