@@ -157,6 +157,14 @@ public final class CapeEndToEnd4 {
         }
 
         long[][][] P = new long[C][bPay][n];
+        // ★ 修正 A：先把【每一列、每一行】都填上数据，再覆盖 3 个 BFF 位置。
+        //   原来 BFF 位置 0..8 全落在 c = u/R = 0（R=16），于是 P[1..3][b] 是
+        //   【全零多项式】；常数编码下 Enc(0) ⊛ 全零明文 = 全零密文，会被 SEAL 判为
+        //   transparent —— 这才是"必须跳过零列"那个绕过的真实原因，不是"选择器为 0"。
+        //   真实数据库每一列都有数据，不会出现全零列。
+        for (int c = 0; c < C; c++)
+            for (int b = 0; b < bPay; b++)
+                for (int rr = 0; rr < R; rr++) P[c][b][rr] = 1 + rnd.nextInt((int) m.t - 1);
         for (int i = 0; i < kw.length; i++)
             for (int a = 0; a < k; a++) {
                 int u = pos[i][a], r = u % R, c = u / R;
@@ -233,13 +241,15 @@ public final class CapeEndToEnd4 {
         System.out.println("--- 3. ANSWER（服务器）---");
         long t0 = System.nanoTime();
 
-        long[][] recovered = new long[k][bPay];
+        long[][][][] sample = new long[k][bPay][][];
         for (int a = 0; a < k; a++) {
             for (int b = 0; b < bPay; b++) {
-                // 第 5 行：列选择
+                // 第 5 行：Acc ← Σ_{c=0}^{C−1} CtPtMul(q_col,a[c], P_{c,b}(X))
+                // ★ 修正 B：**全部 C 项都要算并累加**，不再用明文列号 q.c[a] 跳过其余列。
+                //   选中的那一项密文里是常数 1、其余是常数 0 ⇒ 和式 = P_{c_a,b}(X)，
+                //   选择发生在【同态内部】，服务器看不到 c_a。
                 Ciphertext acc = null;
                 for (int c = 0; c < C; c++) {
-                    if (c != q.c[a]) continue;
                     Ciphertext ct = new Ciphertext();
                     ct.copyFrom(q.qCol[a][c]);
                     if (!ct.isNttForm()) m.evaluator.transformToNttInplace(ct);
@@ -249,24 +259,70 @@ public final class CapeEndToEnd4 {
                     if (!pPoly.isNttForm()) m.evaluator.transformToNttInplace(pPoly, m.context.firstParmsId());
                     Ciphertext prod = new Ciphertext();
                     m.evaluator.multiplyPlain(ct, pPoly, prod);
-                    acc = prod;
+                    if (acc == null) {
+                        acc = prod;
+                    } else {
+                        m.evaluator.addInplace(acc, prod);
+                    }
                 }
                 // 第 6 行：盲旋转（要求系数域）
                 if (acc.isNttForm()) m.evaluator.transformFromNttInplace(acc);
                 Ciphertext rotated = BlindRotateOps.blindRotate(m, q.bk, acc, q.a[a], q.beta[a]);
-                // 第 7 行：抽常数项
-                recovered[a][b] = Math.floorMod(m.decrypt(rotated)[0], m.t);
+                // 第 7 行：SampleExtract_0
+                // ★ 修正 C：出来的是一条**密文**（q_R 下的 CRT 残数），**服务端不解密**。
+                //   原来这里是 m.decrypt(rotated)[0] —— 服务器在 ANSWER 中途解密，
+                //   之后的三路相加 / Pack / Bloom 全都建立在明文上，所以"全程同态"并不成立。
+                sample[a][b] = LweRlweBridge.sampleExtract(m, rotated, 0);
             }
         }
-        // 第 11 行：三路相加
+        // 第 11 行：三路相加 —— ★ 在【密文域】逐分量相加（不再先解密）
+        long[][][] ctPaySample = new long[bPay][][];
+        for (int b = 0; b < bPay; b++) {
+            ctPaySample[b] = addSamples(m, sample[0][b], sample[1][b], sample[2][b]);
+        }
+        // ★★ ANSWER 到此结束：服务器【全程没有解密】★★
+        long ansMs = (System.nanoTime() - t0) / 1_000_000;
+        System.out.printf("    列选择×%d + 盲旋转×%d + 密文域三路相加 = %d 个单元，ANSWER 耗时 %.0f ms%n",
+            k * bPay, k * bPay, k * bPay, (double) ansMs);
+        System.out.println("    ★ 服务器全程未解密（SampleExtract_0 出的是密文，三路相加也在密文域）");
+
+        // ============================================================
+        // ★ 负对照：列选择器必须是"承重"的（新增）
+        //   没有这两条，上面「三路重建 == payload」不能排除"服务器根本没在做加密选择"。
+        // ============================================================
+        long[] ctPayZero = recoverAll(m, n, P, q, k, C, bPay, 0, true);
+        long[] ctPayShift = recoverAll(m, n, P, q, k, C, bPay, 1, false);
+        boolean zeroAll = true;
+        for (long v : ctPayZero) if (v != 0) zeroAll = false;
+        failed += report("4.5 负对照：全零列选择器 ⇒ 载荷必须全 0", zeroAll,
+            "得到 " + java.util.Arrays.toString(ctPayZero));
+        failed += report("4.6 负对照：列选择器错位一列 ⇒ 载荷必须改变",
+            !java.util.Arrays.equals(ctPayShift, payload[anchor]),
+            "错位列得到 " + java.util.Arrays.toString(ctPayShift));
+        java.util.Set<Integer> usedCols = new java.util.TreeSet<>();
+        for (int a = 0; a < k; a++) usedCols.add(q.c[a]);
+        System.out.printf("    [覆盖度] 三个 BFF 位置用到的列号 = %s（C=%d）%s%n",
+            usedCols, C, usedCols.size() < C ? "  ← 只覆盖了部分列（本演示的位置 0..8 全在 c=0）" : "");
+
+        // ============================================================
+        // 4. DECODE（客户端）
+        // ★ 这是整个流程里【唯一】解密的地方：ANSWER 已全程同态。
+        //   第 13 行 Pack：把三路相加后的 LWE 样本用 packFromSample 打回 RLWE，再交给客户端解。
+        // ============================================================
+        // 4. DECODE（客户端）—— 下面这次解密是整个流程里【唯一】的一次
         long[] ctPay = new long[bPay];
         for (int b = 0; b < bPay; b++) {
-            long sum = 0;
-            for (int a = 0; a < k; a++) sum += recovered[a][b];
-            ctPay[b] = Math.floorMod(sum, m.t);
+            ctPay[b] = LweRlweBridge.decryptSampleViaPack(m, ctPaySample[b], 0);
         }
 
-        // ★ 第 13 行 + §3.7：Pack → Bloom 打分（同态）
+        // ---- 以下为 §3.7 的 Bloom 打分演示 ----
+        // ⚠️ 诚实标注：这一段【不是】全程同态。
+        //    候选 Bloom 密文由解密后的 ctPay[3..4] 重新加密而来，而不是从上面的密文里同态取出。
+        //    为什么取不出来（已实测，见 SampleToPackLink）：
+        //      要把它变成槽位密文需要 ring packing，而 RingPack 要求输入样本已在 Z_t 上，
+        //      从 q_R 缩放过去会引入 ≈√N 的舍入噪声（N=4096 实测最大 40），
+        //      **是 Bloom 位值 1 的 40 倍** ⇒ 打包出来的位不再精确，s_j == τ 的精确判定不成立。
+        //      正确做法是让 ring packing 直接在原生模数上做（按模数设计 gadget 与缩放交换密钥）。
         Ciphertext[][] swk = RingPack.switchingKey(m, s, 1 << 8, 3);
         int[] slotIdx = new int[bPay];
         for (int i = 0; i < bPay; i++) slotIdx[i] = i;
@@ -291,14 +347,12 @@ public final class CapeEndToEnd4 {
         Ciphertext scoreCt = BloomScoring.bloomScore(m, BloomScoring.galoisKeysFor(m), q.qBfCt, candBF);
         long homScore = BloomScoring.decodeScore(m, scoreCt);
 
-        long ansMs = (System.nanoTime() - t0) / 1_000_000;
-        System.out.printf("    列选择×%d + 盲旋转×%d + Pack + 打分，耗时 %.0f ms%n", k * bPay, k * bPay, (double) ansMs);
-        System.out.printf("    同态 Bloom 得分 = %d%n%n", homScore);
+        System.out.printf("    ⚠️ Bloom 得分（非全程同态，见上注释）= %d%n%n", homScore);
+        System.out.println("--- 4. DECODE（客户端，唯一解密处）---");
 
         // ============================================================
-        // DECODE
+        // DECODE 的判定（解密已在上面唯一那一处完成）
         // ============================================================
-        System.out.println("--- 4. DECODE（客户端）---");
         long expectedFp = Math.floorMod(kw[anchor].hashCode(), 1000) + 1;
         DecodeResult res = decode(ctPay, expectedFp, lBf, qBf, tau);
 
@@ -328,6 +382,85 @@ public final class CapeEndToEnd4 {
     }
 
     // ==================== 工具 ====================
+
+    /**
+     * 三路相加：在【密文域】把多条 LWE 样本逐分量相加。
+     *
+     * <p>每条样本是 {@code long[L][n+1]}（{@code [pi][0] = b}，{@code [pi][1..n] = a}），
+     * 每个分量都是对应素数下的残数，所以按素数分别取模相加即可 —— 这正是论文
+     * 第 11 行 {@code ct_pay,b ← CtCtAdd(CtCtAdd(ct_0,b, ct_1,b), ct_2,b)} 的做法。
+     */
+    private static long[][] addSamples(Mpc4jRgsw m, long[][]... samples) {
+        int L = samples[0].length;
+        int len = samples[0][0].length;
+        long[][] out = new long[L][len];
+        for (int pi = 0; pi < L; pi++) {
+            long mod = m.primes[pi].value();
+            for (int k = 0; k < len; k++) {
+                long v = 0;
+                for (long[][] s : samples) {
+                    v = (v + s[pi][k]) % mod;
+                }
+                out[pi][k] = v;
+            }
+        }
+        return out;
+    }
+
+    /** 第 5 行：{@code Acc ← Σ_{c} CtPtMul(sel[c], P_{c,b}(X))}，全程同态、不碰明文列号。 */
+    private static Ciphertext columnSelect(Mpc4jRgsw m, int n, long[][][] P,
+                                           Ciphertext[] sel, int b, int C) {
+        Ciphertext acc = null;
+        for (int c = 0; c < C; c++) {
+            Ciphertext ct = new Ciphertext();
+            ct.copyFrom(sel[c]);
+            if (!ct.isNttForm()) m.evaluator.transformToNttInplace(ct);
+            edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext pPoly =
+                new edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext(n);
+            for (int i = 0; i < n; i++) pPoly.set(i, P[c][b][i]);
+            if (!pPoly.isNttForm()) m.evaluator.transformToNttInplace(pPoly, m.context.firstParmsId());
+            Ciphertext prod = new Ciphertext();
+            m.evaluator.multiplyPlain(ct, pPoly, prod);
+            if (acc == null) {
+                acc = prod;
+            } else {
+                m.evaluator.addInplace(acc, prod);
+            }
+        }
+        return acc;
+    }
+
+    /**
+     * 用指定选择器跑一遍「列选择 → 盲旋转 → 抽常数项 → 三路相加」，返回 {@code ctPay}。**仅供负对照使用。**
+     *
+     * @param shift   选择器指向的列 = {@code (c_a + shift) mod C}
+     * @param allZero 所有选择器都加密常数 0（选不中任何列）
+     */
+    private static long[] recoverAll(Mpc4jRgsw m, int n, long[][][] P, Query q,
+                                     int k, int C, int bPay, int shift, boolean allZero) {
+        long[][] rec = new long[k][bPay];
+        for (int a = 0; a < k; a++) {
+            Ciphertext[] sel = new Ciphertext[C];
+            for (int c = 0; c < C; c++) {
+                long[] constant = new long[n];
+                if (!allZero && c == Math.floorMod(q.c[a] + shift, C)) constant[0] = 1;
+                sel[c] = m.encrypt(constant);
+            }
+            for (int b = 0; b < bPay; b++) {
+                Ciphertext acc = columnSelect(m, n, P, sel, b, C);
+                if (acc.isNttForm()) m.evaluator.transformFromNttInplace(acc);
+                Ciphertext rot = BlindRotateOps.blindRotate(m, q.bk, acc, q.a[a], q.beta[a]);
+                rec[a][b] = Math.floorMod(m.decrypt(rot)[0], m.t);
+            }
+        }
+        long[] out = new long[bPay];
+        for (int b = 0; b < bPay; b++) {
+            long s = 0;
+            for (int a = 0; a < k; a++) s += rec[a][b];
+            out[b] = Math.floorMod(s, m.t);
+        }
+        return out;
+    }
 
     private static long[] padToSlots(long[] v, int slots) {
         long[] out = new long[slots];

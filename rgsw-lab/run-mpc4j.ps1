@@ -31,12 +31,17 @@ $out = Join-Path $here 'mpc4j-out'
 if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 
-# Only the sources that depend on MPC4J. The other files in this package belong
-# to the self-built RGSW/rlwe-java path and must NOT be pulled in here.
+# Compile【全部】源文件，只排除「路线 C」那 7 个（自研 RLWE，零依赖，走 run.ps1）。
+#
+# 原来这里是一份【硬编码的文件名列表】，新加的类必须手动登记，否则会被静默跳过 ——
+# 2026-09-29 合并远端的四步端到端时就踩到了：`CapeEndToEnd4` 编译都没编译，
+# 只报一句 "找不到或无法加载主类"。改成 BUILT.md 里的 glob + 排除法，新类自动纳入。
 $srcDir = Join-Path $here 'src\main\java\com\fusepir\rgsw'
-$srcFiles = @('Mpc4jRgsw.java', 'Mpc4jCapability.java', 'BlindRotateOps.java', 'LweRlweBridge.java', 'RgswPolyTest.java', 'RgswPolyDiag.java', 'BlindRotateComplete.java', 'LweToRgswOps.java', 'SizeProbe.java', 'BlindRotateStress.java', 'AnswerPathMini.java', 'LweRlweConversion.java', 'BloomInnerProductProbe.java', 'BloomScoring.java', 'PackGoalCheck.java', 'RingPack.java', 'SelToExtractBench.java') |
-    ForEach-Object { Join-Path $srcDir $_ } |
-    Where-Object { Test-Path $_ }
+$routeC = @('RgswOps.java', 'RgswCiphertext.java', 'MonomialOps.java', 'BootstrapKey.java',
+            'RgswLabMain.java', 'MonomialKeyTest.java', 'LabConfig.java')
+$srcFiles = Get-ChildItem $srcDir -Filter *.java |
+    Where-Object { $_.Name -notin $routeC } |
+    Select-Object -ExpandProperty FullName
 
 # LweRlweConversion 要用 cape.he（lwe-java 的 LWE 层），把它的源码目录挂到 sourcepath 上。
 $lweSrc = Join-Path (Split-Path -Parent $lib) 'lwe-java\src\main\java'

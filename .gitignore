@@ -21,6 +21,10 @@ _build/
 !.idea/misc.xml
 !.idea/encodings.xml
 !.idea/compiler.xml
+# 上面 `.idea/*` 只锚定仓库根目录，管不到子模块里的 .idea。
+# 这两个是合并时带进来的本地 IDE 残留，不入库。
+lwe-java/.idea/
+lwe-java/src/.idea/
 *.iml
 !rgsw-lab/*.iml
 !lwe-java/*.iml
