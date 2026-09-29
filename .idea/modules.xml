@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/lwe-java/lwe-java.iml" filepath="$PROJECT_DIR$/lwe-java/lwe-java.iml" />
+      <module fileurl="file://$PROJECT_DIR$/rgsw-lab/rgsw-lab.iml" filepath="$PROJECT_DIR$/rgsw-lab/rgsw-lab.iml" />
+      <module fileurl="file://$PROJECT_DIR$/cape-fusepir-database-handoff/cape-fusepir-database-handoff.iml" filepath="$PROJECT_DIR$/cape-fusepir-database-handoff/cape-fusepir-database-handoff.iml" />
+    </modules>
+  </component>
+</project>

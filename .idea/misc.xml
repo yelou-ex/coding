@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ⚠️ 必须用 JDK 25。
+  lib/mpc4j-crypto-fhe-seal.jar 里的 class 是 major 69 = JDK 25，
+  用 JDK 24 及以下会报「类文件版本 69 应为 68」。
+
+  本机 JDK 25 装在 D:\Java\jdk-25。
+  如果 IDEA 里报「找不到 JDK」，去 File → Project Structure → SDKs
+  把 D:\Java\jdk-25 加进来，名字取 jdk-25 或 25 都行。
+-->
+<project version="4">
+  <component name="ProjectRootManager" version="2" languageLevel="JDK_17" project-jdk-name="jdk-25" project-jdk-type="JavaSDK">
+    <output url="file://$PROJECT_DIR$/out" />
+  </component>
+  <component name="Encoding" defaultCharsetForPropertiesFiles="UTF-8">
+    <file url="PROJECT" charset="UTF-8" />
+  </component>
+</project>

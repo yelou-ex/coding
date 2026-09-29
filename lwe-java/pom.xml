@@ -17,8 +17,8 @@
     <properties>
         <!-- 源码里有中文注释,必须显式指定 UTF-8,否则 Windows 默认 GBK 会乱码 -->
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
     </properties>
 
     <!--

@@ -1,5 +1,16 @@
 # `coding/` —— CAPE / FusePIR 的 Java 复现
 
+> ## 🚀 组员先看这里：在 IDEA 里跑通四步端到端
+>
+> **装 JDK 25 → 用 IDEA 打开本目录 → 跑 `rgsw-lab` 的 `CapeEndToEnd4` → 点绿三角。**
+> 不用填程序实参（默认已是 `4096 16`）。
+> 详细步骤、参数下限、排错表见 **[`IDEA运行说明.md`](IDEA运行说明.md)**，
+> 或本文件 **§十二点五**。
+>
+> **两个必踩的点**：① 必须 JDK 25（jar 是 major 69）；
+> ② 完整四步必须 N≥4096（密钥切换需要 ≥2 个工作素数）。
+>
+---
 > **硬约束**：不能改变原论文的算法（`Submission_usenix_232.pdf` / USENIX'232）。
 > 参数与实现可以自选，但**必须记录在案**。
 >
@@ -901,6 +912,120 @@ resp ← ({ct_vj, ct_score,j})_{j=1}^m
 > - ~~"论文的 `Pack`（多条 LWE → 一个槽位域 RLWE）怎么做"~~ → **已实现并端到端验证**
 >   （`RingPack.java` 6/6；原语 = Ring Packing / `RLWE-Pack`，奠基 CDKS21 = ePrint 2020/015）。
 >   见 §5.2 ④~⑥ 与 `rgsw-lab/LWE_RLWE打包_RingPack_调研.md`。
+
+---
+
+# 十二点五、在 IDEA 里跑起来（组员看这一节）
+
+> **目标**：clone 下来 → 打开 IDEA → 点绿三角 → 看到 `=== CAPE 四步端到端跑通 ===`。
+> 详细版见 [`IDEA运行说明.md`](IDEA运行说明.md)。
+
+## 0. 唯一硬要求：JDK 25
+
+```
+lib/mpc4j-crypto-fhe-seal.jar 里的 class 是 major 69 = JDK 25
+JDK 24 及以下 → 报「类文件版本 69 应为 68」
+```
+
+装好后在 IDEA 里：`文件 → 项目结构…`（`Ctrl+Alt+Shift+S`）
+→ `项目设置 → 项目` → **SDK 选 JDK 25**，**语言级别选 25**。
+
+> 若 `unsignedMultiplyHigh` 报「找不到符号」，就是语言级别 < 18，改成 25 即可。
+
+## 1. 打开工程
+
+`文件 → 打开` → 选 **仓库根目录**（含 `lib/`、`rgsw-lab/`、`pom.xml` 的那一层）
+→ 弹出「是否作为 Maven 项目导入」→ 选 **导入**。
+
+IDEA 会自动识别 4 个模块：
+
+| 模块 | 内容 |
+|---|---|
+| `rgsw-lab` | RGSW / 盲旋转 / Pack / Bloom 打分 / **四步端到端** |
+| `cape-fusepir-database-handoff` | 明文侧 BFF / Bloom（不依赖 MPC4J） |
+| `lwe-java` | LWE 层 |
+| `rlwe-java` | 自研 RLWE（`rgsw-lab` 需要） |
+
+`rgsw-lab` 依赖的 12 个 jar 在 `lib/` 下，`.iml` 里已用**相对路径**配好，不用手动加。
+
+## 2. 跑四步端到端
+
+打开 `rgsw-lab/src/main/java/com/fusepir/rgsw/CapeEndToEnd4.java` → 点 `main` 左边的绿三角。
+
+**不需要填任何程序实参**，默认就是 `4096 16`。
+
+建议加内存：`运行 → 编辑配置…` → `修改选项` → 勾 `添加 VM 选项` → 填 `-Xmx12g`。
+
+预期结尾：
+
+```
+--- 3. ANSWER（服务器）---
+    列选择×24 + 盲旋转×24 + Pack + 打分，约 5000 ms
+    同态 Bloom 得分 = 2
+
+--- 4. DECODE（客户端）---
+    恢复 payload   = [70, 2, 11, 1, 1, 22, 0, 1]
+    原始 payload   = [70, 2, 11, 1, 1, 22, 0, 1]
+    [PASS] 4.1 BFF 三路重建 == 原始 payload
+    [PASS] 4.2 指纹校验通过
+    值的数量 = 2，第一个值 = 11，Bloom = [1, 1]
+    同态得分 = 2，τ = 2 → 命中
+    [PASS] 4.3 判定命中
+    [PASS] 4.4 恢复的值 ∈ 明文答案集
+
+=== CAPE 四步端到端跑通（SETUP → QUERY → ANSWER → DECODE）===
+```
+
+## 3. ⚠️ 参数下限（决定了"能不能跑完"）
+
+| 操作 | N=2048 | N≥4096 |
+|---|---|---|
+| 列选择（密文×明文） | ✅ | ✅ |
+| 盲旋转 | ✅ | ✅ |
+| 抽常数项 / 三路相加 | ✅ | ✅ |
+| **Pack** | ✅ | ✅ |
+| **Bloom 打分** | ❌ | ✅ |
+
+**根因**：密钥切换需要 **≥2 个工作素数**，而 `CoeffModulus.bfvDefault(2048)` 只给 1 个：
+
+```
+IllegalArgumentException: keyswitching is not supported by the context
+  at BloomScoring.galoisKeysFor
+```
+
+所以：
+- 只想快速看到盲旋转 → `2048 16`（约 2 秒）
+- **看完整四步 → `4096 16`**（约 5 秒，已是默认值）
+
+## 4. 其它入口（都能裸跑，不用传参）
+
+| 类 | 作用 | 默认参数 |
+|---|---|---|
+| `CapeEndToEnd4` | **四步端到端** | `4096 16` |
+| `CapeAnswerHomomorphic` | Pack + Bloom 打分同态化 | `4096 16` |
+| `CapeAnswerFull` | ANSWER 骨架（到三路相加） | `2048 32` |
+| `CapeColumnSelectionIndependent` | 列选择单独验证 | `2048` |
+| `BlindRotateOps` | 盲旋转口径对比 | `2048` |
+| `RingPack` | Pack 自检 | `8192 8` |
+| `BloomScoring` | 打分自检 | `4096` |
+| `Mpc4jRgsw` | RGSW 地基自检 | `4096` |
+
+**明文侧**（`cape-fusepir-database-handoff`，任意 JDK 17+，无 MPC4J 依赖）：
+`ArithmeticBffSelfTestMain`（BFF 自检五项）、`BloomConjunctionCheck`（合取判定）、
+`DatabaseInitializerMain`（参数规模对比）。
+
+**极小验证层**：`tiny-cape/`（零依赖，参数小到能手算），见 `tiny-cape/README.md`。
+
+## 5. 排错
+
+| 症状 | 处理 |
+|---|---|
+| 类文件版本 69 应为 68 | 项目 SDK 换成 JDK 25 |
+| 找不到符号 `unsignedMultiplyHigh` | 语言级别设为 25 |
+| 找不到 `edu.alibaba.mpc4j.*` | 确认打开的是仓库根目录；或把 `rgsw-lab` 标为 Sources Root |
+| 找不到 `com.fusepir.rlwe.*` | `rgsw-lab` 需依赖 `rlwe-java` 模块 |
+| `keyswitching is not supported` | N 用了 2048，改 4096（默认已是） |
+| 中文注释乱码 | 设置 → 编辑器 → 文件编码，全设 UTF-8 |
 
 ---
 

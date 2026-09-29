@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Encoding" defaultCharsetForPropertiesFiles="UTF-8">
+    <file url="file://$PROJECT_DIR$/cape-fusepir-database-handoff/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/cape-fusepir-database-handoff/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/lwe-java/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/lwe-java/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/rgsw-lab/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/rgsw-lab/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/rlwe-java/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/rlwe-java/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
+    <file url="PROJECT" charset="UTF-8" />
+  </component>
+</project>

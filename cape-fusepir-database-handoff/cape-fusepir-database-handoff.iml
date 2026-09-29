@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="JAVA_MODULE" version="4">
+  <component name="NewModuleRootManager" inherit-compiler-output="false">
+    <output url="file://$PROJECT_DIR$/../out/database-handoff/main" />
+    <output-test url="file://$PROJECT_DIR$/../out/database-handoff/test" />
+    <exclude-output />
+    <content url="file://$PROJECT_DIR$">
+      <sourceFolder url="file://$PROJECT_DIR$/src/main/java" isTestSource="false" />
+      <sourceFolder url="file://$PROJECT_DIR$/src/test/java" isTestSource="true" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>
