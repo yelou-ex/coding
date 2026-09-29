@@ -95,6 +95,20 @@ public final class CapeEndToEnd4 {
     public static void main(String[] args) {
         int n = args.length > 0 ? Integer.parseInt(args[0]) : 4096;
         int d = args.length > 1 ? Integer.parseInt(args[1]) : 16;
+        if (run(n, d) != 0) {
+            System.exit(1);
+        }
+    }
+
+    /**
+     * 跑一次四步端到端，返回<b>失败项数</b>。
+     *
+     * <p>与 {@link #main} 的区别：<b>不调用 {@code System.exit}</b>，所以可以被
+     * {@link CapeDemo} 批量调用（N=2048 会在 Bloom 打分那步抛异常，那是参数下限、不是 bug，
+     * 演示要能捕获它继续跑下一个规模）。
+     */
+    public static int run(int n, int d) {
+        failed = 0;
 
         Mpc4jRgsw m = new Mpc4jRgsw(n, 65537L, 0, 1 << 16);
         BatchEncoder be = new BatchEncoder(m.context);
@@ -378,7 +392,7 @@ public final class CapeEndToEnd4 {
         System.out.println(failed == 0
             ? "=== CAPE 四步端到端跑通（SETUP → QUERY → ANSWER → DECODE）==="
             : "=== 有 " + failed + " 项失败 ===");
-        if (failed != 0) System.exit(1);
+        return failed;
     }
 
     // ==================== 工具 ====================
