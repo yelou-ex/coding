@@ -1026,10 +1026,14 @@ cd coding\native-jni
     - **修法（推荐）**：**别用 `addPlain`**。要加常数 `c`，就预造一条 `RLWE(1)`，
       然后 **`multiplyPlain(one, 常数明文 c)`** ——纯 `multiplyPlain`，没有形态约束，
       结果仍是**纯常数**，`RingPack` 就是这么绕的。
-    - 附带：`evaluator.transformToNttInplace(Plaintext, ParmsId)` 与
-      `multiplyPlain(ct, pt, dst)`（**3 参数版**）都不要轻易用——前者是让明文变 NTT 的那一步，
-      后者的 `dst` 是"刚 resize 出来的"、形态标记没填上，一样抛 `NTT form mismatch`。
-      **`multiplyPlainInplace` 才是稳的。**
+    - 附带澄清（**我上一轮在这里写错过，已更正**）：`multiplyPlain(ct, pt, dst)`（3 参数版）
+      **是安全的**，不要因为踩坑就避开它。反编译证实它的实现就是
+      `dst.copyFrom(ct); multiplyPlainInplace(dst, pt);` —— `dst` 从 `ct` 继承形态标记。
+      `AnswerPathMini` 从头到尾用的就是 3 参数版。
+      **唯一的坑是"`pt` 的形态必须与 `ct` 一致"**（也就是第 13 条那个 `encode` 产出系数形态的问题）。
+    - 另一条相关的：`transformToNttInplace(Plaintext, ParmsId)` 是**一次性**的，
+      明文已经是 NTT 形态时再调会抛 `plain is already in NTT form`（`Plaintext` 没有反向的
+      `transformFromNtt`，所以明文侧的形态要一次转对，不能来回转）。
 
 15. **`bfv_multiply`（密文 × 密文）反过来要求【非 NTT】密文**
     - **现象**：`BloomScoring.bloomScore` 吃打包产物（NTT）时抛

@@ -34,7 +34,7 @@ New-Item -ItemType Directory -Force -Path $out | Out-Null
 # Only the sources that depend on MPC4J. The other files in this package belong
 # to the self-built RGSW/rlwe-java path and must NOT be pulled in here.
 $srcDir = Join-Path $here 'src\main\java\com\fusepir\rgsw'
-$srcFiles = @('Mpc4jRgsw.java', 'Mpc4jCapability.java', 'BlindRotateOps.java', 'LweRlweBridge.java', 'RgswPolyTest.java', 'RgswPolyDiag.java', 'BlindRotateComplete.java', 'LweToRgswOps.java', 'SizeProbe.java', 'BlindRotateStress.java', 'AnswerPathMini.java', 'LweRlweConversion.java', 'BloomInnerProductProbe.java', 'BloomScoring.java', 'PackGoalCheck.java', 'RingPack.java') |
+$srcFiles = @('Mpc4jRgsw.java', 'Mpc4jCapability.java', 'BlindRotateOps.java', 'LweRlweBridge.java', 'RgswPolyTest.java', 'RgswPolyDiag.java', 'BlindRotateComplete.java', 'LweToRgswOps.java', 'SizeProbe.java', 'BlindRotateStress.java', 'AnswerPathMini.java', 'LweRlweConversion.java', 'BloomInnerProductProbe.java', 'BloomScoring.java', 'PackGoalCheck.java', 'RingPack.java', 'SelToExtractBench.java') |
     ForEach-Object { Join-Path $srcDir $_ } |
     Where-Object { Test-Path $_ }
 

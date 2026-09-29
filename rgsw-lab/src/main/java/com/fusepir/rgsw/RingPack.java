@@ -170,8 +170,7 @@ public final class RingPack {
                 }
             }
             // ② 减去 b^(i)：b 是公开量，用「常数明文 × RLWE(1)」得到一条常数 −b^(i) 的密文
-            //    注意必须用 in-place 版本：3 参数 multiplyPlain 的目标密文是"刚 resize 出来的"，
-            //    形态标记没被填上，会直接抛 "NTT form mismatch"（实测踩到）。
+            //    （不用 addPlain——见 oneNtt 的注释：BFV 下 addPlain 的形态约束凑不齐）
             Ciphertext bias = new Ciphertext();
             bias.copyFrom(one);
             m.evaluator.multiplyPlainInplace(bias, plainConstant(m, -bs[i]));
