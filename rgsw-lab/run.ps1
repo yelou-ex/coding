@@ -116,7 +116,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "[run] com.fusepir.rgsw.RgswLabMain $mode"
 Push-Location $here
 try {
-    & $javaPath "-Xmx$xmx" '-Dfile.encoding=UTF-8' -cp $out com.fusepir.rgsw.RgswLabMain $mode
+    & $javaPath "-Xmx$xmx" '-Dfile.encoding=UTF-8' '-Dstdout.encoding=UTF-8' '-Dstderr.encoding=UTF-8' -cp $out com.fusepir.rgsw.RgswLabMain $mode
     $code = $LASTEXITCODE
 } finally {
     Pop-Location

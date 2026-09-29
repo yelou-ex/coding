@@ -51,5 +51,19 @@ Write-Host "[compile] MPC4J-based sources (classpath = coding\lib)"
 if ($LASTEXITCODE -ne 0) { Write-Error 'compile failed'; exit $LASTEXITCODE }
 
 Write-Host "[run] $Class $progArgs"
-& $javaPath '-Xmx4g' '-Dfile.encoding=UTF-8' -cp "$out;$cp" $Class @progArgs
+# ⚠️ 中文乱码的根因就在这一行：**`-Dfile.encoding` 管不到 `System.out`**。
+#
+#   JEP 400（Java 18+）之后，标准输出的编码由 `stdout.encoding` 决定，
+#   而它**不再**跟随 `file.encoding`。stdout 被重定向/走管道时，
+#   `stdout.encoding` 取 `native.encoding` —— 中文 Windows 上就是 **GBK**。
+#   于是 Java 吐的是 GBK 字节，而本脚本上面又把 `[Console]::OutputEncoding`
+#   设成了 UTF-8 ⇒ PowerShell 拿 UTF-8 去解 GBK ⇒ 满屏 "�"。
+#
+#   实测（`_encprobe` 探针，JDK 25）：
+#     只给 -Dfile.encoding=UTF-8                  → 输出字节 d6 d0 ce c4 …（GBK 的"中文"）
+#     再加上 -Dstdout.encoding=UTF-8              → 输出字节 e4 b8 ad e6 96 87 …（UTF-8）
+#     探针同时打印：file.encoding=UTF-8 但 native.encoding=GBK、stdout.encoding=GBK
+#
+#   对照：`git log` 的中文一直是正常的 —— 因为 git 自己按 UTF-8 输出，与本行无关。
+& $javaPath '-Xmx4g' '-Dfile.encoding=UTF-8' '-Dstdout.encoding=UTF-8' '-Dstderr.encoding=UTF-8' -cp "$out;$cp" $Class @progArgs
 exit $LASTEXITCODE

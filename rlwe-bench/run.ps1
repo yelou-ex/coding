@@ -37,5 +37,5 @@ Write-Host "[compile] RlweBench.java"
 if ($LASTEXITCODE -ne 0) { Write-Error 'compile failed'; exit $LASTEXITCODE }
 
 Write-Host "[run] RlweBench"
-& $javaPath '-Xmx4g' '-Dfile.encoding=UTF-8' -cp "$out;$cp" RlweBench
+& $javaPath '-Xmx4g' '-Dfile.encoding=UTF-8' '-Dstdout.encoding=UTF-8' '-Dstderr.encoding=UTF-8' -cp "$out;$cp" RlweBench
 exit $LASTEXITCODE

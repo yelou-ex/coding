@@ -1239,6 +1239,30 @@ cd coding\native-jni
     - **教训**：和附录 A 里"参数转发坏掉导致静默按默认规模跑"是**同一类**问题——
       **构建/入口脚本的静默失效**。这类问题比算法 bug 更费时间，因为报错信息完全指错方向。
 
+18. **终端中文乱码：`-Dfile.encoding=UTF-8` 管不到 `System.out`**（2026-09-29 实测定位）
+    - **现象**：跑任何 Java 入口，中文全是 `�`（如 `=== Ring Packing��LWE �� RLWE …`），
+      **但 `git log` 的中文是正常的** —— 这个反差就是线索。
+    - **诊断实验**（`_encprobe` 探针，JDK 25，把 stdout 重定向到文件后看原始字节）：
+
+      | 启动参数 | Java 实际吐出的字节 | 按 GBK 解 | 按 UTF-8 解 |
+      |---|---|---|---|
+      | 只给 `-Dfile.encoding=UTF-8` | `d6 d0 ce c4 b2 e2 ca d4 …` = **GBK** | `中文测试 → 列选择` ✓ | `���Ĳ��� �� ��ѡ��` ✗ |
+      | 再加 `-Dstdout.encoding=UTF-8` | `e4 b8 ad e6 96 87 …` = **UTF-8** | — | `中文测试 → 列选择` ✓ |
+
+      探针同时打印：`file.encoding = UTF-8`、**`native.encoding = GBK`、`stdout.encoding = GBK`**。
+    - **根因**：**JEP 400（Java 18+）之后，`System.out` / `System.err` 的编码由
+      `stdout.encoding` / `stderr.encoding` 决定，`-Dfile.encoding` 已不再影响它们。**
+      stdout 被重定向或走管道时，`stdout.encoding` 取 `native.encoding`，
+      在中文 Windows 上就是 **GBK**。
+      而 `run-mpc4j.ps1` 同时又设了 `[Console]::OutputEncoding = UTF-8`
+      ⇒ **PowerShell 拿 UTF-8 去解 GBK 字节** ⇒ 每个汉字变 `�`。
+    - **修法**：java 命令行补上
+      `-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8`。
+      已修：`rgsw-lab/run-mpc4j.ps1`、`rgsw-lab/run.ps1`、`rlwe-bench/run.ps1`、`rlwe-java/run.ps1`。
+    - **为什么 `git log` 没事**：git 自己按 UTF-8 输出，与 Java 的 `stdout.encoding` 无关。
+      **"有的中文正常有的乱码"不是随机的，是两种不同的输出方。**
+    - **IDEA 里一般不用管**：IDEA 的控制台有自己的编码设置（见 `IDEA运行说明.md` §七）。
+
 ### 路线 C 时代的历史坑（代码已弃用，教训保留）
 
 11. **`BigInteger.longValue()` 是有符号截断**：模数升到大整数后，残留的 `p.q.longValue()`

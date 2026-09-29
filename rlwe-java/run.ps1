@@ -42,5 +42,5 @@ if ($mode -eq 'jar') {
 
 $arg = if ($mode -eq 'scale') { 'scale' } else { '' }
 Write-Host "[run] com.fusepir.rlwe.RlweSelfTest $arg"
-& $javaPath '-Xmx4g' '-Dfile.encoding=UTF-8' -cp $out com.fusepir.rlwe.RlweSelfTest $arg
+& $javaPath '-Xmx4g' '-Dfile.encoding=UTF-8' '-Dstdout.encoding=UTF-8' '-Dstderr.encoding=UTF-8' -cp $out com.fusepir.rlwe.RlweSelfTest $arg
 exit $LASTEXITCODE
