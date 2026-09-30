@@ -73,6 +73,17 @@ public final class NativeBlindRotate {
      */
     private static native long[] nativeSelfTest(long h, int d, int reps);
 
+    /**
+     * 持久化一次盲旋转作业：引导密钥、累加器、LWE 索引只建一次，留在 native 内存里。
+     * 之后 {@link #nativeRunWithCtx} 可以反复跑并被直接计时 —— 这是唯一能拿到
+     * <b>收敛的稳态数字</b>的办法（用两次 nativeSelfTest 求差会被冷启动污染）。
+     */
+    private static native long nativePrepare(long h, int d);
+
+    private static native long[] nativeRunWithCtx(long h, long job, int reps);
+
+    private static native void nativeFreeJob(long job);
+
     private static int passed = 0;
     private static int failed = 0;
 
@@ -88,15 +99,22 @@ public final class NativeBlindRotate {
         System.out.printf("[目标]   与路线 B 对照：N=%d, d=%d, t=%d, base=2^16%n%n", n, d, t);
 
         // ---------------- 自包含基准（完全不经过序列化）----------------
-        // 两次调用的差值分离出单次旋转：两次都含一遍建密钥。
+        // 先预热一次（把 SEAL 的路径与内存池都跑热），再对持久作业直接计时。
+        long job = nativePrepare(h, d);
+        nativeRunWithCtx(h, job, 2);                    // warm-up
         int K = Math.max(1, reps);
-        long[] st1 = nativeSelfTest(h, d, 1);
         long ta = System.nanoTime();
-        long[] st2 = nativeSelfTest(h, d, 1 + K);
+        long[] st2 = nativeRunWithCtx(h, job, K);
         long tb = System.nanoTime();
-        double perRot = (tb - ta) / 1e6 / K;          // ms / 次
-        System.out.println("---------------- 速度（自包含，无序列化）----------------");
-        System.out.printf("  一次盲旋转（d=%d 轮 CMUX） : %9.2f ms%n", d, perRot);
+        double perRot = (tb - ta) / 1e6 / K;            // ms / 次
+        // 复测一次，看是否收敛
+        long tc = System.nanoTime();
+        nativeRunWithCtx(h, job, K);
+        long td = System.nanoTime();
+        double perRot2 = (td - tc) / 1e6 / K;
+        nativeFreeJob(job);
+        System.out.println("---------------- 速度（持久作业，直接计时）----------------");
+        System.out.printf("  一次盲旋转（d=%d 轮 CMUX） : %9.2f ms（复测 %.2f）%n", d, perRot, perRot2);
         System.out.printf("  单轮 CMUX                   : %9.2f ms%n", perRot / d);
         System.out.printf("  正确性：非零 %d 个（应 1），落点 %d，单位值 %d 个（应 1）%n",
             st2[1], st2[2], st2[3]);

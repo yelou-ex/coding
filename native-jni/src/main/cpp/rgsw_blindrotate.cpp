@@ -56,7 +56,9 @@ struct NativeCtx {
     int working_prime_count = 0;
     std::vector<std::uint64_t> primes;
     std::vector<std::uint64_t> crt_step_inv;
-    unsigned __int128 q = 0;
+    int qBits = 0;
+    /** multi-word width of q (little-endian uint64 words); see MAX_WORDS */
+    int words = 0;
 };
 
 inline std::uint64_t mul_mod_u128(std::uint64_t a, std::uint64_t b, std::uint64_t m) {
@@ -107,41 +109,119 @@ Ciphertext bytes_to_ct(const NativeCtx *c, const void *p, std::size_t len) {
 }
 
 // ---------------------------------------------------------------- CRT + digits
+//
+// q can be far wider than 128 bits at paper scale (N=16384 -> 8 working primes,
+// ~389 bits), so the CRT is done on a little-endian multi-word array instead of
+// unsigned __int128.  That removes the earlier "at most 2 working primes" limit.
+//
+// Because the digit base is a power of two, extracting the balanced base-B digits
+// from a multi-word value needs no division at all - just repeated 16-bit shifts.
 
-inline unsigned __int128 crt_compose(const NativeCtx *c, const std::uint64_t *res) {
-    if (c->working_prime_count == 1) return res[0];
-    std::uint64_t p0 = c->primes[0], p1 = c->primes[1];
-    std::uint64_t r0 = res[0], r1 = res[1];
-    std::uint64_t d = (r1 >= r0) ? (r1 - r0) : (r1 + p1 - r0);
-    std::uint64_t t1 = mul_mod_u128(d, c->crt_step_inv[1], p1);
-    return static_cast<unsigned __int128>(r0) + static_cast<unsigned __int128>(p0) * t1;
+constexpr int MAX_WORDS = 16;      // 1024 bits; covers N=32768 (881 bits)
+
+inline void mwZero(uint64_t *x, int W) { for (int i = 0; i < W; ++i) x[i] = 0; }
+
+inline int mwCmp(const uint64_t *a, const uint64_t *b, int W) {
+    for (int i = W - 1; i >= 0; --i) {
+        if (a[i] != b[i]) return a[i] > b[i] ? 1 : -1;
+    }
+    return 0;
+}
+
+inline void mwMulWord(uint64_t *x, int W, uint64_t m) {
+    unsigned __int128 carry = 0;
+    for (int i = 0; i < W; ++i) {
+        unsigned __int128 p = static_cast<unsigned __int128>(x[i]) * m + carry;
+        x[i] = static_cast<std::uint64_t>(p);
+        carry = p >> 64;
+    }
+}
+
+inline void mwAddMulWord(uint64_t *dst, const uint64_t *src, int W, uint64_t m) {
+    unsigned __int128 carry = 0;
+    for (int i = 0; i < W; ++i) {
+        unsigned __int128 p = static_cast<unsigned __int128>(src[i]) * m + dst[i] + carry;
+        dst[i] = static_cast<std::uint64_t>(p);
+        carry = p >> 64;
+    }
+}
+
+inline void mwShiftRight16(uint64_t *x, int W) {
+    for (int i = 0; i < W - 1; ++i) {
+        x[i] = (x[i] >> 16) | (x[i + 1] << 48);
+    }
+    x[W - 1] >>= 16;
+}
+
+inline void mwAddOne(uint64_t *x, int W) {
+    for (int i = 0; i < W; ++i) {
+        if (++x[i] != 0) break;
+    }
+}
+
+/** {@code x mod p} for a multi-word x and a 64-bit p (Horner over the words). */
+inline uint64_t mwModWord(const uint64_t *x, int W, uint64_t p) {
+    uint64_t acc = 0;
+    for (int i = W - 1; i >= 0; --i) {
+        unsigned __int128 v = (static_cast<unsigned __int128>(acc) << 64) | x[i];
+        acc = static_cast<std::uint64_t>(v % p);
+    }
+    return acc;
+}
+
+/**
+ * Garner reconstruction of one coefficient: {@code x = r0 + p0*(r1 + p1*(r2 + ...))}.
+ *
+ * <p>{@code mv} is the running product p0*...*p_{j-1} as it goes, which is exactly
+ * the working modulus q once the loop finishes - the caller reuses it for the
+ * level count.
+ */
+inline void crtComposeMw(const NativeCtx *c, const uint64_t *res, uint64_t *x, uint64_t *mv) {
+    const int W = c->words;
+    mwZero(x, W);
+    mwZero(mv, W);
+    x[0] = res[0];
+    mv[0] = c->primes[0];
+    for (int j = 1; j < c->working_prime_count; ++j) {
+        const uint64_t pj = c->primes[j];
+        const uint64_t xm = mwModWord(x, W, pj);
+        const uint64_t diff = (res[j] >= xm) ? (res[j] - xm) : (res[j] + pj - xm);
+        const uint64_t tv = mul_mod_u128(diff, c->crt_step_inv[j], pj);
+        mwAddMulWord(x, mv, W, tv);
+        mwMulWord(mv, W, pj);
+    }
 }
 
 // Balanced base-B digits as Z_t coefficients (negative stored as t + r).
-inline void decompose_value(const NativeCtx *c, unsigned __int128 x, std::uint64_t *out) {
-    const std::uint64_t B = c->base;
-    const std::uint64_t half = B >> 1;
+inline void decomposeValueMw(const NativeCtx *c, const uint64_t *xin, uint64_t *out) {
+    const int W = c->words;
+    uint64_t x[MAX_WORDS];
+    for (int i = 0; i < W; ++i) x[i] = xin[i];
     for (int k = 0; k < c->levels; ++k) {
-        std::uint64_t r = static_cast<std::uint64_t>(x) & (B - 1);
-        std::uint64_t carry = 0;
-        if (r > half) carry = 1;
-        x >>= c->base_bits;
-        x += carry;
-        out[k] = carry ? (r - B + c->t) : r;
+        const uint64_t r = x[0] & (c->base - 1);
+        uint64_t carry = 0;
+        if (r > (c->base >> 1)) carry = 1;
+        mwShiftRight16(x, W);
+        if (carry) mwAddOne(x, W);
+        out[k] = carry ? (r - c->base + c->t) : r;
     }
 }
 
 std::vector<std::vector<std::uint64_t>> decompose(const NativeCtx *c, const Ciphertext &ct, std::size_t comp) {
     const std::size_t n = c->n;
     const int L = c->working_prime_count;
+    const int W = c->words;
     std::vector<std::vector<std::uint64_t>> digits(c->levels, std::vector<std::uint64_t>(n, 0));
+    // A coefficient domain view is required: the digits are a decomposition of the
+    // Z_q coefficient values, not of their NTT images.
     Ciphertext copy = ct;
     if (copy.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(copy);
     const std::uint64_t *data = copy.data(comp);
-    std::vector<std::uint64_t> res(L), tmp(c->levels);
+    std::vector<std::uint64_t> res(L), x(W), mv(W), tmp(c->levels);
     for (std::size_t i = 0; i < n; ++i) {
         for (int j = 0; j < L; ++j) res[j] = data[static_cast<std::size_t>(j) * n + i];
-        decompose_value(c, crt_compose(c, res.data()), tmp.data());
+        crtComposeMw(c, res.data(), x.data(), mv.data());
+        decomposeValueMw(c, x.data(), tmp.data());
         for (int k = 0; k < c->levels; ++k) digits[k][i] = tmp[k];
     }
     return digits;
@@ -381,23 +461,41 @@ JNIEXPORT jlong JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeCreat
     // N=16384 (9 declared primes, 8 in first_parms_id).  Subtracting one more
     // gave 1 working prime / 36 bit at N=4096 instead of the Java side's 2 / 72.
     c->working_prime_count = static_cast<int>(cm.size());
-    for (int j = 0; j < c->working_prime_count; ++j) c->primes.push_back(cm[j].value());
-    c->crt_step_inv.assign(c->working_prime_count, 0);
-    unsigned __int128 running = 1;
-    for (int k = 1; k < c->working_prime_count; ++k) {
-        running *= c->primes[k - 1];
-        c->crt_step_inv[k] = inv_mod_prime(static_cast<std::uint64_t>(running % c->primes[k]), c->primes[k]);
+    for (int j = 0; j < c->working_prime_count; ++j) {
+        c->primes.push_back(cm[j].value());
+        c->qBits += cm[j].bit_count();
     }
-    unsigned __int128 qprod = 1;
-    for (int j = 0; j < c->working_prime_count; ++j) qprod *= c->primes[j];
-    c->q = qprod;
-    c->levels = levels_for(c->base, c->q);
+    // Multi-word CRT (no more "at most 2 working primes" limit).
+    c->words = c->qBits / 64 + 2;
+    if (c->words > MAX_WORDS) c->words = MAX_WORDS;
 
-    if (c->working_prime_count > 2) {
-        delete c;
-        throw_java(env, "native blind rotation currently supports at most 2 working primes "
-                        "(CRT composes into 128 bits); use N <= 4096");
-        return 0;
+    c->crt_step_inv.assign(c->working_prime_count, 0);
+    {
+        std::vector<std::uint64_t> run(static_cast<std::size_t>(c->words), 0);
+        run[0] = 1;
+        for (int j = 0; j < c->working_prime_count; ++j) {
+            if (j > 0) {
+                // inv of (p0*...*p_{j-1} mod p_j), same Garner step as the Java side
+                c->crt_step_inv[j] = inv_mod_prime(
+                    mwModWord(run.data(), c->words, c->primes[j]), c->primes[j]);
+            }
+            mwMulWord(run.data(), c->words, c->primes[j]);
+        }
+    }
+
+    // levels: smallest l with base^l > q, evaluated on the multi-word q itself.
+    {
+        std::vector<std::uint64_t> q(static_cast<std::size_t>(c->words), 0);
+        std::vector<std::uint64_t> cap(static_cast<std::size_t>(c->words), 0);
+        q[0] = c->primes[0];
+        for (int j = 1; j < c->working_prime_count; ++j) mwMulWord(q.data(), c->words, c->primes[j]);
+        cap[0] = c->base;
+        int l = 1;
+        while (mwCmp(cap.data(), q.data(), c->words) <= 0) {
+            mwMulWord(cap.data(), c->words, c->base);
+            ++l;
+        }
+        c->levels = l;
     }
     return reinterpret_cast<jlong>(c);
     JNI_END(env, 0)
@@ -412,14 +510,11 @@ JNIEXPORT jstring JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeDes
     JNIEnv *env, jclass, jlong h) {
     JNI_BEGIN
     NativeCtx *c = as_ctx(h);
-    unsigned long long qlo = static_cast<unsigned long long>(c->q);
-    int qbits = 0;
-    { unsigned __int128 v = c->q; while (v) { v >>= 1; ++qbits; } }
     std::string s = "N=" + std::to_string(c->n) + ", t=" + std::to_string(c->t)
         + ", base=2^" + std::to_string(c->base_bits)
         + ", levels=" + std::to_string(c->levels)
         + ", workingPrimes=" + std::to_string(c->working_prime_count)
-        + ", q=" + std::to_string(qbits) + " bit (lo=" + std::to_string(qlo) + ")";
+        + ", q=" + std::to_string(c->qBits) + " bit (" + std::to_string(c->words) + " words)";
     return env->NewStringUTF(s.c_str());
     JNI_END(env, nullptr)
 }
@@ -715,6 +810,93 @@ JNIEXPORT jobjectArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nati
     }
     return out;
     JNI_END(env, nullptr)
+}
+
+// ---------------------------------------------------------------------------
+//  Persistent rotation job.
+//
+//  Why: timing a blind rotation by differencing two nativeSelfTest() calls is
+//  contaminated - both calls rebuild the bootstrap key and the first one also pays
+//  every cold-start cost.  Measured that way the estimate kept falling with the
+//  repeat count (4.66 -> 3.36 -> 2.61 ms/CMUX) and never converged.
+//
+//  Here the bootstrap key, the accumulator and the LWE index are built ONCE and
+//  kept in native memory, so nativeRun() can be timed directly and repeatedly.
+// ---------------------------------------------------------------------------
+struct RotationJob {
+    std::vector<RgswKey> bk;
+    Ciphertext acc;
+    std::vector<std::uint64_t> a;
+    std::uint64_t beta = 0;
+};
+
+RotationJob *as_job(jlong h) { return reinterpret_cast<RotationJob *>(h); }
+
+JNIEXPORT jlong JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativePrepare(
+    JNIEnv *env, jclass, jlong h, jint d) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    auto *job = new RotationJob();
+    auto bits = secret_bits(c, d);
+    job->bk.reserve(static_cast<std::size_t>(d));
+    for (int i = 0; i < d; ++i) {
+        job->bk.push_back(build_rgsw_constant(c, static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])));
+    }
+    const int r = 7;
+    Plaintext accPt;
+    accPt.resize(c->n);
+    accPt[r] = 1;
+    c->encryptor->encrypt_symmetric(accPt, job->acc);
+
+    const std::uint64_t two_n = 2 * static_cast<std::uint64_t>(c->n);
+    job->a.assign(static_cast<std::size_t>(d), 0);
+    std::uint64_t rngState = 20260930ULL;
+    std::uint64_t sum = 0;
+    for (int i = 0; i < d; ++i) {
+        rngState ^= rngState << 13;
+        rngState ^= rngState >> 7;
+        rngState ^= rngState << 17;
+        job->a[static_cast<std::size_t>(i)] = rngState % two_n;
+        sum = (sum + job->a[static_cast<std::size_t>(i)]
+               * static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])) % two_n;
+    }
+    job->beta = (sum + static_cast<std::uint64_t>(r)) % two_n;
+    return reinterpret_cast<jlong>(job);
+    JNI_END(env, 0)
+}
+
+JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeRunWithCtx(
+    JNIEnv *env, jclass, jlong h, jlong jh, jint reps) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    RotationJob *job = as_job(jh);
+    Ciphertext out;
+    for (int rep = 0; rep < reps; ++rep) {
+        blind_rotate(c, job->bk, job->acc, job->a, job->beta, out);
+    }
+    Ciphertext pf = out;
+    if (pf.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(pf);
+    Plaintext res;
+    c->decryptor->decrypt(pf, res);
+    const std::size_t rc = res.coeff_count();
+    jlong nonZero = 0, unit = 0, where = -1;
+    for (std::size_t i = 0; i < rc && i < c->n; ++i) {
+        if (res[i] != 0) {
+            nonZero++;
+            where = static_cast<jlong>(i);
+            if (res[i] == 1 || res[i] == c->t - 1) unit++;
+        }
+    }
+    jlong vals[4] = { 0, nonZero, where, unit };
+    jlongArray arr = env->NewLongArray(4);
+    env->SetLongArrayRegion(arr, 0, 4, vals);
+    return arr;
+    JNI_END(env, nullptr)
+}
+
+JNIEXPORT void JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeFreeJob(
+    JNIEnv *, jclass, jlong jh) {
+    delete as_job(jh);
 }
 
 }  // extern "C"
