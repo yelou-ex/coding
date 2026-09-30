@@ -25,7 +25,6 @@
 #include <seal/util/ntt.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <sstream>
@@ -490,13 +489,8 @@ JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_native
     const std::uint64_t beta = (sum + static_cast<std::uint64_t>(r)) % two_n;
 
     Ciphertext out;
-    double best = 1e18;
     for (int rep = 0; rep < reps; ++rep) {
-        auto t0 = std::chrono::steady_clock::now();
         blind_rotate(c, bk, acc, a, beta, out);
-        auto t1 = std::chrono::steady_clock::now();
-        double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-        if (rep > 0 && ms < best) best = ms;      // rep 0 is warm-up
     }
 
     Ciphertext pf = out;
@@ -511,7 +505,7 @@ JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_native
             if (res[i] == 1 || res[i] == c->t - 1) unit++;
         }
     }
-    jlong vals[4] = { static_cast<jlong>(best), nonZero, where, unit };
+    jlong vals[4] = { 0, nonZero, where, unit };
     jlongArray arr = env->NewLongArray(4);
     env->SetLongArrayRegion(arr, 0, 4, vals);
     return arr;

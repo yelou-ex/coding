@@ -1,0 +1,22 @@
+﻿fix(route-A): 定位并修掉 DLL 加载失败 —— std::chrono 会引入 clock_gettime64
+
+现象：加了 nativeSelfTest 之后 DLL 在 System.loadLibrary 阶段失败
+      UnsatisfiedLinkError ... 找不到指定的程序（ERROR_PROC_NOT_FOUND = 127）。
+
+定位：objdump -p 的【依赖 DLL 名单】与之前完全相同，所以不是依赖变了；
+      但导入【符号】多了一条：
+          DLL Name: libwinpthread-1.dll
+                    clock_gettime64
+      来源是 std::chrono::steady_clock（MinGW/ucrt 走 clock_gettime64），
+      而 JVM 在搜索路径上找到的那个 libwinpthread-1.dll 不导出它。
+
+修复：C++ 侧不再用 std::chrono，把计时挪到 Java 侧。
+      nativeSelfTest(h, d, reps) 只跑 reps 次旋转；
+      Java 用两次调用（都含一遍建密钥）的差值分离单次旋转耗时。
+
+教训：MinGW 下给 JVM 用的 DLL，任何 <chrono> 都可能悄悄加一条
+      libwinpthread 的动态符号依赖 —— 它会以"找不到指定的程序"的形式
+      在加载期炸掉，而不是编译期。
+
+副作用：DLL 已能重新加载。当前剩下的问题是 nativeSelfTest 内部抛
+      index must be within [0, size)（dynarray 越界），尚未定位。

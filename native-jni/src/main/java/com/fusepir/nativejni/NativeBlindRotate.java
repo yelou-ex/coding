@@ -62,8 +62,14 @@ public final class NativeBlindRotate {
     private static native Long[] nativeSecretBits(long h, int d);
 
     /**
-     * 自包含基准：密钥、累加器、LWE 索引、计时、解密全在 C++ 内，
-     * <b>完全不经过序列化</b>。返回 {@code {毫秒, 非零个数, 落点, 单位值个数}}。
+     * 自包含：建 d 个引导密钥 + 累加器 + LWE 索引，跑 {@code reps} 次盲旋转，再解密验证。
+     * 返回 {@code {0, 非零个数, 落点, 单位值个数}}。
+     *
+     * <p><b>计时放在 Java 侧</b>：C++ 里一旦用 {@code std::chrono}，MinGW/ucrt 就会让
+     * DLL 动态依赖 {@code libwinpthread-1.dll!clock_gettime64}，而 JVM 能找到的那个
+     * libwinpthread 不导出它 ⇒ {@code System.loadLibrary} 直接失败
+     * （{@code UnsatisfiedLinkError: 找不到指定的程序}）。
+     * 两次调用的差值（都含一次建密钥）即可分离出单次旋转的耗时。
      */
     private static native long[] nativeSelfTest(long h, int d, int reps);
 
@@ -82,12 +88,19 @@ public final class NativeBlindRotate {
         System.out.printf("[目标]   与路线 B 对照：N=%d, d=%d, t=%d, base=2^16%n%n", n, d, t);
 
         // ---------------- 自包含基准（完全不经过序列化）----------------
-        long[] st = nativeSelfTest(h, d, reps);
+        // 两次调用的差值分离出单次旋转：两次都含一遍建密钥。
+        int K = Math.max(1, reps);
+        long[] st1 = nativeSelfTest(h, d, 1);
+        long ta = System.nanoTime();
+        long[] st2 = nativeSelfTest(h, d, 1 + K);
+        long tb = System.nanoTime();
+        double perRot = (tb - ta) / 1e6 / K;          // ms / 次
         System.out.println("---------------- 速度（自包含，无序列化）----------------");
-        System.out.printf("  一次盲旋转（d=%d 轮 CMUX） : %9.1f ms%n", d, st[0] / 1.0);
-        System.out.printf("  单轮 CMUX                   : %9.2f ms%n", st[0] / (double) d);
-        System.out.printf("  正确性：非零 %d 个（应 1），落点 %d，单位值 %d 个（应 1）%n", st[1], st[2], st[3]);
-        report("0. 盲旋转：one-hot 进 → one-hot 出", st[1] == 1 && st[3] == 1, "");
+        System.out.printf("  一次盲旋转（d=%d 轮 CMUX） : %9.2f ms%n", d, perRot);
+        System.out.printf("  单轮 CMUX                   : %9.2f ms%n", perRot / d);
+        System.out.printf("  正确性：非零 %d 个（应 1），落点 %d，单位值 %d 个（应 1）%n",
+            st2[1], st2[2], st2[3]);
+        report("0. 盲旋转：one-hot 进 → one-hot 出", st2[1] == 1 && st2[3] == 1, "");
         System.out.println();
         System.out.println("  路线 B（MPC4J 纯 Java）同参数实测对照：");
         System.out.println("    优化前 单轮 CMUX = 15.55 ms（ANSWER 50 078 ms）");
