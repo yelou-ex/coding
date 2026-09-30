@@ -1,5 +1,7 @@
 package com.fusepir.database;
 
+import com.fusepir.common.BfGen;
+
 import java.util.*;
 
 /**
@@ -52,7 +54,7 @@ public final class BloomConjunctionCheck {
         valuesByKeyword.forEach((keyword, values) -> values.forEach(v -> keywordsByValue.get(v).add(keyword)));
 
         int maxSetSize = keywordsByValue.values().stream().mapToInt(Set::size).max().orElse(0);
-        BloomParameters bloom = params.bloomParameters(maxSetSize);
+        BfGen bloom = params.bloomParameters(maxSetSize);
         System.out.printf("[bloom] maxSetSize=%d -> h=%d, lBF=%d bits (上限 N=%d) %s%n",
             maxSetSize, bloom.hashCount(), bloom.length(), params.ringDegreeN(),
             bloom.length() <= params.ringDegreeN() ? "OK" : "超出!");
@@ -144,7 +146,7 @@ public final class BloomConjunctionCheck {
     }
 
     /** 合取判定：⟨b_qry, b_v⟩ == τ（τ = b_qry 的位计数） */
-    private static boolean matches(BloomParameters bloom, boolean[] valueBloom, List<String> query) {
+    private static boolean matches(BfGen bloom, boolean[] valueBloom, List<String> query) {
         boolean[] queryBits = bloom.bits(query);
         int tau = 0, intersection = 0;
         for (int i = 0; i < queryBits.length; i++) {

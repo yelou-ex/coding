@@ -1,5 +1,7 @@
 package com.fusepir.database;
 
+import com.fusepir.common.BfGen;
+
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -19,7 +21,7 @@ public final class PayloadBlockProvider {
 
     public static PayloadBlockProvider from(CanonicalDatabase database, CapeParameters parameters, long fingerprintSeed) {
         int maxSetSize = database.keywordsByValue().values().stream().mapToInt(Set::size).max().orElse(0);
-        BloomParameters bloom = parameters.bloomParameters(maxSetSize);
+        BfGen bloom = parameters.bloomParameters(maxSetSize);
         int payloadLength = 3 + 2 + database.maxValues() * (2 + bloom.length());
         Map<String, int[]> values = new TreeMap<>();
         for (KeywordRecord record : database.records()) values.put(record.keyword(), record.values());
@@ -74,8 +76,8 @@ public final class PayloadBlockProvider {
         return result;
     }
 
-    private static BitSet bloom(int value, Set<String> keywords, BloomParameters parameters) {
-        // 位位置只依赖关键词 —— 见 BloomParameters.bits() 的说明。
+    private static BitSet bloom(int value, Set<String> keywords, BfGen parameters) {
+        // 位位置只依赖关键词 —— 见 BfGen.bits() 的说明。
         // 早期这里写的是 digest(keyword + ":" + value)，把 value 混进了哈希，
         // 导致客户端的查询向量与服务端候选的位位置对不上（README 第 11 项）。
         boolean[] bits = parameters.bits(keywords);

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.fusepir</groupId>
+    <artifactId>cape-common</artifactId>
+    <version>1.0-SNAPSHOT</version>
+
+    <name>CAPE 共享层（客户端与服务器必须共用的原语）</name>
+    <description>
+        放【两边必须用同一份实现】的东西。目前只有 Bloom 位函数 `BfGen`（= 论文的 BF.Gen）。
+
+        为什么单独一个模块：CAPE 的合取判定是 ⟨b_qry, b_v⟩ == τ，服务端算 b_v、客户端算 b_qry，
+        两边必须用同一个 B(keyword) 才对得上。历史上正因为"两边各写一份"出过 bug
+        （value 混进哈希、客户端把 b_v 当 b_qry ⇒ 漏判）。所以把它放在共享模块里，
+        明文侧（cape-fusepir-database-handoff）与 HE 侧（rgsw-lab）都依赖它。
+
+        纯 JDK，无任何依赖。
+    </description>
+
+    <properties>
+        <maven.compiler.release>25</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+</project>

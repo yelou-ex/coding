@@ -126,7 +126,7 @@ public final class CapeDemo {
         return out;
     }
 
-    /** 命令行可传 "N d N d ..." 覆盖默认的三种规模。 */
+    /** 命令行可传 "N d N d ..." 覆盖默认规模。 */
     private static int[][] parseScales(String[] args) {
         if (args.length >= 2 && args.length % 2 == 0) {
             int[][] s = new int[args.length / 2][];
@@ -136,9 +136,13 @@ public final class CapeDemo {
             return s;
         }
         if (args.length != 0) {
-            System.out.println("!! 参数要成对出现（N d ...），已忽略，改用默认三种规模。\n");
+            System.out.println("!! 参数要成对出现（N d ...），已忽略，改用默认规模。\n");
         }
-        return new int[][]{{2048, 16}, {4096, 16}, {8192, 16}};
+        // 2026-09-29：`CapeEndToEnd4` 改用真实 Bloom 参数（BfGen.choose(ε=2⁻⁶) ⇒ ℓ_BF=18），
+        // B_pay 从 8 涨到 40 ⇒ 单次 ANSWER 的单元数 3×B_pay 从 24 涨到 120，
+        // 再乘上两条负对照（各自整跑一遍）：N=4096 单档约 2.5 分钟、N=8192 约 20 分钟。
+        // 所以默认只跑两档；要跑 8192 请显式传 `8192 16` 并留足时间。
+        return new int[][]{{2048, 16}, {4096, 16}};
     }
 
     private static String verdictText(int code) {
@@ -175,17 +179,31 @@ public final class CapeDemo {
         row("Pack = Ring Packing / RLWE-Pack", "RingPack 6/6（CDKS21 = ePrint 2020/015）");
 
         System.out.println();
-        System.out.println("── B. 已记录的偏差（**不阻塞跑通，但引结论时必须一起说**）──");
-        row("⚠️ 行索引用【无噪声】LWE", "b = ⟨a,s⟩ + r（Δ=1, e=0）—— 见 README §3.7");
-        row("  ↳ 后果", "不满足 LWE 噪声模型 ⇒ 不能引 LWE 安全性论证");
+        System.out.println("── B0. 2026-09-29 本轮已修（八条，详见 coding/缺陷总表.md）──");
+        row("P0-2 客户端 b_qry 构造", "改成只由关键词算（BfGen.bits），不再用 b_v / 服务器明文库");
+        row("P0-3 packed 死代码", "删除；ANSWER 里显式标注「Pack 未接通」");
+        row("P0-4 Query 混装", "拆成 ClientState（不发）/ ServerQuery（发出去）并打印边界");
+        row("P1-4 列覆盖", "BFF 位置改 u_a = a·R + i ⇒ 覆盖列 0..2（原来恒为 c=0）");
+        row("P1-7 随机源", "演示向量 Random(固定种子) / 协议密钥 SecureRandom");
+        row("P2-2 Bloom 位推导", "h 个独立哈希（counter-mode SHA-256），消掉窗口重叠与陪集退化");
+        row("P2-3 padToSlots", "ℓ_BF > N 改抛异常，不再静默截断");
+        row("P2-4 choose 的 h 上限", "16 → 32（ε=2⁻²⁰ 时最优 h=20 才够用）");
+
+        System.out.println();
+        System.out.println("── B. 仍未修的偏差（**引结论时必须一起说**）──");
+        row("🔴 P0-1 行索引用【无噪声】LWE", "b = ⟨a,s⟩ + r（Δ=1, e=0）—— **最大的一条**");
+        row("  ↳ 后果", "正确性只在 e=0 成立；不满足 LWE 噪声模型 ⇒ 不能引 LWE 安全性论证");
         row("  ↳ 且盲旋转对 e=±1 零容忍", "实测会整体推偏一格，取到相邻记录");
-        row("⚠️ 候选 Bloom 密文非全程同态", "演示 2 量出的缩放噪声是障碍");
-        row("⚠️ 列选择子是 C 个独立密文", "论文写 an encryption of e_{c_a}（1 个）");
-        row("⚠️ ℓ_BF = 2（退化）", "论文 ε_BF = 2^-20 ⇒ 约 80~100 位");
-        row("⚠️ 指纹是 hashCode，非 40-bit", "论文 40-bit；代码里是截断的字符串哈希");
-        row("⚠️ Bloom 位用 String.hashCode", "论文是公开哈希族 G = {g_1..g_h}，h≥3");
-        row("⚠️ BFF 位置是顺序 0..8", "论文由 h_a(K) 哈希派生");
-        row("⚠️ 表只有 c=0 有数据（本演示）", "位置 0..8 / R=16 ⇒ c 恒为 0，未覆盖 c≥1");
+        row("🔴 P0-3 候选 Bloom 密文非全程同态", "演示 2 量出的缩放噪声是障碍");
+        row("🟠 P1-1 SampleExtract 的 d≠N 密钥切换", "extractLwe 强制 dimension == N");
+        row("🟠 P1-2 转换舍入误差无理论界", "量级已测（std≈15），界没给");
+        row("🟠 P1-3 RingPack 的 N=4096 未通过", "4096 时 P2/P3/P4 失败，8192 才是起步");
+        row("🟠 P1-5 主管线客户端 Bloom 查询", "PlaintextFusePirQuery 仍无 b_qry/τ/q_BF");
+        row("🟠 P1-6 Bloom 参数与论文差距", "ε_BF=2⁻⁶（论文 2⁻²⁰）；指纹非 40-bit");
+        row("🟡 P2-1 RGSW gadget 参数", "只对当前 base/levels 成立");
+        row("🟡 P2-5 ℓ_BF > N 需分段", "真实数据实测 ℓ_BF=5075 > 4096");
+        row("🟡 P2-6 规模远小于论文", "N=4096 vs 16384；3 个手写关键词");
+        row("🟡 P2-7 列选择子是 C 个独立密文", "论文写 an encryption of e_{c_a}（1 个）");
 
         System.out.println();
         System.out.println("── C. 本演示【不证明】什么（读结论前请先看这段）────────────");

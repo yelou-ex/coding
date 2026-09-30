@@ -25,6 +25,7 @@
     </properties>
 
     <modules>
+        <module>common</module>
         <module>lwe-java</module>
         <module>rlwe-java</module>
         <module>rgsw-lab</module>

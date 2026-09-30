@@ -43,6 +43,13 @@ $srcFiles = Get-ChildItem $srcDir -Filter *.java |
     Where-Object { $_.Name -notin $routeC } |
     Select-Object -ExpandProperty FullName
 
+# 共享层（com.fusepir.common.BfGen = 论文的 BF.Gen）。
+# 客户端算 b_qry、服务端算 b_v，两边【必须】用同一份实现 —— 所以它不能放在任何一侧。
+$commonSrc = Join-Path (Split-Path -Parent $lib) 'common\src\main\java'
+if (Test-Path $commonSrc) {
+    $srcFiles += Get-ChildItem $commonSrc -Recurse -Filter *.java | Select-Object -ExpandProperty FullName
+}
+
 # LweRlweConversion 要用 cape.he（lwe-java 的 LWE 层），把它的源码目录挂到 sourcepath 上。
 $lweSrc = Join-Path (Split-Path -Parent $lib) 'lwe-java\src\main\java'
 

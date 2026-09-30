@@ -19,6 +19,13 @@
         </plugins>
     </build>
     <dependencies>
+        <!-- 共享层：Bloom 位函数 BfGen（= 论文的 BF.Gen）。
+             服务端算 b_v、客户端算 b_qry，两边必须用同一份实现。 -->
+        <dependency>
+            <groupId>com.fusepir</groupId>
+            <artifactId>cape-common</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>

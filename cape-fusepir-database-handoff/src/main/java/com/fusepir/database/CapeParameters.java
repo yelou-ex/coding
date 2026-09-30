@@ -1,5 +1,7 @@
 package com.fusepir.database;
 
+import com.fusepir.common.BfGen;
+
 /**
  * CAPE 参数。
  *
@@ -47,7 +49,7 @@ public record CapeParameters(int securityBits, int ringDegreeN, int bffK, int fi
      *   <li><b>N = 4096</b>：环维度取小。它同时是 <b>Bloom 长度 ℓ_BF 的上限</b>（ℓ ≤ N）——
      *       实测真实 MovieLens 的 {@code maxSetSize=173}，N 再小就装不下了
      *       （N=512 时 ℓ=1611 直接超限）。</li>
-     *   <li><b>ε_BF = 2⁻⁶</b>：实际 ℓ 由 {@link BloomParameters#choose} 定。
+     *   <li><b>ε_BF = 2⁻⁶</b>：实际 ℓ 由 {@link BfGen#choose} 定。
      *       ε 不能再压低 —— ℓ 随 −log(ε) 增长，压低会撞上 ℓ ≤ N 而抛异常。
      *       注意 ε 放宽意味着假阳性变多，这是测试阶段为了"能跑起来"主动付的代价。</li>
      *   <li><b>fingerprintBits = 16</b>：载荷里指纹按 16 bit 一组存 3 组（3 个 limb）。
@@ -82,8 +84,8 @@ public record CapeParameters(int securityBits, int ringDegreeN, int bffK, int fi
     }
 
     /** Bloom 参数（用 N 作为长度上限）。服务端与客户端必须调同一个方法。 */
-    public BloomParameters bloomParameters(int maxSetSize) {
-        return BloomParameters.choose(maxSetSize, bloomFalsePositiveTarget, ringDegreeN);
+    public BfGen bloomParameters(int maxSetSize) {
+        return BfGen.choose(maxSetSize, bloomFalsePositiveTarget, ringDegreeN);
     }
 
     public String describe() {

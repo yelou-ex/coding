@@ -93,6 +93,13 @@
             <artifactId>lwe-java</artifactId>
             <version>1.0-SNAPSHOT</version>
         </dependency>
+        <!-- 共享层：Bloom 位函数 BfGen（= 论文的 BF.Gen）。
+             客户端的 b_qry 必须与服务器构造 b_v 用的是【同一份实现】。 -->
+        <dependency>
+            <groupId>com.fusepir</groupId>
+            <artifactId>cape-common</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
         <!-- 自研 RLWE：Mpc4jRgsw / LabConfig / RgswOps 等需要它 -->
         <dependency>
             <groupId>com.fusepir</groupId>

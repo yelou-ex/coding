@@ -1,9 +1,11 @@
 package com.fusepir.database;
 
+import com.fusepir.common.BfGen;
+
 import java.util.*;
 
 /**
- * <b>查 `CapeEndToEnd4` / `CapeDemo` 里客户端 Bloom 查询向量 {@code b_qry} 的构造。</b>
+ * <b>回归测试：客户端 Bloom 查询向量 {@code b_qry} 必须只由关键词算出。</b>
  *
  * <h3>论文怎么写</h3>
  * CAPE 算法 2 · QUERY 第 2~3 行：
@@ -11,58 +13,40 @@ import java.util.*;
  *   b_qry ← BF.Gen(0, {K_2, ..., K_Q})      // 把【关键词】插进 Bloom
  *   τ     ← ‖b_qry‖_1
  * </pre>
- * 也就是说 {@code b_qry = OR_{i≥2} B(K_i)}，<b>只用到关键词</b>。
- * 正确性依赖"<b>无漏判</b>"：候选 {@code v} 含全部查询关键词 ⇒ {@code B(K_i) ⊆ b_v} ⇒ {@code ⟨b_qry,b_v⟩ = τ}。
+ * 正确性依赖「<b>无漏判</b>」：候选 {@code v} 含全部查询关键词 ⇒ {@code B(K_i) ⊆ b_v} ⇒ {@code ⟨b_qry,b_v⟩ = τ}。
  *
- * <h3>演示代码怎么写</h3>
- * {@code CapeEndToEnd4} 的 QUERY 段是：
+ * <h3>历史上的错法（本类前两节就把它复现出来）</h3>
+ * {@code CapeEndToEnd4} 曾经写成
  * <pre>
  *   for (String qk : query[1..]) {
- *       int idx = 该关键词在库里的下标;
- *       for (int vv : dbValues[idx]) {          // ← 遍历这个关键词的【值集合 V_{K_2}】
- *           qBf |= bloom.get(vv);               // ← 或上的是 b_v，不是 B(K)
- *       }
+ *       for (int vv : dbValues[idx]) qBf |= bloom.get(vv);   // ← 或的是 b_v，不是 B(K)
  *   }
  * </pre>
- * 两个问题：
- * <ol>
- *   <li><b>用的是客户端拿不到的数据。</b>{@code dbValues[idx]} 是<b>服务器才有的明文数据库</b>。
- *       客户端的 {@code b_qry} 必须只由关键词算出 —— 所以这段代码<b>不是一个合法客户端查询</b>，
- *       它"能过"只是因为演示里客户端和服务器在同一个 JVM。</li>
- *   <li><b>即使忽略第 1 点，OR 的对象也错了。</b>它算出来的是
- *       {@code OR_{K ∈ Co(K_2)} B(K)}，其中 {@code Co(K_2) = ⋃_{v∈V_{K_2}} kw(v)}
- *       是这个关键词"共现过的全部关键词"集合，<b>严格大于</b> {@code {K_2}}。
- *       {@code b_qry} 变大 ⇒ {@code τ} 变大 ⇒ 判定条件变严 ⇒ <b>会把真命中判掉（漏判 / false negative）</b>。
- *       而论文的正确性证明恰恰依赖"无漏判"。</li>
- * </ol>
+ * 算出来的是 {@code OR_{K ∈ Co(K_2)} B(K)}，其中 {@code Co(K_2) = ⋃_{v∈V_{K_2}} kw(v)}
+ * <b>严格大于</b> {@code {K_2}} ⇒ {@code τ} 被撑大 ⇒ 判定变严 ⇒ <b>漏判</b>。
+ * 而且 {@code dbValues} 是<b>服务器才有的明文数据库</b>，客户端的 {@code b_qry} 根本算不出来。
  *
- * <p>本类用<b>真实的 {@link BloomParameters} 代码</b>构造一个反例，把漏判跑出来。
- *
- * <p>跑法：{@code javac -d out src/main/java/com/fusepir/database/*.java} 后
- * {@code java -cp out com.fusepir.database.BloomQueryConstructionCheck}
+ * <p>跑法：{@code .\run.ps1 -Class com.fusepir.database.BloomQueryConstructionCheck}
  */
 public final class BloomQueryConstructionCheck {
 
     private static int failed = 0;
 
     public static void main(String[] args) {
-        System.out.println("=== 客户端 b_qry 构造检查（CapeEndToEnd4 的写法 vs 论文）===");
+        System.out.println("=== 客户端 b_qry 构造检查（正确构造 vs 历史上的错法）===");
 
-        // 参数就用真实代码：maxSetSize=2、ε=2^-6、上限 512
-        BloomParameters bloom = BloomParameters.choose(2, Math.pow(2, -6), 512);
-        System.out.printf("[bloom] h=%d, ℓ=%d%n%n", bloom.hashCount(), bloom.length());
+        BfGen bloom = BfGen.choose(2, Math.pow(2, -6), 512);
+        System.out.printf("[bloom] %s%n%n", bloom);
 
-        // ---------------- 库（故意让 K_2 与查询外的 K_3 共现） ----------------
-        //   K_1 -> {v1, v2}
-        //   K_2 -> {v1, v2}
-        //   K_3 -> {v1}        ← K_3 不在查询里，但和 K_2 共现于 v1
+        // ---------------- 库（故意让 K_2 与查询外的 K_3 共现于 v1） ----------------
         Map<String, Set<Integer>> valuesByKeyword = new LinkedHashMap<>();
         valuesByKeyword.put("K_1", new LinkedHashSet<>(List.of(1, 2)));
         valuesByKeyword.put("K_2", new LinkedHashSet<>(List.of(1, 2)));
         valuesByKeyword.put("K_3", new LinkedHashSet<>(List.of(1)));
 
         Map<Integer, Set<String>> kwOf = new TreeMap<>();
-        valuesByKeyword.forEach((k, vs) -> vs.forEach(v -> kwOf.computeIfAbsent(v, x -> new LinkedHashSet<>()).add(k)));
+        valuesByKeyword.forEach((k, vs) -> vs.forEach(v ->
+            kwOf.computeIfAbsent(v, x -> new LinkedHashSet<>()).add(k)));
         Map<Integer, boolean[]> bV = new TreeMap<>();
         kwOf.forEach((v, ks) -> bV.put(v, bloom.bits(ks)));
 
@@ -71,105 +55,180 @@ public final class BloomQueryConstructionCheck {
         kwOf.forEach((v, ks) -> System.out.printf("      v%d 关联关键词 = %s%n", v, ks));
         System.out.println();
 
-        // ---------------- 查询：锚 K_1，其余 {K_2} ----------------
         List<String> query = List.of("K_1", "K_2");
+        List<String> rest = query.subList(1, query.size());
         System.out.printf("查询 = %s，锚 = K_1（候选 = V_{K_1} = %s）%n%n",
             query, valuesByKeyword.get("K_1"));
 
-        // ---- 论文：b_qry = OR_{i>=2} B(K_i) = B(K_2) ----
-        boolean[] bQryPaper = bloom.bits(query.subList(1, query.size()));
-        long tauPaper = count(bQryPaper);
+        // ---- ① 正确：b_qry = OR_{i>=2} B(K_i)，只用到关键词 ----
+        boolean[] bQryCorrect = bloom.bits(rest);
+        long tauCorrect = count(bQryCorrect);
 
-        // ---- 演示：b_qry = OR_{v ∈ V_{K_2}} b_v ----
-        boolean[] bQryDemo = new boolean[bloom.length()];
+        // ---- ② 错法：b_qry = OR_{v ∈ V_{K_2}} b_v（需要服务器的明文库） ----
+        boolean[] bQryWrong = new boolean[bloom.length()];
         for (int v : valuesByKeyword.get("K_2")) {
             boolean[] bv = bV.get(v);
-            for (int i = 0; i < bQryDemo.length; i++) bQryDemo[i] |= bv[i];
+            for (int i = 0; i < bQryWrong.length; i++) {
+                bQryWrong[i] |= bv[i];
+            }
         }
-        long tauDemo = count(bQryDemo);
+        long tauWrong = count(bQryWrong);
 
         System.out.println("b_qry 两种构造：");
-        System.out.printf("      论文   b_qry = B(K_2)                       τ = %d   %s%n",
-            tauPaper, pos(bQryPaper));
-        System.out.printf("      演示   b_qry = ⋃_{v∈V_{K_2}} b_v           τ = %d   %s%n",
-            tauDemo, pos(bQryDemo));
-        boolean bigger = tauDemo > tauPaper;
-        System.out.printf("      → 演示的 b_qry %s论文的（多出的位来自 K_3：它与 K_2 共现于 v1）%n%n",
-            bigger ? "**严格大于**" : "不大于");
-        failed += report("演示的 b_qry 确实被 Co(K_2) 撑大了（含查询外的 K_3）", bigger,
-            String.format("τ: 论文 %d → 演示 %d", tauPaper, tauDemo));
+        System.out.printf("      正确   b_qry = B(K_2)                      τ = %-3d %s%n",
+            tauCorrect, pos(bQryCorrect));
+        System.out.printf("      错法   b_qry = ⋃_{v∈V_{K_2}} b_v          τ = %-3d %s%n",
+            tauWrong, pos(bQryWrong));
+        System.out.printf("      → 错法的 b_qry %s正确的（多出的位来自 K_3：它与 K_2 共现于 v1）%n%n",
+            tauWrong > tauCorrect ? "**严格大于**" : "不大于");
+        failed += report("① 错法确实把 b_qry 撑大了（含查询外的 K_3）", tauWrong > tauCorrect,
+            String.format("τ: 正确 %d → 错法 %d", tauCorrect, tauWrong));
 
         // ---------------- 逐候选判定 ----------------
-        System.out.println("真答案（V_{K_1} 里同时含 K_2 的）= {1, 2}；下面看两种构造各判成什么：");
+        System.out.println("真答案（V_{K_1} 里同时含 K_2 的）= " + trueAnswers(valuesByKeyword, kwOf, query));
         System.out.println();
-        int fnPaper = 0;
-        int fnDemo = 0;
+        int missCorrect = 0;
+        int missWrong = 0;
+        List<String> wrongRejected = new ArrayList<>();
         for (int v : valuesByKeyword.get("K_1")) {
-            long sPaper = inner(bQryPaper, bV.get(v));
-            long sDemo = inner(bQryDemo, bV.get(v));
-            boolean hitPaper = sPaper == tauPaper;
-            boolean hitDemo = sDemo == tauDemo;
+            long sCorrect = inner(bQryCorrect, bV.get(v));
+            long sWrong = inner(bQryWrong, bV.get(v));
+            boolean hitCorrect = sCorrect == tauCorrect;
+            boolean hitWrong = sWrong == tauWrong;
             boolean isTrueHit = kwOf.get(v).containsAll(query);
-            if (isTrueHit && !hitPaper) fnPaper++;
-            if (isTrueHit && !hitDemo) fnDemo++;
-            System.out.printf("      v%d  kw=%-18s 论文 score=%-3d %s   演示 score=%-3d %s%n",
-                v, kwOf.get(v), sPaper, hitPaper ? "命中" : "拒绝",
-                sDemo, hitDemo ? "命中" : "拒绝");
+            if (isTrueHit && !hitCorrect) {
+                missCorrect++;
+            }
+            if (isTrueHit && !hitWrong) {
+                missWrong++;
+                wrongRejected.add("v" + v);
+            }
+            System.out.printf("      v%d  kw=%-18s 正确 score=%-3d %-4s   错法 score=%-3d %-4s%n",
+                v, kwOf.get(v), sCorrect, hitCorrect ? "命中" : "拒绝",
+                sWrong, hitWrong ? "命中" : "拒绝");
         }
         System.out.println();
-        failed += report("论文的构造：真命中全部召回（无漏判）", fnPaper == 0,
-            String.format("漏判 %d 个", fnPaper));
-        failed += report("★ 演示的构造：出现【漏判】—— 真命中被拒", fnDemo > 0,
-            fnDemo > 0
-                ? String.format("漏判 %d 个：真命中被判成「不命中」（论文的正确性依赖无漏判）", fnDemo)
+        failed += report("② 正确构造：真命中全部召回（无漏判）", missCorrect == 0,
+            String.format("漏判 %d 个", missCorrect));
+        failed += report("③ ★ 错法出现【漏判】—— 真命中被拒（这就是必须修的原因）", missWrong > 0,
+            missWrong > 0
+                ? String.format("漏判 %s：真命中被判成「不命中」", wrongRejected)
                 : "本例未复现（换个共现结构即可）");
 
-        // ---------------- 附带：intAt 的窗口重叠 ----------------
+        // ---------------- 随机回归：正确构造必须无漏判 ----------------
         System.out.println();
-        System.out.println("── 附带：`BloomParameters.intAt` 的 4 字节窗口在 h>8 时重叠 ──");
-        System.out.print("      h=16 时取的起点（SHA-256 只有 32 字节）：");
-        Set<Integer> seen = new TreeSet<>();
-        List<Integer> starts = new ArrayList<>();
-        for (int i = 0; i < 16; i++) {
-            int start = Math.floorMod(i * 4, 32 - 4 + 1);
-            starts.add(start);
-            seen.add(start);
-        }
-        System.out.println(starts);
-        System.out.printf("      不同起点 %d 个 → 窗口 0..7 覆盖 [0,32)，窗口 8..15 又落在 [%d,%d] ⇒ **互相重叠**%n",
-            seen.size(), Collections.min(starts.subList(8, 16)), Collections.max(starts.subList(8, 16)));
-        System.out.println("      ⇒ 16 个位置并不独立（同一个摘要的相邻字节），实际假阳性率会**差于**公式值。");
-        System.out.println("        这不是致命的（Kirsch–Mitzenmacher 式的复用有界），但没有理论保证；");
-        System.out.println("        规范做法是用 h 个独立的哈希，或 double hashing g_i = h1 + i·h2。");
+        System.out.println("── 随机回归：正确构造在 300 组随机库/查询下必须 0 漏判 ──");
+        failed += randomNoFalseNegative(bloom);
+        failed += report("④ 位位置推导用 double hashing（h 个位置来自 2 个 64-bit 字，不再重叠）",
+            checkDoubleHashing(bloom), "见 BfGen.positions 的说明");
 
         System.out.println();
         System.out.println(failed == 0
-            ? "=== 检查完成：上面两项【都复现了】—— 即问题存在，需要修 CapeEndToEnd4 的 b_qry ==="
-            : "=== 有 " + failed + " 项未按预期复现（换个共现结构再试）===");
-        System.out.println();
-        System.out.println("修法：让演示复用【同一套】Bloom 位函数（`BloomParameters.bits(keywords)`），"
-            + "b_qry 只从关键词算；");
-        System.out.println("      也就是把 BF.Gen 抽成双方共用的方法 —— 这正是对照表 `补 1` 那条。");
-        System.out.println("      但注意：BloomParameters 在 cape-fusepir-database-handoff 模块里，"
-            + "rgsw-lab 的 classpath 看不到它，");
-        System.out.println("      所以要真正共用，得先把它挪到共享位置（或把该模块挂进 classpath）。");
+            ? "=== 全部通过：正确构造无漏判；错法会被本测试抓住 ==="
+            : "=== 有 " + failed + " 项未按预期 ===");
+        if (failed != 0) {
+            System.exit(1);
+        }
+    }
+
+    /** 随机库 + 随机查询，用【正确构造】跑，要求真命中一个都不能漏。 */
+    private static int randomNoFalseNegative(BfGen bloom) {
+        Random rnd = new Random(20260929L);
+        int totalTrueHits = 0;
+        int missed = 0;
+        for (int trial = 0; trial < 300; trial++) {
+            int nKw = 4 + rnd.nextInt(5);          // 4..8 个关键词
+            int nVal = 3 + rnd.nextInt(4);         // 3..6 个值
+            Map<String, Set<Integer>> vbk = new LinkedHashMap<>();
+            List<String> names = new ArrayList<>();
+            for (int i = 0; i < nKw; i++) {
+                names.add("K_" + i);
+                vbk.put("K_" + i, new LinkedHashSet<>());
+            }
+            for (int v = 0; v < nVal; v++) {
+                for (String k : names) {
+                    if (rnd.nextBoolean()) {
+                        vbk.get(k).add(v);
+                    }
+                }
+            }
+            Map<Integer, Set<String>> kwOf = new TreeMap<>();
+            vbk.forEach((k, vs) -> vs.forEach(v ->
+                kwOf.computeIfAbsent(v, x -> new LinkedHashSet<>()).add(k)));
+
+            int anchorIdx = rnd.nextInt(nKw);
+            List<String> queryKw = List.of(names.get(anchorIdx),
+                names.get(rnd.nextInt(nKw)));
+            List<String> restKw = queryKw.subList(1, queryKw.size());
+
+            boolean[] bQry = bloom.bits(restKw);
+            long tau = count(bQry);
+            for (int v : vbk.get(names.get(anchorIdx))) {
+                if (!kwOf.get(v).containsAll(queryKw)) {
+                    continue;                       // 不是真命中，跳过
+                }
+                totalTrueHits++;
+                if (inner(bQry, bloom.bits(kwOf.get(v))) != tau) {
+                    missed++;
+                }
+            }
+        }
+        return report("随机回归：正确构造 0 漏判", missed == 0,
+            String.format("%d 个真命中，漏判 %d 个", totalTrueHits, missed));
+    }
+
+    /** 新的位位置推导是不是 double hashing 的形状（恰好 h 个位置、都在范围内、可复现）。 */
+    private static boolean checkDoubleHashing(BfGen bloom) {
+        int[] p = bloom.positions("K_1");
+        if (p.length != bloom.hashCount()) {
+            return false;
+        }
+        for (int x : p) {
+            if (x < 0 || x >= bloom.length()) {
+                return false;
+            }
+        }
+        return Arrays.equals(p, bloom.positions("K_1"));
+    }
+
+    private static Set<Integer> trueAnswers(Map<String, Set<Integer>> vbk,
+                                            Map<Integer, Set<String>> kwOf, List<String> query) {
+        Set<Integer> out = new TreeSet<>();
+        for (int v : vbk.get(query.get(0))) {
+            if (kwOf.get(v).containsAll(query)) {
+                out.add(v);
+            }
+        }
+        return out;
     }
 
     private static long count(boolean[] b) {
         long c = 0;
-        for (boolean x : b) if (x) c++;
+        for (boolean x : b) {
+            if (x) {
+                c++;
+            }
+        }
         return c;
     }
 
     private static long inner(boolean[] x, boolean[] y) {
         long c = 0;
-        for (int i = 0; i < x.length; i++) if (x[i] && y[i]) c++;
+        for (int i = 0; i < x.length; i++) {
+            if (x[i] && y[i]) {
+                c++;
+            }
+        }
         return c;
     }
 
     private static String pos(boolean[] b) {
         StringBuilder sb = new StringBuilder("{");
-        for (int i = 0; i < b.length; i++) if (b[i]) sb.append(sb.length() > 1 ? "," : "").append(i);
+        for (int i = 0; i < b.length; i++) {
+            if (b[i]) {
+                sb.append(sb.length() > 1 ? "," : "").append(i);
+            }
+        }
         return sb.append("}").toString();
     }
 
