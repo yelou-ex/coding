@@ -107,6 +107,80 @@ public final class CmuxProfile {
         System.out.printf("%n    参考：base=%d 的平衡位半宽 = %d，明文窗口 ±%d ⇒ base 已顶到窗口上限；%n",
             m.base, m.base / 2, (m.t - 1) / 2);
         System.out.printf("           levels=%d 由 B^levels/2 > q(≈2^%d) 决定。%n", m.levels, m.qBits);
+
+        subProfile(m, n, src, reps);
+    }
+
+    /**
+     * 把 {@code multiplyPlainNtt} 内部再拆三段：建明文 / fast plain lift + NTT / 点乘。
+     *
+     * <p>决定 ②（RNS 域替换）值不值得做，以及该替换掉哪一段。
+     */
+    private static void subProfile(Mpc4jRgsw m, int n, Ciphertext ct, int reps) {
+        System.out.println("\n--- ③ multiplyPlainNtt 内部再拆（10 次/轮 CMUX）---");
+        long[] digits = new long[n];
+        for (int i = 0; i < n; i++) {
+            digits[i] = (i % 9) - 4;                 // 小的平衡位，模拟真实 digit
+            if (digits[i] < 0) {
+                digits[i] += m.t;
+            }
+        }
+        Ciphertext ctNtt = new Ciphertext();
+        ctNtt.copyFrom(ct);
+        if (!ctNtt.isNttForm()) {
+            m.evaluator.transformToNttInplace(ctNtt);
+        }
+        Ciphertext dst = new Ciphertext();
+        edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext pt = new edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext(n);
+        edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext ptNtt =
+            new edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext(n);
+
+        for (int w = 0; w < 8; w++) {                // 预热
+            edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext p =
+                new edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext(digits);
+            m.evaluator.transformToNttInplace(p, ct.parmsId());
+            m.evaluator.multiplyPlain(ctNtt, p, dst);
+        }
+
+        double[] tBuild = new double[reps];
+        double[] tLift = new double[reps];
+        double[] tMul = new double[reps];
+        double[] tWhole = new double[reps];
+        for (int r = 0; r < reps; r++) {
+            long t = System.nanoTime();
+            edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext p =
+                new edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext(digits);
+            tBuild[r] = (System.nanoTime() - t) / 1e6;
+
+            t = System.nanoTime();
+            m.evaluator.transformToNttInplace(p, ct.parmsId());
+            tLift[r] = (System.nanoTime() - t) / 1e6;
+
+            t = System.nanoTime();
+            m.evaluator.multiplyPlain(ctNtt, p, dst);
+            tMul[r] = (System.nanoTime() - t) / 1e6;
+
+            t = System.nanoTime();
+            edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext q =
+                new edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext(digits);
+            m.evaluator.transformToNttInplace(q, ct.parmsId());
+            m.evaluator.multiplyPlain(ctNtt, q, dst);
+            tWhole[r] = (System.nanoTime() - t) / 1e6;
+        }
+        double build = med(tBuild);
+        double lift = med(tLift);
+        double mul = med(tMul);
+        double whole = med(tWhole);
+        System.out.printf("      建 Plaintext(long[])            : %6.3f ms%n", build);
+        System.out.printf("      fast plain lift + NTT          : %6.3f ms   ← ② 里最可能的大头%n", lift);
+        System.out.printf("      Evaluator.multiplyPlain 本体   : %6.3f ms%n", mul);
+        System.out.printf("      ─────────────────────────────────────%n");
+        System.out.printf("      合计（一次 multiplyPlainNtt）  : %6.3f ms%n", whole);
+        System.out.printf("      ⇒ 每轮 CMUX 10 次 = %6.2f ms（与上面 ② 段对得上）%n",
+            whole * 2 * m.levels);
+        System.out.println("\n      ★ ② 的目标就是把「fast plain lift + NTT」这一段的包装换掉：");
+        System.out.println("        直接用 context.firstContextData().smallNttTables() + NttTool.*LazyRns");
+        System.out.println("        + RnsIterator 自己做，省掉 Plaintext 对象与 Evaluator 校验层。");
     }
 
     private static double med(double[] v) {

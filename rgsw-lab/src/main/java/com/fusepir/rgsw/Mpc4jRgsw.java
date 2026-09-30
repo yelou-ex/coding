@@ -560,12 +560,22 @@ public final class Mpc4jRgsw {
         long[][] d0 = decompose(src, 0);
         long[][] d1 = decompose(src, 1);
 
-        // 累加器必须与 RGSW 分量同形式（NTT 域）
-        Ciphertext acc = toNtt(encryptZero());
+        // 累加器直接由【第一个乘积】初始化，而不是从零密文加起。
+        //
+        // 原来写的是 `acc = toNtt(encryptZero())` 再 10 次 addInplace —— 也就是**每一轮 CMUX
+        // 都要现采样一个零密文并做一次密文 NTT**，纯粹是浪费（`encryptZero` 要采样均匀多项式
+        // + 噪声，再加 2 个多项式 × L 个素数的 NTT）。
+        // 数学上完全等价：Σ_i (g0_i·d0_i + g1_i·d1_i) 与"零 + 同样这些项"逐分量同余，
+        // 密文加法就是按素数逐系数相加，所以结果**逐位相同**。
+        Ciphertext acc = new Ciphertext();
         Ciphertext tmp = new Ciphertext();
         for (int i = 0; i < levels; i++) {
-            multiplyPlainNtt(rgsw.group0[i], d0[i], tmp);
-            evaluator.addInplace(acc, tmp);
+            if (i == 0) {
+                multiplyPlainNtt(rgsw.group0[0], d0[0], acc);   // 首个乘积直接落进累加器
+            } else {
+                multiplyPlainNtt(rgsw.group0[i], d0[i], tmp);
+                evaluator.addInplace(acc, tmp);
+            }
             multiplyPlainNtt(rgsw.group1[i], d1[i], tmp);
             evaluator.addInplace(acc, tmp);
         }
