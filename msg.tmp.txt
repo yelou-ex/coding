@@ -1,0 +1,36 @@
+﻿fix(route-A): native 线彻底走通 —— 三规模 4/4 PASS
+
+修掉两个真实 bug：
+
+1) gadget 溢出（这个是「测试 1 精确匹配」抓到的）
+   gadget g_i = base^i 存在 unsigned __int128 里，而 base^8 = 2^128 就溢出，
+   于是 levels > 8 时所有 i >= 8 的 gadget 被算成 0，那些 RGSW 行退化成 Enc(0)。
+   后果：N=8192（levels 11）与 N=16384（levels 25）上「RGSW(1) 乘 ct = ct」全错，
+   而 N=4096（levels 5）正常 —— 正是「小参数巧合能过、真实参数才炸」的又一例。
+   修法：g_i 只需要 mod q_j，改成逐素数做模幂，不再构造全宽值。
+
+   ⚠️ 值得记：同一批 bug 下，测试 3（只检查「one-hot 进 one-hot 出」这种结构性质）
+   在 N=8192/16384 上**照样 PASS**，只有测试 1（逐系数精确匹配）抓到了它。
+   弱断言会漏掉真实的算法错误。
+
+2) 序列化路径不可靠
+   Ciphertext::load 在这个 MinGW 构建下抛 index must be within [0, size)；
+   用逐段标签把 external_product / from_ntt / decrypt / 密钥句柄检查全部排除后，
+   只剩它。改用 native 侧密文句柄表（Ciphertext 留在 C++ 内存里）——
+   这本来也是接 CAPE 该有的形态：服务端状态留在 native，只让查询/响应跨边界。
+   save 本身可用，load 不可靠，真做跨网络还得另想办法。
+
+实测（真 SEAL 4.0.0，与路线 B 同 t/base 口径，句柄路径）：
+  规模     素数  q         levels  单轮 CMUX   结果
+  N=4096    2   72 bit       5      3.5 ms    4 PASS / 0 FAIL
+  N=8192    4  174 bit      11     25.5 ms    4 PASS / 0 FAIL
+  N=16384   8  389 bit      25    259   ms    4 PASS / 0 FAIL
+  四项：RGSW(1)xct=ct（精确 0 错位）、RGSW(0)xct=0、盲旋转 one-hot->one-hot、计时收敛
+
+对照路线 B（纯 Java，N=4096）：优化前 15.55 ms、优化后 6.03 ms
+=> native 约 1.7~2.2x。
+
+API 面（全部句柄化，不依赖序列化）：
+  持久作业：nativePrepare / nativeRunWithCtx / nativeFreeJob
+  查询链路：nativeEncryptToStore / nativeExternalProductH / nativeNoiseBudgetH /
+            nativeBlindRotateH / nativeDecryptH / nativeFreeCt

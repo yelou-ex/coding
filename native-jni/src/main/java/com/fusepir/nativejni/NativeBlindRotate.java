@@ -84,6 +84,25 @@ public final class NativeBlindRotate {
 
     private static native void nativeFreeJob(long job);
 
+    // ---- native 侧密文句柄表（跨 JNI 不再依赖序列化）----
+    /** 加密并存入 native 内存，返回句柄。 */
+    private static native long nativeEncryptToStore(long h, long[] msg);
+
+    /** 把序列化字节存入 native 内存，返回句柄。 */
+    private static native long nativeStoreBytes(long h, byte[] ctBytes);
+
+    private static native void nativeFreeCt(long handle);
+
+    /** 用句柄做一次外部乘积并解密返回。 */
+    private static native long[] nativeExternalProductH(long h, long kh, long ctHandle, int row);
+
+    private static native int nativeNoiseBudgetH(long h, long ctHandle);
+
+    /** 句柄版盲旋转（返回结果密文的句柄）与解密，整条链路不走序列化。 */
+    private static native long nativeBlindRotateH(long h, long kh, long accHandle, long[] a, long beta);
+
+    private static native long[] nativeDecryptH(long h, long ctHandle);
+
     private static int passed = 0;
     private static int failed = 0;
 
@@ -139,9 +158,10 @@ public final class NativeBlindRotate {
         for (int i = 0; i < n; i++) {
             msg[i] = (i % 7) + 1;
         }
-        byte[] ct = nativeEncrypt(h, msg);
+        long ctH = nativeEncryptToStore(h, msg);          // 走句柄，不序列化
+        byte[] ct = nativeEncrypt(h, msg);                // 同时保留字节路径做对照
 
-        long[] ep1 = nativeExternalProduct(h, kh1, ct, 0);   // RGSW(1)
+        long[] ep1 = nativeExternalProductH(h, kh1, ctH, 0);   // RGSW(1)
         int bad1 = 0;
         for (int i = 0; i < n; i++) {
             if (ep1[i] != msg[i]) {
@@ -149,9 +169,9 @@ public final class NativeBlindRotate {
             }
         }
         report(String.format("1. RGSW(1) ⊗ ct = ct（错位 %d/%d）", bad1, n), bad1 == 0,
-            "噪声预算 = " + nativeNoiseBudget(h, ct) + " bit");
+            "噪声预算 = " + nativeNoiseBudgetH(h, ctH) + " bit");
 
-        long[] ep0 = nativeExternalProduct(h, kh0, ct, 0);   // RGSW(0)
+        long[] ep0 = nativeExternalProductH(h, kh0, ctH, 0);   // RGSW(0)
         int nz = 0;
         for (int i = 0; i < n; i++) {
             if (ep0[i] != 0) {
@@ -159,6 +179,7 @@ public final class NativeBlindRotate {
             }
         }
         report(String.format("2. RGSW(0) ⊗ ct = 0（非零 %d/%d）", nz, n), nz == 0, "");
+        nativeFreeCt(ctH);
         nativeDestroyKey(kh1);
         nativeDestroyKey(kh0);
 
@@ -168,8 +189,7 @@ public final class NativeBlindRotate {
         long[] oneHot = new long[n];
         oneHot[r] = 1;
         byte[] acc = nativeEncrypt(h, oneHot);
-        long[] a = new long[d];
-        long twoN = 2L * n;
+        long[] a = new long[d];        long twoN = 2L * n;
         long sum = 0;
         for (int i = 0; i < d; i++) {
             a[i] = Math.floorMod(rnd.nextLong(), twoN);
@@ -177,8 +197,9 @@ public final class NativeBlindRotate {
         }
         long beta = Math.floorMod(sum + r, twoN);
 
-        byte[] rotated = nativeBlindRotate(h, kh, acc, a, beta);
-        long[] got = nativeDecrypt(h, rotated);
+        long accH = nativeEncryptToStore(h, oneHot);      // 句柄路径，不序列化
+        long rotH = nativeBlindRotateH(h, kh, accH, a, beta);
+        long[] got = nativeDecryptH(h, rotH);
         int nonZero = 0;
         int unit = 0;
         int where = -1;
@@ -194,29 +215,11 @@ public final class NativeBlindRotate {
         report(String.format("3. 盲旋转：one-hot 进 → one-hot 出（非零 %d 个，落点 %d，其中单位值 %d 个）",
                 nonZero, where, unit),
             nonZero == 1 && unit == 1,
-            "噪声预算 = " + nativeNoiseBudget(h, rotated) + " bit");
+            "噪声预算 = " + nativeNoiseBudgetH(h, rotH) + " bit");
 
-        // ---------------- 速度 ----------------
-        for (int w = 0; w < 2; w++) {                       // 预热
-            nativeBlindRotate(h, kh, acc, a, beta);
-        }
-        double[] times = new double[reps];
-        for (int i = 0; i < reps; i++) {
-            long t0 = System.nanoTime();
-            nativeBlindRotate(h, kh, acc, a, beta);
-            times[i] = (System.nanoTime() - t0) / 1e6;
-        }
-        Arrays.sort(times);
-        double med = times[times.length / 2];
+        // ---------------- 速度（已由上面的持久作业给出，这里只做字节路径留档）----------------
         System.out.println();
-        System.out.println("---------------- 速度 ----------------");
-        System.out.printf("  一次盲旋转（d=%d 轮 CMUX，含编解码）  : %9.1f ms%n", d, med);
-        System.out.printf("  单轮 CMUX                              : %9.2f ms%n", med / d);
-        System.out.println();
-        System.out.println("  路线 B（MPC4J 纯 Java）同参数实测对照：");
-        System.out.println("    优化前 单轮 CMUX = 15.55 ms（ANSWER 50 078 ms）");
-        System.out.println("    优化后 单轮 CMUX =  6.03 ms（ANSWER 15 407 ms）");
-
+        System.out.println("  [留档] 旧的字节目录路径仍然不可用（见下方 [已知]），因此不再计时。");
         nativeDestroyKey(kh);
         } catch (RuntimeException e) {
             System.out.println();

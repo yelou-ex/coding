@@ -240,13 +240,6 @@ RgswKey build_rgsw_constant(const NativeCtx *c, std::uint64_t mu) {
 
     std::vector<std::uint64_t> mres(n, 0);
     for (int i = 0; i < c->levels; ++i) {
-        // Gadget g_i = base^i, kept at FULL width (not reduced mod t) and added
-        // straight into the phase, exactly like Mpc4jRgsw.addConstantNtt does with
-        // the BigInteger `power`.  base^4 = 2^64 does not fit in uint64_t, hence
-        // the 128-bit accumulator.
-        unsigned __int128 gi = 1;
-        for (int e = 0; e < i; ++e) gi *= c->base;
-
         // Both rows start as encryptions of ZERO.  encrypt_symmetric() (not
         // encrypt_zero(), whose output SEAL itself calls transparent, and not
         // encrypt(), which wants a public key) samples a uniform `a`, so the result
@@ -264,13 +257,19 @@ RgswKey build_rgsw_constant(const NativeCtx *c, std::uint64_t mu) {
         //   component 1  ->  phase += g_i * mu * s        (RLWE''(g_i mu s))
         // Adding to component 1 makes the extra factor s appear for free.
         //
-        // BUG FIXED HERE: the first version encrypted `g_i*mu mod t` as a plaintext,
-        // which scales the phase by Delta = q/t - a completely different (and wrong)
-        // gadget.  That is why RGSW(1) x ct came out as 4096/4096 wrong coefficients.
+        // g_i = base^i is only ever needed MODULO each q_j.  Computing it at full
+        // width in unsigned __int128 overflows as soon as levels > 8 (base^8 = 2^128),
+        // which silently turned every digit k >= 8 into Enc(0) - that is what made
+        // "RGSW(1) x ct = ct" fail at N = 8192 (levels 11) and N = 16384 (levels 25)
+        // while still passing at N = 4096 (levels 5).  Do the modular exponentiation
+        // per prime instead.
         for (std::size_t j = 0; j < cm.size(); ++j) {
-            std::uint64_t qj = cm[j].value();
-            std::uint64_t gmod = static_cast<std::uint64_t>(gi % qj);
-            std::uint64_t val = (mu == 0) ? 0 : gmod;
+            const std::uint64_t qj = cm[j].value();
+            std::uint64_t gmod = 1;
+            for (int e = 0; e < i; ++e) {
+                gmod = mul_mod_u128(gmod, c->base % qj, qj);
+            }
+            const std::uint64_t val = (mu == 0) ? 0 : gmod;
             if (val == 0) {
                 continue;
             }
@@ -897,6 +896,160 @@ JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_native
 JNIEXPORT void JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeFreeJob(
     JNIEnv *, jclass, jlong jh) {
     delete as_job(jh);
+}
+
+// ---------------------------------------------------------------------------
+//  Native-side ciphertext registry.
+//
+//  Why this exists: Ciphertext::load() kept throwing "index must be within
+//  [0, size)" on the second serialized round trip, and every label around it
+//  (external_product / from_ntt / decrypt / the key-handle checks) stayed silent,
+//  so the round trip itself is what is fragile in this build.
+//
+//  Keeping the ciphertexts in native memory is also the right shape for a real
+//  CAPE integration: the server's state (RGSW bootstrap key + accumulator) should
+//  live on the native side and only the query/response should cross the boundary.
+// ---------------------------------------------------------------------------
+std::vector<Ciphertext> &ctStore() {
+    static std::vector<Ciphertext> store;
+    return store;
+}
+
+jlong storeCt(const Ciphertext &ct) {
+    auto &s = ctStore();
+    s.push_back(ct);
+    return static_cast<jlong>(s.size());        // 1-based handle (0 == invalid)
+}
+
+Ciphertext *lookupCt(jlong handle) {
+    auto &s = ctStore();
+    if (handle <= 0 || static_cast<std::size_t>(handle) > s.size()) return nullptr;
+    return &s[static_cast<std::size_t>(handle) - 1];
+}
+
+JNIEXPORT jlong JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeEncryptToStore(
+    JNIEnv *env, jclass, jlong h, jlongArray msg) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    jsize len = env->GetArrayLength(msg);
+    Plaintext pt;
+    pt.resize(c->n);
+    jlong *raw = env->GetLongArrayElements(msg, nullptr);
+    for (jsize i = 0; i < len && i < static_cast<jsize>(c->n); ++i) {
+        pt[static_cast<std::size_t>(i)] = static_cast<std::uint64_t>(raw[i]);
+    }
+    env->ReleaseLongArrayElements(msg, raw, JNI_ABORT);
+    Ciphertext ct;
+    c->encryptor->encrypt_symmetric(pt, ct);
+    return storeCt(ct);
+    JNI_END(env, 0)
+}
+
+JNIEXPORT jlong JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeStoreBytes(
+    JNIEnv *env, jclass, jlong h, jbyteArray ctBytes) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    jsize len = env->GetArrayLength(ctBytes);
+    std::vector<char> buf(static_cast<std::size_t>(len));
+    env->GetByteArrayRegion(ctBytes, 0, len, reinterpret_cast<jbyte *>(buf.data()));
+    Ciphertext ct = bytes_to_ct(c, buf.data(), buf.size());
+    return storeCt(ct);
+    JNI_END(env, 0)
+}
+
+JNIEXPORT void JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeFreeCt(
+    JNIEnv *, jclass, jlong handle) {
+    (void)handle;   // store grows monotonically; the JVM side is short-lived
+}
+
+JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeExternalProductH(
+    JNIEnv *env, jclass, jlong h, jlong kh, jlong ctHandle, jint row) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    auto *keys = as_key(kh);
+    Ciphertext *src = lookupCt(ctHandle);
+    if (src == nullptr) {
+        throw_java(env, "nativeExternalProductH: bad ciphertext handle");
+        return nullptr;
+    }
+    if (keys == nullptr || static_cast<std::size_t>(row) >= keys->size()) {
+        throw_java(env, "nativeExternalProductH: bad key handle / row out of range");
+        return nullptr;
+    }
+    Ciphertext out;
+    external_product(c, (*keys)[static_cast<std::size_t>(row)], *src, out);
+    Ciphertext pf = out;
+    if (pf.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(pf);
+    Plaintext res;
+    c->decryptor->decrypt(pf, res);
+    const std::size_t rc = res.coeff_count();
+    jlongArray arr = env->NewLongArray(static_cast<jsize>(c->n));
+    std::vector<jlong> vals(c->n, 0);
+    for (std::size_t i = 0; i < rc && i < c->n; ++i) vals[i] = static_cast<jlong>(res[i]);
+    env->SetLongArrayRegion(arr, 0, static_cast<jsize>(c->n), vals.data());
+    return arr;
+    JNI_END(env, nullptr)
+}
+
+JNIEXPORT jint JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeNoiseBudgetH(
+    JNIEnv *env, jclass, jlong h, jlong ctHandle) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    Ciphertext *ct = lookupCt(ctHandle);
+    if (ct == nullptr) {
+        throw_java(env, "nativeNoiseBudgetH: bad ciphertext handle");
+        return -1;
+    }
+    Ciphertext pf = *ct;
+    if (pf.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(pf);
+    return c->decryptor->invariant_noise_budget(pf);
+    JNI_END(env, -1)
+}
+
+// Handle-based blind rotation and decryption: the whole query path then stays in
+// native memory and never touches Ciphertext::save/load.
+JNIEXPORT jlong JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeBlindRotateH(
+    JNIEnv *env, jclass, jlong h, jlong kh, jlong accHandle, jlongArray a, jlong beta) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    auto *keys = as_key(kh);
+    Ciphertext *acc = lookupCt(accHandle);
+    if (acc == nullptr) {
+        throw_java(env, "nativeBlindRotateH: bad accumulator handle");
+        return 0;
+    }
+    jsize d = env->GetArrayLength(a);
+    std::vector<std::uint64_t> av(static_cast<std::size_t>(d), 0);
+    jlong *raw = env->GetLongArrayElements(a, nullptr);
+    for (jsize i = 0; i < d; ++i) av[static_cast<std::size_t>(i)] = static_cast<std::uint64_t>(raw[i]);
+    env->ReleaseLongArrayElements(a, raw, JNI_ABORT);
+
+    Ciphertext out;
+    blind_rotate(c, *keys, *acc, av, static_cast<std::uint64_t>(beta), out);
+    return storeCt(out);
+    JNI_END(env, 0)
+}
+
+JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeDecryptH(
+    JNIEnv *env, jclass, jlong h, jlong ctHandle) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    Ciphertext *ct = lookupCt(ctHandle);
+    if (ct == nullptr) {
+        throw_java(env, "nativeDecryptH: bad ciphertext handle");
+        return nullptr;
+    }
+    Ciphertext pf = *ct;
+    if (pf.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(pf);
+    Plaintext res;
+    c->decryptor->decrypt(pf, res);
+    const std::size_t rc = res.coeff_count();
+    jlongArray arr = env->NewLongArray(static_cast<jsize>(c->n));
+    std::vector<jlong> vals(c->n, 0);
+    for (std::size_t i = 0; i < rc && i < c->n; ++i) vals[i] = static_cast<jlong>(res[i]);
+    env->SetLongArrayRegion(arr, 0, static_cast<jsize>(c->n), vals.data());
+    return arr;
+    JNI_END(env, nullptr)
 }
 
 }  // extern "C"
