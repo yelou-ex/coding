@@ -36,30 +36,30 @@ public final class NativeBlindRotate {
         System.loadLibrary("blindrotate");
     }
 
-    private static native long nativeCreateContext(int n, long t, int baseBits);
+    public static native long nativeCreateContext(int n, long t, int baseBits);
 
-    private static native void nativeDestroyContext(long h);
+    public static native void nativeDestroyContext(long h);
 
-    private static native String nativeDescribe(long h);
+    public static native String nativeDescribe(long h);
 
-    private static native long nativeBuildBootstrapKey(long h, int d);
+    public static native long nativeBuildBootstrapKey(long h, int d);
 
     /** 独立的 RGSW(mu) 密钥（正确性检查用；引导密钥的每一行是 RGSW(s_i)，不是 RGSW(0)/RGSW(1)）。 */
-    private static native long nativeRgswConstant(long h, long mu);
+    public static native long nativeRgswConstant(long h, long mu);
 
-    private static native void nativeDestroyKey(long kh);
+    public static native void nativeDestroyKey(long kh);
 
-    private static native byte[] nativeEncrypt(long h, long[] msg);
+    public static native byte[] nativeEncrypt(long h, long[] msg);
 
-    private static native long[] nativeDecrypt(long h, byte[] ct);
+    public static native long[] nativeDecrypt(long h, byte[] ct);
 
-    private static native int nativeNoiseBudget(long h, byte[] ct);
+    public static native int nativeNoiseBudget(long h, byte[] ct);
 
-    private static native byte[] nativeBlindRotate(long h, long kh, byte[] acc, long[] a, long beta);
+    public static native byte[] nativeBlindRotate(long h, long kh, byte[] acc, long[] a, long beta);
 
-    private static native long[] nativeExternalProduct(long h, long kh, byte[] src, int row);
+    public static native long[] nativeExternalProduct(long h, long kh, byte[] src, int row);
 
-    private static native Long[] nativeSecretBits(long h, int d);
+    public static native Long[] nativeSecretBits(long h, int d);
 
     /**
      * 自包含：建 d 个引导密钥 + 累加器 + LWE 索引，跑 {@code reps} 次盲旋转，再解密验证。
@@ -71,44 +71,44 @@ public final class NativeBlindRotate {
      * （{@code UnsatisfiedLinkError: 找不到指定的程序}）。
      * 两次调用的差值（都含一次建密钥）即可分离出单次旋转的耗时。
      */
-    private static native long[] nativeSelfTest(long h, int d, int reps);
+    public static native long[] nativeSelfTest(long h, int d, int reps);
 
     /**
      * 持久化一次盲旋转作业：引导密钥、累加器、LWE 索引只建一次，留在 native 内存里。
      * 之后 {@link #nativeRunWithCtx} 可以反复跑并被直接计时 —— 这是唯一能拿到
      * <b>收敛的稳态数字</b>的办法（用两次 nativeSelfTest 求差会被冷启动污染）。
      */
-    private static native long nativePrepare(long h, int d);
+    public static native long nativePrepare(long h, int d);
 
-    private static native long[] nativeRunWithCtx(long h, long job, int reps);
+    public static native long[] nativeRunWithCtx(long h, long job, int reps);
 
-    private static native void nativeFreeJob(long job);
+    public static native void nativeFreeJob(long job);
 
     // ---- native 侧密文句柄表（跨 JNI 不再依赖序列化）----
     /** 加密并存入 native 内存，返回句柄。 */
-    private static native long nativeEncryptToStore(long h, long[] msg);
+    public static native long nativeEncryptToStore(long h, long[] msg);
 
     /** 把序列化字节存入 native 内存，返回句柄。 */
-    private static native long nativeStoreBytes(long h, byte[] ctBytes);
+    public static native long nativeStoreBytes(long h, byte[] ctBytes);
 
-    private static native void nativeFreeCt(long handle);
+    public static native void nativeFreeCt(long handle);
 
     /** 用句柄做一次外部乘积并解密返回。 */
-    private static native long[] nativeExternalProductH(long h, long kh, long ctHandle, int row);
+    public static native long[] nativeExternalProductH(long h, long kh, long ctHandle, int row);
 
-    private static native int nativeNoiseBudgetH(long h, long ctHandle);
+    public static native int nativeNoiseBudgetH(long h, long ctHandle);
 
     /** 句柄版盲旋转（返回结果密文的句柄）与解密，整条链路不走序列化。 */
-    private static native long nativeBlindRotateH(long h, long kh, long accHandle, long[] a, long beta);
+    public static native long nativeBlindRotateH(long h, long kh, long accHandle, long[] a, long beta);
 
-    private static native long[] nativeDecryptH(long h, long ctHandle);
+    public static native long[] nativeDecryptH(long h, long ctHandle);
 
     /**
      * 原生 CAPE ANSWER 基准：跑 {@code k × B_pay} 个单元，每个单元 =
      * 列选择（C 次 CtPtMul）+ 盲旋转（d 轮 CMUX）+ SampleExtract_0。
      * 返回 {@code {checksum,0,0,0}}；计时放在 Java 侧（同 chrono 的理由）。
      */
-    private static native long[] nativeAnswerBench(long h, int d, int C, int bPay, int k);
+    public static native long[] nativeAnswerBench(long h, int d, int C, int bPay, int k);
 
     /**
      * <b>整个 CAPE ANSWER 在 native 里跑</b>：k 条路 × B_pay 个单元，每单元 =
@@ -122,7 +122,7 @@ public final class NativeBlindRotate {
      * @param cIdx      每条路的列号 {@code c_a}
      * @param rIdx      每条路的行号 {@code r_a}
      */
-    private static native long[] nativeCapeAnswer(long h, int d, int C, int k, int bPay,
+    public static native long[] nativeCapeAnswer(long h, int d, int C, int k, int bPay,
                                                   long[] tableFlat, long[] cIdx, long[] rIdx);
 
     private static int passed = 0;

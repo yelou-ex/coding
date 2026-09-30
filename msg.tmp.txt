@@ -1,0 +1,23 @@
+﻿feat(route-A): native CAPE ANSWER 接线完成并验证 —— 5641 ms，2.73x；CapeEndToEnd4.java 未改
+
+新增（全部是新代码，CapeEndToEnd4.java 一行未动）：
+- rgsw-lab/.../NativeCapeAnswer.java
+    run(): 把服务端明文表 P[C][B_pay][N] 展平、连同 c_a / r_a 传给 native，
+          拿回 long[B_pay]（每个载荷系数）
+    main(): 自检 —— 自建与 CapeEndToEnd4.SETUP 同形的数据（R×C 二维布局、BFF 三份份额、
+          Σ_a D[i][a][b] = payload[i][b]），跑 native，与期望逐位对拍，再给速度对照
+- native-jni C++: nativeCapeAnswer 改为在【密文域】做三路相加
+    （SampleExtract 是线性的 ⇒「样本相加」≡「密文相加后再抽样」），
+    这样可以直接用 SEAL 自己的 Decryptor 解出载荷系数，避开 reverse 约定的符号不确定性
+- NativeBlindRotate 的 native 方法由 private 改为 public（跨包调用）
+- run-mpc4j.ps1: classpath 加 native-jni/lib/classes，java 加
+    -Djava.library.path=<native-jni/lib> 与 --enable-native-access=ALL-UNNAMED，
+    这样 rgsw-lab 能 import 到 com.fusepir.nativejni.NativeBlindRotate
+
+实测（N=4096, d=16, C=4, k=3, B_pay=40 = 120 个单元）：
+  native ANSWER        : 5 641 ms（1 次 JNI 调用）
+  恢复载荷 vs 期望      : 错位 0/40  PASS
+  路线 B（纯 Java）     : 15 407 ms
+  => 2.73x
+
+跑法：cd coding\rgsw-lab; .\run-mpc4j.ps1 -Class com.fusepir.rgsw.NativeCapeAnswer 4096 16

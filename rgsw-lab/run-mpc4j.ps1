@@ -13,6 +13,9 @@
 # ============================================================================
 param([string]$Class = 'com.fusepir.rgsw.Mpc4jRgsw')
 $progArgs = $args
+# 路线 A（native）的产物：把它的 classes 目录加进 classpath，并把 java.library.path 指过去，
+# 这样 rgsw-lab 里的 NativeCapeAnswer 才能 import 到 com.fusepir.nativejni.NativeBlindRotate。
+$nativeDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'native-jni/lib'
 
 $ErrorActionPreference = 'Stop'
 # Java writes UTF-8; make PowerShell decode child output as UTF-8, otherwise the
@@ -26,6 +29,9 @@ $javaPath = Join-Path (Split-Path -Parent $javacPath) 'java.exe'
 
 $cp = (Join-Path $lib 'mpc4j-crypto-fhe-seal.jar') + ';' +
       ((Get-ChildItem (Join-Path $lib 'deps') -Filter *.jar | ForEach-Object { $_.FullName }) -join ';')
+# 路线 A（native）的 Java 绑定也在 classpath 上，rgsw-lab 的 NativeCapeAnswer 依赖它
+$nativeDir = Join-Path (Split-Path -Parent $PSScriptRoot) 'native-jni/lib'
+$cp = $cp + ';' + (Join-Path $nativeDir 'classes')
 
 $out = Join-Path $here 'mpc4j-out'
 if (Test-Path $out) { Remove-Item -Recurse -Force $out }
@@ -72,5 +78,5 @@ Write-Host "[run] $Class $progArgs"
 #     探针同时打印：file.encoding=UTF-8 但 native.encoding=GBK、stdout.encoding=GBK
 #
 #   对照：`git log` 的中文一直是正常的 —— 因为 git 自己按 UTF-8 输出，与本行无关。
-& $javaPath '-Xmx4g' '-Dfile.encoding=UTF-8' '-Dstdout.encoding=UTF-8' '-Dstderr.encoding=UTF-8' -cp "$out;$cp" $Class @progArgs
+& $javaPath '-Xmx4g' '-Dfile.encoding=UTF-8' '-Dstdout.encoding=UTF-8' '-Dstderr.encoding=UTF-8' "-Djava.library.path=$nativeDir" "--enable-native-access=ALL-UNNAMED" -cp "$out;$cp;$nativeDir/classes" $Class @progArgs
 exit $LASTEXITCODE

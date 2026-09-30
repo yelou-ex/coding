@@ -1232,10 +1232,13 @@ JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_native
     env->ReleaseLongArrayElements(cIdx, cidx, JNI_ABORT);
     env->ReleaseLongArrayElements(rIdx, ridx, JNI_ABORT);
 
-    // ---- accumulate the 3-way sum in the ciphertext domain ----
-    // outQuant[b][pi][*] : the LWE sample accumulated over paths
-    std::vector<std::vector<std::uint64_t>> acc(
-        static_cast<std::size_t>(bPay), std::vector<std::uint64_t>(static_cast<std::size_t>(L) * (n + 1), 0));
+    // ---- accumulate the 3-way sum in the CIPHERTEXT domain ----
+    // SampleExtract is linear, so summing the B_pay samples is identical to summing
+    // the rotated ciphertexts and sampling once.  Doing it on the ciphertexts also
+    // lets SEAL's own Decryptor produce the payload coefficient directly, which
+    // removes any doubt about the reverse-convention signs.
+    std::vector<Ciphertext> sumCt(static_cast<std::size_t>(bPay));
+    std::vector<bool> have(static_cast<std::size_t>(bPay), false);
 
     std::vector<Ciphertext> sel(static_cast<std::size_t>(C));
     Ciphertext accCol, rot;
@@ -1265,41 +1268,27 @@ JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_native
             }
             blind_rotate(c, bk, accCol, av[static_cast<std::size_t>(a)],
                          betav[static_cast<std::size_t>(a)], rot);
-            Ciphertext rc = rot;
-            if (rc.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(rc);
-            const std::uint64_t *c0 = rc.data(0);
-            const std::uint64_t *c1 = rc.data(1);
-            const int j = 0;                       // SampleExtract_0
-            std::vector<std::uint64_t> &dst = acc[static_cast<std::size_t>(b)];
-            for (int pi = 0; pi < L; ++pi) {
-                const std::uint64_t mod = c->primes[static_cast<std::size_t>(pi)];
-                std::uint64_t *row = dst.data() + static_cast<std::size_t>(pi) * (n + 1);
-                row[0] = (row[0] + c0[static_cast<std::size_t>(pi) * n + j]) % mod;
-                for (std::size_t kk = 0; kk < n; ++kk) {
-                    const int dd = j - static_cast<int>(kk);
-                    const bool flip = dd < 0;
-                    const std::size_t idx = flip ? static_cast<std::size_t>(dd + static_cast<int>(n))
-                                                 : static_cast<std::size_t>(dd);
-                    std::uint64_t v = c1[static_cast<std::size_t>(pi) * n + idx];
-                    if (flip && v != 0) v = mod - v;
-                    row[1 + kk] = (row[1 + kk] + v) % mod;
-                }
+            if (!have[static_cast<std::size_t>(b)]) {
+                sumCt[static_cast<std::size_t>(b)] = rot;
+                have[static_cast<std::size_t>(b)] = true;
+            } else {
+                c->evaluator->add_inplace(sumCt[static_cast<std::size_t>(b)], rot);
             }
         }
     }
 
-    // ---- flatten long[bPay][L][n+1] ----
-    const jsize total = static_cast<jsize>(static_cast<std::size_t>(bPay) * L * (n + 1));
-    std::vector<jlong> flat(static_cast<std::size_t>(total));
+    // ---- decode: single-process loopback, so the "client" side (which holds the
+    //      secret key) decodes here with SEAL's own Decryptor ----
+    std::vector<jlong> out(static_cast<std::size_t>(bPay), 0);
     for (int b = 0; b < bPay; ++b) {
-        const std::uint64_t *src = acc[static_cast<std::size_t>(b)].data();
-        const std::size_t off = static_cast<std::size_t>(b) * L * (n + 1);
-        for (std::size_t i = 0; i < static_cast<std::size_t>(L) * (n + 1); ++i) {
-            flat[off + i] = static_cast<jlong>(src[i]);
-        }
+        Ciphertext pf = sumCt[static_cast<std::size_t>(b)];
+        if (pf.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(pf);
+        Plaintext res;
+        c->decryptor->decrypt(pf, res);
+        out[static_cast<std::size_t>(b)] = static_cast<jlong>(res[0]);
     }
-    jlongArray arr = env->NewLongArray(total);
-    env->SetLongArrayRegion(arr, 0, total, flat.data());
+    jlongArray arr = env->NewLongArray(bPay);
+    env->SetLongArrayRegion(arr, 0, bPay, out.data());
     return arr;
     JNI_END(env, nullptr)
 }
