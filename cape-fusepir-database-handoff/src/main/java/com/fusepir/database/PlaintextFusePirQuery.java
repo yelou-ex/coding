@@ -1,5 +1,7 @@
 package com.fusepir.database;
 
+import com.fusepir.common.BfGen;
+
 import java.io.IOException;
 import java.nio.*;
 import java.nio.channels.FileChannel;
@@ -14,6 +16,7 @@ public final class PlaintextFusePirQuery {
     private final int tableLength;
     private final int payloadLength;
     private final int bloomLength;
+    private final int bloomHashCount;
     private final int segmentSize;
     private final int segmentCountLength;
     private final int rows;
@@ -28,6 +31,7 @@ public final class PlaintextFusePirQuery {
         tableLength = integer(manifest, "tableLength");
         payloadLength = integer(manifest, "payloadLength");
         bloomLength = integer(manifest, "bloomLength");
+        bloomHashCount = integer(manifest, "bloomHashCount");
         segmentSize = integer(manifest, "segmentSize");
         segmentCountLength = integer(manifest, "segmentCountLength");
         rows = integer(manifest, "rows");
@@ -36,6 +40,43 @@ public final class PlaintextFusePirQuery {
         modulus = integer(manifest, "plaintextModulus");
         hashSeed = longValue(manifest, "hashSeed");
         fingerprintSeed = longValue(manifest, "fingerprintSeed");
+    }
+
+    /** 客户端侧的 Bloom 查询向量与阈值。 */
+    public record BloomQuery(long[] bits, long tau) {}
+
+    /**
+     * <b>CAPE 算法 2 · QUERY 第 2~3 行：{@code b_qry ← BF.Gen(0, {K_2,…,K_Q})}、{@code τ ← ‖b_qry‖₁}。</b>
+     *
+     * <p>本模块此前<b>完全没有</b>客户端 Bloom 查询 —— `query()` 只重建 payload、校指纹、取值，
+     * `bloomLength` 仅用于算 `groupLength` 以便<b>跳过</b> Bloom 段（见缺陷总表 P1-5）。
+     *
+     * <p><b>只用到关键词</b>，且与服务器构造 {@code b_v} 用的是<b>同一份</b>
+     * {@link BfGen}（共享模块 `common`）—— 两边位位置必然对得上。
+     *
+     * @param keywordsExceptAnchor 查询关键词里除锚以外的部分 {@code K_2..K_Q}
+     */
+    public BloomQuery bloomQuery(java.util.List<String> keywordsExceptAnchor) {
+        BfGen gen = new BfGen(bloomHashCount, bloomLength);
+        boolean[] bits = new boolean[bloomLength];
+        for (String keyword : keywordsExceptAnchor) {
+            boolean[] single = gen.bits(TagCanonicalizer.canonicalize(keyword));
+            for (int i = 0; i < bloomLength; i++) {
+                if (single[i]) bits[i] = true;
+            }
+        }
+        long[] vector = new long[bloomLength];
+        long tau = 0;
+        for (int i = 0; i < bloomLength; i++) {
+            vector[i] = bits[i] ? 1 : 0;
+            tau += vector[i];
+        }
+        return new BloomQuery(vector, tau);
+    }
+
+    /** 该库的 Bloom 参数（服务端与客户端必须一致）。 */
+    public BfGen bloomParameters() {
+        return new BfGen(bloomHashCount, bloomLength);
     }
 
     public static PlaintextFusePirQuery open(Path directory) throws IOException {
