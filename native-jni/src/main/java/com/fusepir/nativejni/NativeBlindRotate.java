@@ -110,6 +110,21 @@ public final class NativeBlindRotate {
      */
     private static native long[] nativeAnswerBench(long h, int d, int C, int bPay, int k);
 
+    /**
+     * <b>整个 CAPE ANSWER 在 native 里跑</b>：k 条路 × B_pay 个单元，每单元 =
+     * 列选择（C 次 CtPtMul）+ 盲旋转（d 轮 CMUX）+ SampleExtract_0，最后做密文域三路相加。
+     *
+     * <p>返回扁平化的 {@code long[B_pay][L][n+1]}，与 Java 侧 {@code ctPaySample} 布局一致，
+     * 因此 DECODE 一行都不用改。<b>整条链路只有 1 次 JNI 调用</b>；引导密钥、明文表、
+     * 选择子都留在 native 内存里（跨边界的只有 3 个索引数组）。
+     *
+     * @param tableFlat {@code [C][B_pay][N]} 服务端明文表（展平）
+     * @param cIdx      每条路的列号 {@code c_a}
+     * @param rIdx      每条路的行号 {@code r_a}
+     */
+    private static native long[] nativeCapeAnswer(long h, int d, int C, int k, int bPay,
+                                                  long[] tableFlat, long[] cIdx, long[] rIdx);
+
     private static int passed = 0;
     private static int failed = 0;
 

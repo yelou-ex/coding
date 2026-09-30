@@ -1158,4 +1158,150 @@ JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_native
     JNI_END(env, nullptr)
 }
 
+// ---------------------------------------------------------------------------
+//  Full native CAPE ANSWER.
+//
+//  Replaces CapeEndToEnd4.ANSWER entirely: for each of the k retrieval paths it
+//  builds the C one-hot column selectors, runs column select (C x CtPtMul) ->
+//  blind rotation (d CMUX) -> SampleExtract_0 for every payload block b, then does
+//  the 3-way ciphertext-domain sum; finally it returns the B_pay LWE samples in
+//  exactly the layout DECODE already consumes, i.e. long[B_pay][L][n+1] with
+//  [pi][0] = b (c0[0]) and [pi][1+k] = the reverse-convention c1 terms.
+//
+//  Only ONE JNI call per query.  The server state - bootstrap key, plaintext
+//  tables, selectors - never crosses the boundary (see the handle notes above).
+// ---------------------------------------------------------------------------
+JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeCapeAnswer(
+    JNIEnv *env, jclass, jlong h, jint d, jint C, jint k, jint bPay,
+    jlongArray tableFlat, jlongArray cIdx, jlongArray rIdx) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    const std::size_t n = c->n;
+    const int L = c->working_prime_count;
+    const std::uint64_t two_n = 2 * static_cast<std::uint64_t>(n);
+
+    auto bits = secret_bits(c, d);
+    std::vector<RgswKey> bk;
+    bk.reserve(static_cast<std::size_t>(d));
+    for (int i = 0; i < d; ++i) {
+        bk.push_back(build_rgsw_constant(c, static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])));
+    }
+
+    // ---- plaintext tables P_{c,b}(X): NTT once, reused for all k paths ----
+    jlong *tab = env->GetLongArrayElements(tableFlat, nullptr);
+    auto parms_id = c->context->first_parms_id();
+    std::vector<std::vector<Plaintext>> tabNtt(
+        static_cast<std::size_t>(C), std::vector<Plaintext>(static_cast<std::size_t>(bPay)));
+    for (int cc = 0; cc < C; ++cc) {
+        for (int b = 0; b < bPay; ++b) {
+            Plaintext p;
+            p.resize(n);
+            const std::size_t base = (static_cast<std::size_t>(cc) * bPay + b) * n;
+            for (std::size_t i = 0; i < n; ++i) {
+                p[i] = static_cast<std::uint64_t>(tab[base + i]);
+            }
+            c->evaluator->transform_to_ntt_inplace(p, parms_id);
+            tabNtt[static_cast<std::size_t>(cc)][static_cast<std::size_t>(b)] = std::move(p);
+        }
+    }
+    env->ReleaseLongArrayElements(tableFlat, tab, JNI_ABORT);
+
+    // ---- per-path column index, row index, LWE index ----
+    jlong *cidx = env->GetLongArrayElements(cIdx, nullptr);
+    jlong *ridx = env->GetLongArrayElements(rIdx, nullptr);
+    std::vector<int> colIdx(static_cast<std::size_t>(k));
+    for (int a = 0; a < k; ++a) colIdx[static_cast<std::size_t>(a)] = static_cast<int>(cidx[a]);
+
+    std::vector<std::vector<std::uint64_t>> av(static_cast<std::size_t>(k),
+                                               std::vector<std::uint64_t>(static_cast<std::size_t>(d), 0));
+    std::vector<std::uint64_t> betav(static_cast<std::size_t>(k), 0);
+    std::uint64_t rngState = 20260930ULL;
+    for (int a = 0; a < k; ++a) {
+        std::uint64_t sum = 0;
+        for (int i = 0; i < d; ++i) {
+            rngState ^= rngState << 13;
+            rngState ^= rngState >> 7;
+            rngState ^= rngState << 17;
+            const std::uint64_t ai = rngState % two_n;
+            av[static_cast<std::size_t>(a)][static_cast<std::size_t>(i)] = ai;
+            sum = (sum + ai * static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])) % two_n;
+        }
+        betav[static_cast<std::size_t>(a)] =
+            (sum + static_cast<std::uint64_t>(ridx[a])) % two_n;
+    }
+    env->ReleaseLongArrayElements(cIdx, cidx, JNI_ABORT);
+    env->ReleaseLongArrayElements(rIdx, ridx, JNI_ABORT);
+
+    // ---- accumulate the 3-way sum in the ciphertext domain ----
+    // outQuant[b][pi][*] : the LWE sample accumulated over paths
+    std::vector<std::vector<std::uint64_t>> acc(
+        static_cast<std::size_t>(bPay), std::vector<std::uint64_t>(static_cast<std::size_t>(L) * (n + 1), 0));
+
+    std::vector<Ciphertext> sel(static_cast<std::size_t>(C));
+    Ciphertext accCol, rot;
+    for (int a = 0; a < k; ++a) {
+        // one-hot column selectors for this path (base CAPE form: C independent
+        // one-hot ciphertexts, no expansion, hence no alpha folding either)
+        for (int cc = 0; cc < C; ++cc) {
+            Plaintext p;
+            p.resize(n);
+            p[0] = (cc == colIdx[static_cast<std::size_t>(a)]) ? 1 : 0;
+            c->encryptor->encrypt_symmetric(p, sel[static_cast<std::size_t>(cc)]);
+            c->evaluator->transform_to_ntt_inplace(sel[static_cast<std::size_t>(cc)]);
+        }
+        for (int b = 0; b < bPay; ++b) {
+            bool first = true;
+            for (int cc = 0; cc < C; ++cc) {
+                Ciphertext prod;
+                c->evaluator->multiply_plain(sel[static_cast<std::size_t>(cc)],
+                                             tabNtt[static_cast<std::size_t>(cc)][static_cast<std::size_t>(b)],
+                                             prod);
+                if (first) {
+                    accCol = std::move(prod);
+                    first = false;
+                } else {
+                    c->evaluator->add_inplace(accCol, prod);
+                }
+            }
+            blind_rotate(c, bk, accCol, av[static_cast<std::size_t>(a)],
+                         betav[static_cast<std::size_t>(a)], rot);
+            Ciphertext rc = rot;
+            if (rc.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(rc);
+            const std::uint64_t *c0 = rc.data(0);
+            const std::uint64_t *c1 = rc.data(1);
+            const int j = 0;                       // SampleExtract_0
+            std::vector<std::uint64_t> &dst = acc[static_cast<std::size_t>(b)];
+            for (int pi = 0; pi < L; ++pi) {
+                const std::uint64_t mod = c->primes[static_cast<std::size_t>(pi)];
+                std::uint64_t *row = dst.data() + static_cast<std::size_t>(pi) * (n + 1);
+                row[0] = (row[0] + c0[static_cast<std::size_t>(pi) * n + j]) % mod;
+                for (std::size_t kk = 0; kk < n; ++kk) {
+                    const int dd = j - static_cast<int>(kk);
+                    const bool flip = dd < 0;
+                    const std::size_t idx = flip ? static_cast<std::size_t>(dd + static_cast<int>(n))
+                                                 : static_cast<std::size_t>(dd);
+                    std::uint64_t v = c1[static_cast<std::size_t>(pi) * n + idx];
+                    if (flip && v != 0) v = mod - v;
+                    row[1 + kk] = (row[1 + kk] + v) % mod;
+                }
+            }
+        }
+    }
+
+    // ---- flatten long[bPay][L][n+1] ----
+    const jsize total = static_cast<jsize>(static_cast<std::size_t>(bPay) * L * (n + 1));
+    std::vector<jlong> flat(static_cast<std::size_t>(total));
+    for (int b = 0; b < bPay; ++b) {
+        const std::uint64_t *src = acc[static_cast<std::size_t>(b)].data();
+        const std::size_t off = static_cast<std::size_t>(b) * L * (n + 1);
+        for (std::size_t i = 0; i < static_cast<std::size_t>(L) * (n + 1); ++i) {
+            flat[off + i] = static_cast<jlong>(src[i]);
+        }
+    }
+    jlongArray arr = env->NewLongArray(total);
+    env->SetLongArrayRegion(arr, 0, total, flat.data());
+    return arr;
+    JNI_END(env, nullptr)
+}
+
 }  // extern "C"
