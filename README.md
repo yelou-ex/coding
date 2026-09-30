@@ -1200,7 +1200,7 @@ cd coding\native-jni
 | `论文原文-ANSWER摘录.md` | 从论文 PDF 提取的原文摘录（算法 1 + 附录 B） |
 | `rgsw-lab/LWE_RLWE打包_RingPack_调研.md` | **论文 `Pack` = Ring Packing**：原语溯源（CDKS21）、构造、实测、缩放障碍 |
 | `docs/knowledge/` | 明文侧概念：Bloom 在 R×C 矩阵中的存储与提取、代码对照 |
-| `docs/reports/` | 同步验证记录、两份《CAPE 核心密码原语逐项缺陷报告》 |
+| `docs/reports/` | 同步验证记录、两份《CAPE 核心密码原语逐项缺陷报告》、**《ANSWER 单元性能剖析与速度差距归因》**（瓶颈是盲旋转 98% 而非列选择） |
 | `docs/archive/` | **已归档，不再维护** —— 一次性"更正/进度"文档，内容已并入 `缺陷总表.md`；见其 `README.md` |
 | `默认实现一览.md` | **哪条路线是默认、哪个文件夹放什么**（最容易被搞混的六处） |
 | `RLWE路线审计.md` | 三条路线的逐文件判定、补丁带来的转折、论文规模实测结果 |
