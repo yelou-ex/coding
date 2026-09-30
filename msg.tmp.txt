@@ -1,0 +1,19 @@
+﻿feat(route-A): native 跑通 CAPE ANSWER 全链路 —— 5747 ms vs Java 15407 ms（2.68x）
+
+新增 nativeAnswerBench(h, d, C, bPay, k)：在 C++ 内跑与 CapeEndToEnd4.ANSWER 同形状的
+每个单元 —— 列选择（C 次 CtPtMul）+ 盲旋转（d 轮 CMUX）+ SampleExtract_0（取系数 0），
+共 k * B_pay 个单元。服务端明文表、选择子、引导密钥全部留在 native 内存，不跨 JNI。
+计时放在 Java 侧（理由同 std::chrono/libwinpthread 那条）。
+
+实测（N=4096, d=16, C=4, B_pay=40, k=3 = 120 个单元）：
+  路线 B（MPC4J 纯 Java）最初    ANSWER 50 078 ms，单单元 417.0 ms
+  路线 B（MPC4J 纯 Java）优化后  ANSWER 15 407 ms，单单元 128.4 ms
+  路线 A（真 SEAL C++）          ANSWER  5 747 ms，单单元  47.9 ms
+=> native 比优化后的 Java 快 2.68x，比最初快 8.7x。
+
+一致性观察：native 单元里列选择只加约 4 ms（43.9 -> 47.9），盲旋转仍占 92%，
+与 Java 侧「列选择仅占 1%」的结论一致。
+
+正确性同时全过（4 PASS / 0 FAIL）：
+  RGSW(1)xct=ct（精确 0 错位，噪声 51 bit）、RGSW(0)xct=0（0 非零）、
+  盲旋转 one-hot -> one-hot（噪声 27 bit）。

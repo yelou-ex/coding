@@ -1052,4 +1052,110 @@ JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_native
     JNI_END(env, nullptr)
 }
 
+// ---------------------------------------------------------------------------
+//  Native CAPE ANSWER benchmark.
+//
+//  Runs the same per-unit pipeline as CapeEndToEnd4.ANSWER:
+//      Acc = sum_{c<C} CtPtMul(sel_c, P_{c,b})   ->   BlindRotate(bk, Acc, a, beta)
+//      ->   SampleExtract_0
+//  for k * B_pay units, so the result is directly comparable with the Java
+//  "ANSWER = 120 units" figure.  Everything happens in native memory; the server
+//  tables, the selectors and the bootstrap key never cross JNI.
+//
+//  Timing is done on the Java side on purpose - see the std::chrono note above.
+//  Returns { checksum, 0, 0, 0 }; the checksum keeps the sampled coefficients from
+//  being optimised away and gives a cheap sanity signal.
+// ---------------------------------------------------------------------------
+JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeAnswerBench(
+    JNIEnv *env, jclass, jlong h, jint d, jint C, jint bPay, jint k) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    auto bits = secret_bits(c, d);
+
+    std::vector<RgswKey> bk;
+    bk.reserve(static_cast<std::size_t>(d));
+    for (int i = 0; i < d; ++i) {
+        bk.push_back(build_rgsw_constant(c, static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])));
+    }
+
+    // Column selectors: C one-hot constant ciphertexts, kept in NTT form.
+    std::vector<Ciphertext> sel(static_cast<std::size_t>(C));
+    for (int cc = 0; cc < C; ++cc) {
+        Plaintext p;
+        p.resize(c->n);
+        p[0] = (cc == 0) ? 1 : 0;
+        c->encryptor->encrypt_symmetric(p, sel[static_cast<std::size_t>(cc)]);
+        c->evaluator->transform_to_ntt_inplace(sel[static_cast<std::size_t>(cc)]);
+    }
+
+    // Server-side plaintext tables P_{c,b}(X), NTT form.  Content is a deterministic
+    // pattern - only the shape matters for a timing benchmark.
+    auto parms_id = c->context->first_parms_id();
+    std::vector<std::vector<Plaintext>> tab(
+        static_cast<std::size_t>(C), std::vector<Plaintext>(static_cast<std::size_t>(bPay)));
+    for (int cc = 0; cc < C; ++cc) {
+        for (int b = 0; b < bPay; ++b) {
+            Plaintext p;
+            p.resize(c->n);
+            for (std::size_t i = 0; i < 16; ++i) {
+                p[i] = static_cast<std::uint64_t>((i * 7 + cc * 13 + b * 3) % (c->t - 1)) + 1;
+            }
+            c->evaluator->transform_to_ntt_inplace(p, parms_id);
+            tab[static_cast<std::size_t>(cc)][static_cast<std::size_t>(b)] = std::move(p);
+        }
+    }
+
+    // LWE index
+    std::vector<std::uint64_t> a(static_cast<std::size_t>(d), 0);
+    const std::uint64_t two_n = 2 * static_cast<std::uint64_t>(c->n);
+    std::uint64_t rngState = 20260930ULL;
+    std::uint64_t sum = 0;
+    for (int i = 0; i < d; ++i) {
+        rngState ^= rngState << 13;
+        rngState ^= rngState >> 7;
+        rngState ^= rngState << 17;
+        a[static_cast<std::size_t>(i)] = rngState % two_n;
+        sum = (sum + a[static_cast<std::size_t>(i)]
+               * static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])) % two_n;
+    }
+    const std::uint64_t beta = (sum + 7u) % two_n;
+
+    const int L = c->working_prime_count;
+    std::uint64_t checksum = 0;
+    Ciphertext acc, rot;
+    for (int ai = 0; ai < k; ++ai) {
+        for (int b = 0; b < bPay; ++b) {
+            // --- column select: Acc = sum_c CtPtMul(sel_c, P_{c,b}) ---
+            bool first = true;
+            for (int cc = 0; cc < C; ++cc) {
+                Ciphertext prod;
+                c->evaluator->multiply_plain(sel[static_cast<std::size_t>(cc)],
+                                             tab[static_cast<std::size_t>(cc)][static_cast<std::size_t>(b)],
+                                             prod);
+                if (first) {
+                    acc = std::move(prod);
+                    first = false;
+                } else {
+                    c->evaluator->add_inplace(acc, prod);
+                }
+            }
+            // --- blind rotation + SampleExtract_0 (coefficient 0) ---
+            blind_rotate(c, bk, acc, a, beta, rot);
+            Ciphertext rc = rot;
+            if (rc.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(rc);
+            const std::uint64_t *d0 = rc.data(0);
+            const std::uint64_t *d1 = rc.data(1);
+            for (int j = 0; j < L; ++j) {
+                checksum += d0[static_cast<std::size_t>(j) * c->n];
+                checksum += d1[static_cast<std::size_t>(j) * c->n];
+            }
+        }
+    }
+    jlong vals[4] = { static_cast<jlong>(checksum & 0x7fffffff), 0, 0, 0 };
+    jlongArray arr = env->NewLongArray(4);
+    env->SetLongArrayRegion(arr, 0, 4, vals);
+    return arr;
+    JNI_END(env, nullptr)
+}
+
 }  // extern "C"

@@ -103,6 +103,13 @@ public final class NativeBlindRotate {
 
     private static native long[] nativeDecryptH(long h, long ctHandle);
 
+    /**
+     * 原生 CAPE ANSWER 基准：跑 {@code k × B_pay} 个单元，每个单元 =
+     * 列选择（C 次 CtPtMul）+ 盲旋转（d 轮 CMUX）+ SampleExtract_0。
+     * 返回 {@code {checksum,0,0,0}}；计时放在 Java 侧（同 chrono 的理由）。
+     */
+    private static native long[] nativeAnswerBench(long h, int d, int C, int bPay, int k);
+
     private static int passed = 0;
     private static int failed = 0;
 
@@ -135,6 +142,22 @@ public final class NativeBlindRotate {
         System.out.println("---------------- 速度（持久作业，直接计时）----------------");
         System.out.printf("  一次盲旋转（d=%d 轮 CMUX） : %9.2f ms（复测 %.2f）%n", d, perRot, perRot2);
         System.out.printf("  单轮 CMUX                   : %9.2f ms%n", perRot / d);
+
+        // ---------------- CAPE ANSWER 全链路（列选择 + 盲旋转 + 抽样）----------------
+        int C = 4;
+        int bPay = 40;
+        int kk = 3;
+        long t0 = System.nanoTime();
+        long[] ans = nativeAnswerBench(h, d, C, bPay, kk);
+        long t1 = System.nanoTime();
+        double ansMs = (t1 - t0) / 1e6;
+        System.out.println();
+        System.out.println("---------------- CAPE ANSWER 全链路（native，同 CapeEndToEnd4 形状）----------------");
+        System.out.printf("  k=%d, B_pay=%d, C=%d ⇒ %d 个单元，每单元 = 列选择(C) + 盲旋转(d) + SampleExtract_0%n",
+            kk, bPay, C, kk * bPay);
+        System.out.printf("  ANSWER 总耗时               : %9.1f ms（checksum=%d）%n", ansMs, ans[0]);
+        System.out.printf("  单单元                      : %9.2f ms%n", ansMs / (kk * bPay));
+        System.out.println("  路线 B（MPC4J 纯 Java）同参数：ANSWER = 15 407 ms，单单元 128.4 ms");
         System.out.printf("  正确性：非零 %d 个（应 1），落点 %d，单位值 %d 个（应 1）%n",
             st2[1], st2[2], st2[3]);
         report("0. 盲旋转：one-hot 进 → one-hot 出", st2[1] == 1 && st2[3] == 1, "");
