@@ -85,7 +85,8 @@ public final class CmuxProfile {
         System.out.println("    分段（中位数，ms）：");
         System.out.printf("      ① decompose(ct, 0)            : %7.2f%n", d0);
         System.out.printf("      ① decompose(ct, 1)            : %7.2f%n", d1);
-        System.out.printf("      ① 切段小计（2 个分量）        : %7.2f   ← BigInteger CRT，2×n 次%n", dec);
+        System.out.printf("      ① 切段小计（2 个分量）        : %7.2f   ← %s%n", dec,
+            m.fastDecompose ? "纯 long（128 位 Garner + Montgomery）" : "BigInteger CRT（回退路径）");
         System.out.printf("      ② externalProduct 总计         : %7.2f%n", ep);
         System.out.printf("      ② 其中 10 次 multiplyPlainNtt+加: %7.2f   ← = 总计 − 切段%n", ep - dec);
         System.out.printf("      一次完整 cmux（含加减）        : %7.2f%n%n", cx);
@@ -95,13 +96,13 @@ public final class CmuxProfile {
         System.out.printf("      明文乘 ② 占 %.0f%%%n%n", 100 * (ep - dec) / ep);
 
         System.out.println("    ★ 路线判断：");
-        if (dec / ep > 0.5) {
-            System.out.println("      ① 占大头 ⇒ **先用 long 重写 crtAt/decompose 就可能拿到数倍提速**，");
-            System.out.println("        不必先做 native（BigInteger 每系数一次是纯 Java 侧的浪费）。");
+        if (dec / ep > 0.4) {
+            System.out.println("      ① 仍占大头 ⇒ 切段还没优化干净（应已启用纯 long 快路径，见 DecomposeEquiv）。");
         } else {
-            System.out.println("      ② 占大头 ⇒ 纯 Java 侧余地很小：10 次模数乘法是结构性的，");
-            System.out.println("         而 base/levels 已被「平衡位窗口 ±(t−1)/2」和「B^levels > q」钉死，");
-            System.out.println("         ⇒ 只能走 native 后端。");
+            System.out.println("      ② 占压倒性多数 ⇒ 下一步只有两条：");
+            System.out.println("        (a) 用 RNS 层（NttTool/RnsIterator）替掉 Evaluator.multiplyPlain 的包装，");
+            System.out.println("            见 docs/reports/MPC4J-SEAL可用加速点盘点-2026-09-30.md；");
+            System.out.println("        (b) native 后端 —— 唯一能拿量级的路。");
         }
         System.out.printf("%n    参考：base=%d 的平衡位半宽 = %d，明文窗口 ±%d ⇒ base 已顶到窗口上限；%n",
             m.base, m.base / 2, (m.t - 1) / 2);

@@ -1402,6 +1402,8 @@ cd coding\native-jni
 | 18 | `PackGoalCheck` | N=4096 | **4/4 未达成（预期）** | 重新定性：这 4 条测的是 `packFromSample`，而它**本来就不是** `Pack`。现已在结尾打印指向 `RingPack` 的说明 |
 | 19 | **`CapeEndToEnd4`** | **N=4096, d=16** | **6/6 ✅** | 四步（SETUP/QUERY/ANSWER/DECODE）首次全接通；服务端全程未解密；两条负对照（4.5 全零列选择器 / 4.6 错位一列） |
 | 20 | **`ExpandProbe`** | **N=4096, C=4** | **16/16 ✅** | **SealPIR 的 `EXPAND` 在本移植上可用**：Galois `Sub(c,k)` 可建可用；指数实测为 `e_j = N/2^j + 1`（论文 Figure 3 印的 `N/2^{j+1}+1` 整体差一层）；扩展后噪声 38 → 30 bit，上传少 C 倍；★ **`α` 可整个不做**（折进明文表后精确还原 P） |
+| 21 | **`DecomposeEquiv`** | **N=4096** | **3/3 ✅** | **切段快路径（纯 long）与慢路径（BigInteger）245,760 个值逐位一致**，外加独立重构校验 `Σ d_k·B^k ≡ x (mod q)` |
+| 22 | **`CmuxProfile`** | **N=4096** | 剖析 | 单轮 CMUX 拆分。**去 BigInteger 后 15.55 → 8.08 ms**（切段 6.25 → 0.36 ms，17.4×） |
 
 **本轮从中得到的结论**：
 
@@ -1428,6 +1430,8 @@ cd coding\rgsw-lab
 .\run-mpc4j.ps1 -Class com.fusepir.rgsw.RingPack 4096 32          # #17  P1 过、P2~P4 崩（参数边界）
 .\run-mpc4j.ps1 -Class com.fusepir.rgsw.PackGoalCheck             # #18
 .\run-mpc4j.ps1 -Class com.fusepir.rgsw.ExpandProbe 4096 4        # #20  16/16（SealPIR EXPAND 判别）
+.\run-mpc4j.ps1 -Class com.fusepir.rgsw.DecomposeEquiv 4096 6     # #21  3/3（切段快慢路径逐位对拍）
+.\run-mpc4j.ps1 -Class com.fusepir.rgsw.CmuxProfile 4096 40       # #22  单轮 CMUX 拆分
 
 cd coding\lwe-java                                                # #7 #8（按 lwe-java/README.md 手动 javac）
 ```

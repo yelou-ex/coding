@@ -90,6 +90,14 @@ public final class Mpc4jRgsw {
     /** 声明模数的位宽（含特殊素数），仅用于展示 */
     public final int declaredQBits;
 
+    // ---------------- 切段的纯 long 快路径（见 decompose 的说明） ----------------
+    /** 是否启用纯 long 切段。条件：2 个工作素数 + base 是 2 的幂（我们的配置恒成立）。 */
+    public final boolean fastDecompose;
+    private final int baseShift;
+    private final long fastP1;
+    private final long fastInv1Mont;
+    private final long fastP1InvNeg;
+
     /** 重线性化密钥的缓存（懒生成）。做 {@code CtCtMul} 必需。 */
     private RelinKeys relinKeys;
 
@@ -166,6 +174,56 @@ public final class Mpc4jRgsw {
         }
 
         this.levels = levelsFor(base, q);
+
+        // ---- 切段快路径的预计算 ----
+        // 条件：恰好 2 个工作素数（这样 q = p0·p1 能装进 128 位）+ base 是 2 的幂。
+        // 不满足就退回 BigInteger 路径（见 decomposeBig），行为与改动前完全一致。
+        boolean fast = workingPrimeCount == 2 && base >= 2 && (base & (base - 1)) == 0;
+        if (fast) {
+            this.baseShift = Integer.numberOfTrailingZeros(base);
+            this.fastP1 = primes[1].value();
+            // inv1Mont = p0^{-1} mod p1 · 2^64 mod p1 —— 让下面的 Montgomery 乘法直接出 (p0^{-1} mod p1)
+            BigInteger R = BigInteger.ONE.shiftLeft(64);
+            this.fastInv1Mont = crtStepInv[1].multiply(R)
+                .mod(BigInteger.valueOf(fastP1)).longValueExact();
+            this.fastP1InvNeg = montgomeryNegInv(fastP1);
+        } else {
+            this.baseShift = 0;
+            this.fastP1 = 0;
+            this.fastInv1Mont = 0;
+            this.fastP1InvNeg = 0;
+        }
+        this.fastDecompose = fast;
+    }
+
+    /** {@code -p^{-1} mod 2^64}（p 为奇素数），用牛顿迭代把精度翻倍到 64 位。 */
+    private static long montgomeryNegInv(long p) {
+        long inv = p;                                  // 对 2^3 成立
+        for (int i = 0; i < 5; i++) {
+            inv *= 2 - p * inv;                        // 3→6→12→24→48→96 位
+        }
+        return -inv;
+    }
+
+    /**
+     * Montgomery 乘法：{@code a·b·2^{-64} mod p}，要求 {@code 0 ≤ a,b < p}、p 为奇数。
+     *
+     * <p>标准 REDC：{@code m = (a·b mod 2^64)·(−p^{-1} mod 2^64) mod 2^64}，
+     * {@code u = (a·b + m·p) / 2^64}，再对 p 条件减一次。
+     */
+    private static long montgomeryMul(long a, long b, long p, long pInvNeg) {
+        long lo = a * b;
+        long hi = Math.unsignedMultiplyHigh(a, b);
+        long m = lo * pInvNeg;
+        long mnLo = m * p;
+        long mnHi = Math.unsignedMultiplyHigh(m, p);
+        long sum = lo + mnLo;                                   // ≡ 0 (mod 2^64)
+        long carry = Long.compareUnsigned(sum, lo) < 0 ? 1L : 0L;
+        long u = hi + mnHi + carry;
+        if (Long.compareUnsigned(u, p) >= 0) {
+            u -= p;
+        }
+        return u;
     }
 
     private static int levelsFor(int base, BigInteger q) {
@@ -374,6 +432,98 @@ public final class Mpc4jRgsw {
             evaluator.transformFromNttInplace(copy);
         }
         long[] data = copy.data();
+        return fastDecompose ? decomposeFast(data, polyIndex) : decomposeBig(data, polyIndex);
+    }
+
+    /**
+     * <b>纯 {@code long} 切段（快路径）。</b>
+     *
+     * <p>与 {@link #decomposeBig} 逐位等价，但把每个系数的
+     * <b>BigInteger CRT 重构</b>换成 128 位整数运算：
+     * <ol>
+     *   <li>Garner 重构 {@code x = r0 + p0·((r1−r0)·p0^{-1} mod p1)}。
+     *       其中 {@code t1 = (r1−r0)·p0^{-1} mod p1} 用 <b>Montgomery 乘法</b>算，
+     *       再 {@code x = r0 + p0·t1} 用 {@code Math.unsignedMultiplyHigh} 拿 128 位。</li>
+     *   <li>按 {@code base = 2^shift} 逐段取平衡位：{@code x} 用 (hi, lo) 两个 long 表示，
+     *       每轮 {@code r = lo & (B−1)}，超半就减 B 并向高位进 1，然后整体右移 shift 位。</li>
+     * </ol>
+     *
+     * <p>为什么必须平衡位、以及 {@code |r| ≤ (t−1)/2} 的窗口检查，与慢路径同源（见 {@link #decomposeBig}）。
+     *
+     * <p><b>包内可见</b>：给差分测试（{@code DecomposeEquiv}）用来与慢路径逐位对拍。
+     */
+    long[][] decomposeFast(long[] data, int polyIndex) {        final int L = workingPrimeCount;          // == 2（构造器已保证）
+        final long B = base;
+        final long half = B >>> 1;
+        final long plainMod = t;
+        final long window = (t - 1) / 2;
+        final int shift = baseShift;
+        final long p0 = primes[0].value();
+        final long p1 = fastP1;
+        final long inv1Mont = fastInv1Mont;
+        final long p1InvNeg = fastP1InvNeg;
+
+        long[][] digits = new long[levels][n];
+        for (int i = 0; i < n; i++) {
+            long r0 = data[(polyIndex * L) * n + i];
+            long r1 = data[(polyIndex * L + 1) * n + i];
+
+            // ---- Garner：t1 = (r1 - r0) mod p1 · p0^{-1} mod p1 ----
+            long d = r1 - r0;
+            if (d < 0) {
+                d += p1;
+            }
+            long t1 = montgomeryMul(d, inv1Mont, p1, p1InvNeg);   // = d · p0^{-1} mod p1
+
+            // ---- x = r0 + p0·t1（128 位，无符号） ----
+            long xHi = Math.unsignedMultiplyHigh(p0, t1);
+            long xLo = p0 * t1;
+            long sum = xLo + r0;
+            if (Long.compareUnsigned(sum, xLo) < 0) {
+                xHi++;                                            // 进位
+            }
+            xLo = sum;
+
+            // ---- 逐段取平衡位 ----
+            for (int k = 0; k < levels; k++) {
+                long r = xLo & (B - 1);                           // [0, B)
+                long carry = 0;
+                if (r > half) {
+                    r -= B;                                       // 居中到 (-B/2, B/2]
+                    carry = 1;
+                }
+                if (r > window || r < -window) {
+                    throw new IllegalStateException(String.format(
+                        "平衡位 %d 超出明文窗口 ±%d：底 B=%d 相对明文模数 t=%d 太大，"
+                            + "请加大 t 或减小底。", r, window, base, t));
+                }
+                digits[k][i] = r < 0 ? r + plainMod : r;
+                // x = (x >>> shift) + carry
+                xLo = (xLo >>> shift) | (xHi << (64 - shift));
+                xHi >>>= shift;
+                if (carry != 0) {
+                    xLo++;
+                    if (xLo == 0) {
+                        xHi++;
+                    }
+                }
+            }
+            if (xHi != 0 || xLo != 0) {
+                throw new IllegalStateException(String.format(
+                    "切段后仍有余项 (%d, %d)：需要 B^levels/2 > q（当前 B=%d, levels=%d）",
+                    xHi, xLo, base, levels));
+            }
+        }
+        return digits;
+    }
+
+    /**
+     * <p>原路径：用 {@code BigInteger} 做 CRT 重构与逐段取余。<b>慢，但通用</b>
+     * （任意素数个数、任意 base 都支持），作为 {@link #decomposeFast} 不适用时的回退。
+     *
+     * <p><b>包内可见</b>：给差分测试（{@code DecomposeEquiv}）用来与快路径逐位对拍。
+     */
+    long[][] decomposeBig(long[] data, int polyIndex) {
         long[][] digits = new long[levels][n];
         BigInteger b = BigInteger.valueOf(base);
         BigInteger half = b.shiftRight(1);                 // B/2
