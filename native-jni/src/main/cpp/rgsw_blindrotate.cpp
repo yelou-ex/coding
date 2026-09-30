@@ -454,56 +454,87 @@ JNIEXPORT jlong JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeBuild
 JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeSelfTest(
     JNIEnv *env, jclass, jlong h, jint d, jint reps) {
     JNI_BEGIN
+    const char *stage = "init";
     NativeCtx *c = as_ctx(h);
-    auto bits = secret_bits(c, d);
-
+    std::vector<int> bits;
     std::vector<RgswKey> bk;
-    bk.reserve(static_cast<std::size_t>(d));
-    for (int i = 0; i < d; ++i) {
-        bk.push_back(build_rgsw_constant(c, static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])));
-    }
-
-    const std::uint64_t two_n = 2 * static_cast<std::uint64_t>(c->n);
+    Plaintext accPt;
+    Ciphertext acc, out;
+    std::vector<std::uint64_t> a;
+    std::uint64_t beta = 0;
     const int r = 7;
-    Plaintext accPt(c->n);
-    accPt[r] = 1;                       // accumulator = Enc(X^r)
-    Ciphertext acc;
-    c->encryptor->encrypt_symmetric(accPt, acc);
+    jlong nonZero = -1, unit = -1, where = -1;
+    try {
+        stage = "secret_bits";
+        bits = secret_bits(c, d);
 
-    std::vector<std::uint64_t> a(static_cast<std::size_t>(d));
-    // Hand-rolled xorshift on purpose: pulling in <random>/mt19937_64 changed the
-    // DLL's UCRT imports and made the JVM fail to load it with
-    // "找不到指定的程序" (ERROR_PROC_NOT_FOUND).  A 3-shift xorshift is plenty here.
-    std::uint64_t rngState = 20260930ULL;
-    auto nextRand = [&rngState]() {
-        rngState ^= rngState << 13;
-        rngState ^= rngState >> 7;
-        rngState ^= rngState << 17;
-        return rngState;
-    };
-    std::uint64_t sum = 0;
-    for (int i = 0; i < d; ++i) {
-        a[static_cast<std::size_t>(i)] = nextRand() % two_n;
-        sum = (sum + a[static_cast<std::size_t>(i)] * static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])) % two_n;
-    }
-    const std::uint64_t beta = (sum + static_cast<std::uint64_t>(r)) % two_n;
-
-    Ciphertext out;
-    for (int rep = 0; rep < reps; ++rep) {
-        blind_rotate(c, bk, acc, a, beta, out);
-    }
-
-    Ciphertext pf = out;
-    if (pf.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(pf);
-    Plaintext res(c->n);
-    c->decryptor->decrypt(pf, res);
-    jlong nonZero = 0, unit = 0, where = -1;
-    for (std::size_t i = 0; i < c->n; ++i) {
-        if (res[i] != 0) {
-            nonZero++;
-            where = static_cast<jlong>(i);
-            if (res[i] == 1 || res[i] == c->t - 1) unit++;
+        stage = "build_bootstrap_key";
+        bk.reserve(static_cast<std::size_t>(d));
+        for (int i = 0; i < d; ++i) {
+            bk.push_back(build_rgsw_constant(c, static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])));
         }
+
+        stage = "encrypt_accumulator";
+        const std::uint64_t two_n0 = 2 * static_cast<std::uint64_t>(c->n);
+        accPt.resize(c->n);
+        accPt[r] = 1;                       // accumulator = Enc(X^r)
+        c->encryptor->encrypt_symmetric(accPt, acc);
+
+        stage = "build_lwe_index";
+        const std::uint64_t two_n = two_n0;
+        a.assign(static_cast<std::size_t>(d), 0);
+        // Hand-rolled xorshift on purpose: <random>/mt19937_64 changed the DLL's UCRT
+        // imports and made the JVM fail to load it with ERROR_PROC_NOT_FOUND.
+        std::uint64_t rngState = 20260930ULL;
+        std::uint64_t sum = 0;
+        for (int i = 0; i < d; ++i) {
+            rngState ^= rngState << 13;
+            rngState ^= rngState >> 7;
+            rngState ^= rngState << 17;
+            a[static_cast<std::size_t>(i)] = rngState % two_n;
+            sum = (sum + a[static_cast<std::size_t>(i)]
+                   * static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])) % two_n;
+        }
+        beta = (sum + static_cast<std::uint64_t>(r)) % two_n;
+
+        stage = "blind_rotate";
+        for (int rep = 0; rep < reps; ++rep) {
+            blind_rotate(c, bk, acc, a, beta, out);
+        }
+
+        stage = "decrypt";
+        Ciphertext pf = out;
+        stage = "decrypt.copy";
+        if (pf.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(pf);
+        stage = "decrypt.from_ntt";
+        // SEAL's own examples always default-construct the destination plaintext and
+        // let Decryptor::decrypt size it.  Pre-sizing it as Plaintext(n) is what
+        // triggered "index must be within [0, size)" here.
+        Plaintext res;
+        stage = "decrypt.ctor";
+        c->decryptor->decrypt(pf, res);
+        stage = "decrypt.call";
+        const std::size_t rc = res.coeff_count();
+        nonZero = 0; unit = 0; where = -1;
+        for (std::size_t i = 0; i < rc && i < c->n; ++i) {
+            if (res[i] != 0) {
+                nonZero++;
+                where = static_cast<jlong>(i);
+                if (res[i] == 1 || res[i] == c->t - 1) unit++;
+            }
+        }
+        stage = "decrypt.scan";
+    } catch (const std::exception &e) {
+        throw_java(env, std::string("nativeSelfTest @") + stage
+            + " [out.size=" + std::to_string(out.size())
+            + " out.ntt=" + (out.is_ntt_form() ? "1" : "0")
+           
+            + " n=" + std::to_string(c->n)
+            + "]: " + e.what());
+        return nullptr;
+    } catch (...) {
+        throw_java(env, std::string("nativeSelfTest @") + stage + ": unknown C++ exception");
+        return nullptr;
     }
     jlong vals[4] = { 0, nonZero, where, unit };
     jlongArray arr = env->NewLongArray(4);

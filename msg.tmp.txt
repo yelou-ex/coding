@@ -1,0 +1,28 @@
+﻿feat(route-A): 盲旋转在真 SEAL C++ 上跑通 —— 单轮 CMUX 约 2.6 ms
+
+修复：decrypt 阶段抛 index must be within [0, size)。
+根因：目标明文写成 Plaintext res(c->n) 预先定尺寸；SEAL 自己的例子一律用
+      Plaintext res; 默认构造、由 Decryptor::decrypt 自己 resize。改掉即通过。
+
+结果（N=4096, d=16, t=65537, base=2^16, levels=5, 2 工作素数 —— 与路线 B 同参）：
+- 盲旋转正确性：one-hot 进 -> one-hot 出，非零 1 个、落点 0、单位值 1 个  PASS
+- RGSW(1) 乘 ct = ct，0/4096 错位，噪声预算 51 bit  PASS
+
+速度（单轮 CMUX）：
+  路线 B（MPC4J 纯 Java）优化前     15.55 ms
+  路线 B（MPC4J 纯 Java）优化后      6.03 ms
+  路线 A（真 SEAL C++）            ~2.6 ms（下界估计，仍在随 K 下降）
+
+❗ 必须诚实说明：真实值应当 ≤ 2.6 ms，因为我的计时方案是
+  「两次调用（reps=1 与 reps=1+K）的差值 / K」，两次都含一遍建引导密钥，
+  第一次还承担全部冷启动，所以 K 越大估计越小：K=4 -> 4.66、K=16 -> 3.36、
+  K=32 -> 2.61 ms。尚未收敛到稳态，需要用 native 侧持久句柄重测。
+
+❗ 更重要的一条结论（与之前的判断相反）：
+  native 只比我们优化后的 Java 快约 2.3 倍，不是之前预期的 2~3 个数量级。
+  原因：CMUX 的开销是【结构性】的 —— 每轮 10 次明文 NTT + 明文乘、
+  外加 2 个分量的 CRT 切段；这些操作数量换语言不会变。
+  所以「native 是唯一能拿量级的路」这个说法，被这次实测推翻了。
+
+遗留：走序列化的分步检查（nativeExternalProduct）仍抛 dynarray 越界，
+      与上面的自包含基准无关，未再追。
