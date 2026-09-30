@@ -1400,6 +1400,8 @@ cd coding\native-jni
 | 16 | **`RingPack`** | **N=8192, n=32** | **6/6 ✅** | **论文的 `Pack` = Ring Packing，实现并端到端验证**（P1 打包 0 错/0 泄漏；P2 喂 `BloomScoring` 得正确 ⟨q,v⟩；P3 负对照；P4 维数扫 n=8/32/128/512；P5a 缩放精确搬运；P5b 缩放噪声 √n 增长） |
 | 17 | **`RingPack`** | **N=4096, n=32** | **P1 ✅ / P2~P4 ❌** | **参数边界的实证**：打包过，但打分侧（多一次 `CtCtMul` + 重线性化 + 折叠）**噪声崩**。⇒ **`N = 8192` 起步** |
 | 18 | `PackGoalCheck` | N=4096 | **4/4 未达成（预期）** | 重新定性：这 4 条测的是 `packFromSample`，而它**本来就不是** `Pack`。现已在结尾打印指向 `RingPack` 的说明 |
+| 19 | **`CapeEndToEnd4`** | **N=4096, d=16** | **6/6 ✅** | 四步（SETUP/QUERY/ANSWER/DECODE）首次全接通；服务端全程未解密；两条负对照（4.5 全零列选择器 / 4.6 错位一列） |
+| 20 | **`ExpandProbe`** | **N=4096, C=4** | **16/16 ✅** | **SealPIR 的 `EXPAND` 在本移植上可用**：Galois `Sub(c,k)` 可建可用；指数实测为 `e_j = N/2^j + 1`（论文 Figure 3 印的 `N/2^{j+1}+1` 整体差一层）；扩展后噪声 38 → 30 bit，上传少 C 倍；★ **`α` 可整个不做**（折进明文表后精确还原 P） |
 
 **本轮从中得到的结论**：
 
@@ -1425,6 +1427,7 @@ cd coding\rgsw-lab
 .\run-mpc4j.ps1 -Class com.fusepir.rgsw.RingPack 8192 32          # #16  6/6（约 1 分钟）
 .\run-mpc4j.ps1 -Class com.fusepir.rgsw.RingPack 4096 32          # #17  P1 过、P2~P4 崩（参数边界）
 .\run-mpc4j.ps1 -Class com.fusepir.rgsw.PackGoalCheck             # #18
+.\run-mpc4j.ps1 -Class com.fusepir.rgsw.ExpandProbe 4096 4        # #20  16/16（SealPIR EXPAND 判别）
 
 cd coding\lwe-java                                                # #7 #8（按 lwe-java/README.md 手动 javac）
 ```
