@@ -557,6 +557,9 @@ public final class Mpc4jRgsw {
      * {@code multiplyPlain}（MPC4J 会按有符号代表元把它嵌进 Z_q 再做 NTT）。
      */
     public Ciphertext externalProduct(Rgsw rgsw, Ciphertext src) {
+        if (useRnsExternalProduct) {
+            return externalProductRns(rgsw, src);
+        }
         long[][] d0 = decompose(src, 0);
         long[][] d1 = decompose(src, 1);
 
@@ -592,6 +595,155 @@ public final class Mpc4jRgsw {
         Plaintext pt = new Plaintext(digits);
         evaluator.transformToNttInplace(pt, ct.parmsId());
         evaluator.multiplyPlain(ct, pt, dst);
+    }
+
+    // ---------------- RNS 域外部乘积（②-b） ----------------
+
+    /**
+     * 是否走 RNS 域外部乘积。<b>可开关</b>，便于与旧路径对比与定位问题。
+     *
+     * <p><b>默认关闭（实测无收益）</b>：N=4096 时 ANSWER 从 15 407 ms 变成 16 033 ms
+     * （隔离测的单轮 CMUX 从 6.03 降到 5.46 ms，但端到端被噪声/GC 吃掉）。
+     * 实现保留 + 本轮实验记录见 `docs/reports/MPC4J-SEAL可用加速点盘点-2026-09-30.md` 第九节。
+     */
+    public volatile boolean useRnsExternalProduct = false;
+
+    /** digit 暂存：{@code [levels][srcPoly][j * n + i]}。 */
+    private long[][][] rnsDigitScratch;
+
+    private long[][][] rnsDigits() {
+        if (rnsDigitScratch == null) {
+            rnsDigitScratch = new long[levels][2][workingPrimeCount * n];
+        }
+        return rnsDigitScratch;
+    }
+
+    /**
+     * <b>RNS 域外部乘积：系数域切段 + 逐素数融合乘加。</b>
+     *
+     * <h3>比旧路径省掉什么</h3>
+     * 旧路径每个 digit 一次：{@code new Plaintext → transformToNttInplace（fast plain lift +
+     * 明文 NTT）→ multiplyPlain → 写进 tmp → addInplace}。共 10 次明文 NTT、10 次点乘、
+     * 9 次全量密文加法（= 19 次全量遍历）。
+     *
+     * <p>这里：digit 本来就是 {@code ±B/2 = ±32768} 的小整数（**与素数无关**），
+     * 不需要明文 NTT，也不需要 lift；直接在 RNS 层用
+     * {@code UintArithmeticSmallMod.multiplyAddUintMod} 一次遍历完成 {@code acc += d·g}。
+     * <b>10 次全量遍历，而不是 19 次。</b>
+     *
+     * <h3>⚠️ 为什么 digit 必须取自【系数域】</h3>
+     * 试过在 NTT 域切段（省掉 CRT），<b>数学上合法但噪声致命</b>：NTT 域的小幅值
+     * 逆变换回系数域后幅度是 {@code √N·B/2}，实测 N=2048 时 ≈1.48e6（放大 45 倍），
+     * 外部乘积的噪声预算直接从 12 bit 掉到 <b>0 bit</b>，结果全错。见 {@code RnsProductDebug}。
+     * ⇒ <b>RGSW 的噪声由 digit 的「系数域」范数决定，这条路不通。</b>
+     *
+     * <p>digit 与旧路径<b>完全相同</b>，所以噪声表现也应当一致（实测确认）。
+     */
+    public Ciphertext externalProductRns(Rgsw rgsw, Ciphertext src) {
+        final int L = workingPrimeCount;
+        long[][] d0 = decompose(src, 0);
+        long[][] d1 = decompose(src, 1);
+
+        Ciphertext srcNtt = toNtt(src);
+        Ciphertext acc = new Ciphertext();
+        acc.copyFrom(srcNtt);
+        long[] ad = acc.data();
+        java.util.Arrays.fill(ad, 0L);
+
+        for (int k = 0; k < levels; k++) {
+            fusedMac(ad, rgsw.group0[k].data(), nttOfDigits(d0[k], srcNtt.parmsId()), L);
+            fusedMac(ad, rgsw.group1[k].data(), nttOfDigits(d1[k], srcNtt.parmsId()), L);
+        }
+        return acc;
+    }
+
+    /**
+     * 把系数域的平衡位 digit 变成 <b>NTT 域</b>的乘数（长度 {@code L * n}，逐素数）。
+     *
+     * <p>⚠️ <b>必须走这一步。</b>我第一版直接把系数域的 {@code d_i} 当成 NTT 域乘数用，
+     * 等于乘了另一个多项式 {@code INTT(d)}，结果全错、噪声预算掉到 0。
+     * {@code multiplyPlain} 的乘数本来就是 {@code NTT(lift(d))}——
+     * {@code RnsProductDebug} 第 7 项已逐点验证过这一点。
+     *
+     * <p>所以这里仍然要做一次明文 NTT，省掉的是后面那趟独立的 {@code addInplace}
+     * （融合乘加把 19 次全量遍历压到 10 次）。
+     */
+    private long[] nttOfDigits(long[] digits, edu.alibaba.mpc4j.crypto.fhe.seal.context.ParmsId parmsId) {
+        Plaintext pt = new Plaintext(digits);
+        evaluator.transformToNttInplace(pt, parmsId);
+        return pt.data();
+    }
+
+    /**
+     * {@code acc[b][q_j][i] += pt[j*n+i] · g[b][q_j][i] (mod q_j)}。
+     *
+     * <p>{@code pt} 是 <b>NTT 域</b>的乘数（长度 {@code L*n}，逐素数）；<b>两个分量用同一个乘数</b>
+     * —— 这是"整条密文乘同一多项式"的语义。
+     */
+    private void fusedMac(long[] acc, long[] g, long[] pt, int L) {
+        for (int j = 0; j < L; j++) {
+            final edu.alibaba.mpc4j.crypto.fhe.seal.modulus.AbstractModulus mod = primes[j];
+            final int dOff = j * n;
+            for (int poly = 0; poly < 2; poly++) {
+                final int off = (poly * L + j) * n;
+                for (int i = 0; i < n; i++) {
+                    acc[off + i] = edu.alibaba.mpc4j.crypto.fhe.seal.zq.UintArithmeticSmallMod
+                        .multiplyAddUintMod(pt[dOff + i], g[off + i], acc[off + i], mod);
+                }
+            }
+        }
+    }
+
+    /**
+     * 逐素数、在 NTT 域把 {@code x} 切成 {@code levels} 个平衡底-B 位。
+     *
+     * <p>{@code x ∈ [0, p)}；每位取 {@code r = x mod B}，超半则居中到 {@code r − B}
+     * 并向下一位进 1。负数存成 {@code r + p}（同余等价，且仍落在 {@code [0, p)}）。
+     */
+    private void decomposeNttPerPrime(long[] sd, long[][][] dig, int L) {
+        final long B = base;
+        final long half = B >>> 1;
+        final int shift = baseShift;
+        for (int sp = 0; sp < 2; sp++) {                    // src 的两个分量各自切段
+            for (int j = 0; j < L; j++) {
+                final long p = primes[j].value();
+                final int srcOff = (sp * L + j) * n;
+                final int dstOff = j * n;
+                for (int i = 0; i < n; i++) {
+                    long x = sd[srcOff + i];
+                    for (int k = 0; k < levels; k++) {
+                        long r = x & (B - 1);
+                        long carry = 0;
+                        if (r > half) {
+                            r -= B;                 // 居中到 (-B/2, B/2]
+                            carry = 1;              // x_next = (x - r)/B = q + 1 ⇒ 先右移再进位
+                        }
+                        x >>>= shift;
+                        x += carry;
+                        dig[k][sp][dstOff + i] = r < 0 ? r + p : r;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * {@code acc[b][idx] = digitHalf[j*n+i]·g[b][idx] + acc[b][idx] (mod q_j)}。
+     *
+     * <p><b>两个分量用同一个 digit</b>（{@code digitHalf}）—— 这是"整条密文乘同一多项式"的语义。
+     */
+    private void fusedMultiplyAdd(long[] acc, long[] g, long[] digitHalf, int L) {
+        for (int j = 0; j < L; j++) {
+            final edu.alibaba.mpc4j.crypto.fhe.seal.modulus.AbstractModulus mod = primes[j];
+            final int dOff = j * n;
+            for (int poly = 0; poly < 2; poly++) {
+                final int off = (poly * L + j) * n;
+                for (int i = 0; i < n; i++) {
+                    acc[off + i] = edu.alibaba.mpc4j.crypto.fhe.seal.zq.UintArithmeticSmallMod
+                        .multiplyAddUintMod(digitHalf[dOff + i], g[off + i], acc[off + i], mod);
+                }
+            }
+        }
     }
 
     /**
