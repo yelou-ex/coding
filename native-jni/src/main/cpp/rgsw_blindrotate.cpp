@@ -160,39 +160,46 @@ RgswKey build_rgsw_constant(const NativeCtx *c, std::uint64_t mu) {
 
     std::vector<std::uint64_t> mres(n, 0);
     for (int i = 0; i < c->levels; ++i) {
-        std::uint64_t gi = 1;
-        for (int e = 0; e < i; ++e) gi = mul_mod_u128(gi, c->base % c->t, c->t);
-        std::uint64_t val = mul_mod_u128(gi, mu % c->t, c->t);
+        // Gadget g_i = base^i, kept at FULL width (not reduced mod t) and added
+        // straight into the phase, exactly like Mpc4jRgsw.addConstantNtt does with
+        // the BigInteger `power`.  base^4 = 2^64 does not fit in uint64_t, hence
+        // the 128-bit accumulator.
+        unsigned __int128 gi = 1;
+        for (int e = 0; e < i; ++e) gi *= c->base;
 
-        // NOTE: deliberately NOT encrypt_zero().  In this SEAL build
-        // encrypt_zero() yields a ciphertext that SEAL itself flags as transparent
-        // (its transform_to_ntt_inplace then throws "result ciphertext is
-        // transparent").  Plain Encryptor::encrypt() samples a uniform `a`, so the
-        // result is guaranteed non-transparent - and it is only done at keygen.
+        // Both rows start as encryptions of ZERO.  encrypt_symmetric() (not
+        // encrypt_zero(), whose output SEAL itself calls transparent, and not
+        // encrypt(), which wants a public key) samples a uniform `a`, so the result
+        // is non-transparent - and this only runs at keygen.
         try {
-            Plaintext p(n);
-            p[0] = val;
-            c->encryptor->encrypt_symmetric(p, key.g0[i]);
-        } catch (const std::exception &e) {
-            throw std::runtime_error(std::string("g0[") + std::to_string(i) + "] encrypt: " + e.what());
-        }
-        try {
-            Plaintext z(n);                 // all-zero plaintext == encryption of 0
+            Plaintext z(n);
+            c->encryptor->encrypt_symmetric(z, key.g0[i]);
             c->encryptor->encrypt_symmetric(z, key.g1[i]);
         } catch (const std::exception &e) {
-            throw std::runtime_error(std::string("g1[") + std::to_string(i) + "] encrypt0: " + e.what());
+            throw std::runtime_error(std::string("encrypt0[") + std::to_string(i) + "]: " + e.what());
         }
-        // group1: add the same constant to COMPONENT 1 while still in the
-        // coefficient domain.  In that domain the constant polynomial is just
-        // coefficient 0, so this is a single add per prime - and the phase picks
-        // up an extra factor s for free (same trick as the Java side).
-        {
-            const std::uint64_t *src = nullptr;
-            std::uint64_t *dst = key.g1[i].data(1);
-            for (std::size_t j = 0; j < cm.size(); ++j) {
-                dst[j * n] = add_mod(dst[j * n], val % cm[j].value(), cm[j].value());
+
+        // The gadget constant goes into the PHASE, not into the message:
+        //   component 0  ->  phase += g_i * mu            (RLWE'(g_i mu))
+        //   component 1  ->  phase += g_i * mu * s        (RLWE''(g_i mu s))
+        // Adding to component 1 makes the extra factor s appear for free.
+        //
+        // BUG FIXED HERE: the first version encrypted `g_i*mu mod t` as a plaintext,
+        // which scales the phase by Delta = q/t - a completely different (and wrong)
+        // gadget.  That is why RGSW(1) x ct came out as 4096/4096 wrong coefficients.
+        for (std::size_t j = 0; j < cm.size(); ++j) {
+            std::uint64_t qj = cm[j].value();
+            std::uint64_t gmod = static_cast<std::uint64_t>(gi % qj);
+            std::uint64_t val = (mu == 0) ? 0 : gmod;
+            if (val == 0) {
+                continue;
             }
-            (void)src;
+            std::uint64_t *c0 = key.g0[i].data(0);
+            std::uint64_t *c1 = key.g1[i].data(1);
+            // still in the coefficient domain, so the constant polynomial is just
+            // coefficient index 0
+            c0[j * n] = add_mod(c0[j * n], val, qj);
+            c1[j * n] = add_mod(c1[j * n], val, qj);
         }
         try {
             c->evaluator->transform_to_ntt_inplace(key.g0[i]);
@@ -297,7 +304,11 @@ void blind_rotate(const NativeCtx *c, const std::vector<RgswKey> &bk,
                   const Ciphertext &acc, const std::vector<std::uint64_t> &a,
                   std::uint64_t beta, Ciphertext &out) {
     const std::uint64_t two_n = 2 * static_cast<std::uint64_t>(c->n);
+    // The accumulator arrives in the coefficient domain (straight from encryption)
+    // while everything in the loop is NTT-domain; normalise once here, otherwise
+    // the CMUX subtraction throws "NTT form mismatch".
     Ciphertext cur = acc;
+    if (!cur.is_ntt_form()) c->evaluator->transform_to_ntt_inplace(cur);
     for (std::size_t i = 0; i < a.size(); ++i) {
         if (a[i] % two_n == 0) continue;      // identity round; a real CMUX would hit
                                               // SEAL_THROW_ON_TRANSPARENT_CIPHERTEXT
@@ -428,6 +439,19 @@ JNIEXPORT jlong JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeBuild
     JNI_END(env, 0)
 }
 
+// A standalone RGSW(mu) key - for the RGSW(1)/RGSW(0) correctness checks.
+// The bootstrap key rows are RGSW(bit_i of the LWE secret), NOT RGSW(0)/RGSW(1),
+// so the tests must not borrow them.
+JNIEXPORT jlong JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeRgswConstant(
+    JNIEnv *env, jclass, jlong h, jlong mu) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    auto *keys = new std::vector<RgswKey>();
+    keys->push_back(build_rgsw_constant(c, static_cast<std::uint64_t>(mu)));
+    return reinterpret_cast<jlong>(keys);
+    JNI_END(env, 0)
+}
+
 JNIEXPORT void JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeDestroyKey(
     JNIEnv *, jclass, jlong kh) {
     delete as_key(kh);
@@ -518,28 +542,58 @@ JNIEXPORT jbyteArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_native
 JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeExternalProduct(
     JNIEnv *env, jclass, jlong h, jlong kh, jbyteArray srcBytes, jint row) {
     JNI_BEGIN
+    try {
     NativeCtx *c = as_ctx(h);
     auto *keys = as_key(kh);
     jsize len = env->GetArrayLength(srcBytes);
     std::vector<char> buf(static_cast<std::size_t>(len));
     env->GetByteArrayRegion(srcBytes, 0, len, reinterpret_cast<jbyte *>(buf.data()));
     Ciphertext src = bytes_to_ct(c, buf.data(), buf.size());
+    if (keys == nullptr || static_cast<std::size_t>(row) >= keys->size()) {
+        throw_java(env, "nativeExternalProduct: bad key handle / row out of range");
+        return nullptr;
+    }
     const RgswKey &one = (*keys)[static_cast<std::size_t>(row)];
+    if (one.g0.empty() || one.g1.empty()) {
+        throw_java(env, "nativeExternalProduct: key rows are empty");
+        return nullptr;
+    }
     Ciphertext out;
-    external_product(c, one, src, out);
+    try {
+        external_product(c, one, src, out);
+    } catch (const std::exception &e) {
+        throw std::runtime_error(std::string("external_product(g0=")
+            + std::to_string(one.g0.size()) + ", src_ntt=" + (src.is_ntt_form() ? "1" : "0")
+            + "): " + e.what());
+    }
     // SEAL's Decryptor refuses NTT-form ciphertexts for BFV ("BFV encrypted cannot
     // be in NTT form"), and the external product output IS in NTT form - so convert
     // a copy back to the coefficient domain first.  This is plain bookkeeping, not
     // part of the measured work.
     Ciphertext plainForm = out;
-    if (plainForm.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(plainForm);
+    try {
+        if (plainForm.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(plainForm);
+    } catch (const std::exception &e) {
+        throw std::runtime_error(std::string("from_ntt(out_ntt=")
+            + (out.is_ntt_form() ? "1" : "0") + ", out_size=" + std::to_string(out.size())
+            + "): " + e.what());
+    }
     Plaintext pt(c->n);
-    c->decryptor->decrypt(plainForm, pt);
+    try {
+        c->decryptor->decrypt(plainForm, pt);
+    } catch (const std::exception &e) {
+        throw std::runtime_error(std::string("decrypt(size=") + std::to_string(plainForm.size())
+            + ", ntt=" + (plainForm.is_ntt_form() ? "1" : "0") + "): " + e.what());
+    }
     jlongArray res = env->NewLongArray(static_cast<jsize>(c->n));
     std::vector<jlong> vals(c->n);
     for (std::size_t i = 0; i < c->n; ++i) vals[i] = static_cast<jlong>(pt[i]);
     env->SetLongArrayRegion(res, 0, static_cast<jsize>(c->n), vals.data());
     return res;
+    } catch (const std::exception &e) {
+        throw_java(env, std::string("nativeExternalProduct/total: ") + e.what());
+        return nullptr;
+    }
     JNI_END(env, nullptr)
 }
 

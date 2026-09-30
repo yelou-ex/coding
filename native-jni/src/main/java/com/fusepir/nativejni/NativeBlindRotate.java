@@ -44,6 +44,9 @@ public final class NativeBlindRotate {
 
     private static native long nativeBuildBootstrapKey(long h, int d);
 
+    /** 独立的 RGSW(mu) 密钥（正确性检查用；引导密钥的每一行是 RGSW(s_i)，不是 RGSW(0)/RGSW(1)）。 */
+    private static native long nativeRgswConstant(long h, long mu);
+
     private static native void nativeDestroyKey(long kh);
 
     private static native byte[] nativeEncrypt(long h, long[] msg);
@@ -75,13 +78,15 @@ public final class NativeBlindRotate {
         // ---------------- 正确性 ① RGSW(1) ⊗ ct = ct ----------------
         long kh = nativeBuildBootstrapKey(h, d);
         Long[] bits = nativeSecretBits(h, d);
+        long kh1 = nativeRgswConstant(h, 1);
+        long kh0 = nativeRgswConstant(h, 0);
         long[] msg = new long[n];
         for (int i = 0; i < n; i++) {
             msg[i] = (i % 7) + 1;
         }
         byte[] ct = nativeEncrypt(h, msg);
 
-        long[] ep1 = nativeExternalProduct(h, kh, ct, 1);   // RGSW(1)
+        long[] ep1 = nativeExternalProduct(h, kh1, ct, 0);   // RGSW(1)
         int bad1 = 0;
         for (int i = 0; i < n; i++) {
             if (ep1[i] != msg[i]) {
@@ -91,7 +96,7 @@ public final class NativeBlindRotate {
         report(String.format("1. RGSW(1) ⊗ ct = ct（错位 %d/%d）", bad1, n), bad1 == 0,
             "噪声预算 = " + nativeNoiseBudget(h, ct) + " bit");
 
-        long[] ep0 = nativeExternalProduct(h, kh, ct, 0);   // RGSW(0)
+        long[] ep0 = nativeExternalProduct(h, kh0, ct, 0);   // RGSW(0)
         int nz = 0;
         for (int i = 0; i < n; i++) {
             if (ep0[i] != 0) {
@@ -99,6 +104,8 @@ public final class NativeBlindRotate {
             }
         }
         report(String.format("2. RGSW(0) ⊗ ct = 0（非零 %d/%d）", nz, n), nz == 0, "");
+        nativeDestroyKey(kh1);
+        nativeDestroyKey(kh0);
 
         // ---------------- 正确性 ② 盲旋转：one-hot 进去必须 one-hot 出来 ----------------
         SecureRandom rnd = new SecureRandom();
