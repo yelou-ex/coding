@@ -109,6 +109,57 @@ public final class CmuxProfile {
         System.out.printf("           levels=%d 由 B^levels/2 > q(≈2^%d) 决定。%n", m.levels, m.qBits);
 
         subProfile(m, n, src, reps);
+        formJuggleProfile(m, n, src, reps);
+    }
+
+    /**
+     * 量"形态来回搬"的成本：盲旋转每轮除 CMUX 外还要 {@code multiplyPowerOfX}，
+     * 而它是 {@code fromNtt → 系数搬移 → toNtt}；{@code decompose} 每次也各自 {@code fromNtt}。
+     */
+    private static void formJuggleProfile(Mpc4jRgsw m, int n, Ciphertext src, int reps) {
+        System.out.println("\n--- ④ 形态来回搬（每轮 CT-NTT 次数的来源）---");
+        Ciphertext ntt = new Ciphertext();
+        ntt.copyFrom(src);
+        if (!ntt.isNttForm()) {
+            m.evaluator.transformToNttInplace(ntt);
+        }
+        // 预热
+        for (int w = 0; w < 6; w++) {
+            m.multiplyPowerOfX(ntt, 12345L);
+            m.decompose(ntt, 0);
+            Ciphertext c = new Ciphertext();
+            c.copyFrom(ntt);
+            m.evaluator.transformFromNttInplace(c);
+            m.evaluator.transformToNttInplace(c);
+        }
+        double[] tPow = new double[reps];
+        double[] tNttPair = new double[reps];
+        double[] tDec = new double[reps];
+        for (int r = 0; r < reps; r++) {
+            long t = System.nanoTime();
+            m.multiplyPowerOfX(ntt, 987654321L);
+            tPow[r] = (System.nanoTime() - t) / 1e6;
+
+            t = System.nanoTime();
+            Ciphertext c = new Ciphertext();
+            c.copyFrom(ntt);
+            m.evaluator.transformFromNttInplace(c);
+            m.evaluator.transformToNttInplace(c);
+            tNttPair[r] = (System.nanoTime() - t) / 1e6;
+
+            t = System.nanoTime();
+            m.decompose(ntt, 0);
+            tDec[r] = (System.nanoTime() - t) / 1e6;
+        }
+        System.out.printf("      multiplyPowerOfX（NTT 域进、NTT 域出） : %6.3f ms%n", med(tPow));
+        System.out.printf("      一次密文 NTT 往返（from + to）        : %6.3f ms%n", med(tNttPair));
+        System.out.printf("      decompose(含一次 fromNtt)             : %6.3f ms%n", med(tDec));
+        System.out.println("\n      ★ 每轮盲旋转目前的「形态搬运」账：");
+        System.out.println("        decompose x2 各含 1 次 fromNtt        = 2 次");
+        System.out.println("        multiplyPowerOfX 含 from + to         = 2 次（其中 to 是搬完再转回）");
+        System.out.println("        ⇒ 每轮约 3~4 次纯形态 NTT，与 CMUX 的数学无关。");
+        System.out.println("        若让累加器全程留在【系数域】，decompose 与 multiplyPowerOfX 都不必转换，");
+        System.out.println("        只需在 externalProduct 出口做 1 次 toNtt。");
     }
 
     /**
