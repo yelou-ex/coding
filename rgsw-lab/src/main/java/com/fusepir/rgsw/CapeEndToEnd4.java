@@ -3,6 +3,7 @@ package com.fusepir.rgsw;
 import com.fusepir.common.BfGen;
 import edu.alibaba.mpc4j.crypto.fhe.seal.BatchEncoder;
 import edu.alibaba.mpc4j.crypto.fhe.seal.Ciphertext;
+import edu.alibaba.mpc4j.crypto.fhe.seal.GaloisKeys;
 
 import java.security.SecureRandom;
 import java.util.Arrays;
@@ -93,7 +94,15 @@ public final class CapeEndToEnd4 {
      * 自举密钥（setup 材料）、Bloom 查询密文。**没有任何明文坐标。**
      */
     static final class ServerQuery {
-        Ciphertext[][] qCol;    // [k][C]：常数编码的列选择子
+        /**
+         * <b>压缩后的列选择子</b>：每条路只有 1 个单项式 {@code Enc(x^{c_a})}（原来要 C 个密文）。
+         * 服务端用 {@link #expandKeys} 把它同态扩展成 C 个选择子。见 {@link ExpandOps}。
+         */
+        Ciphertext[] colMonomial;
+        /** Galois 指数 {@code e_j = N/2^j + 1}（每层一个）。 */
+        int[] expandExps;
+        /** 每层一套 Galois 公钥（建一次即可复用）。 */
+        GaloisKeys[] expandKeys;
         Mpc4jRgsw.Rgsw[] bk;    // 自举密钥（setup 材料，非本次查询特有）
         long[][] a;             // LWE 的 a 分量
         long[] beta;            // LWE 的 β 分量
@@ -248,7 +257,23 @@ public final class CapeEndToEnd4 {
                 }
             }
         }
-        System.out.printf("    %d 条明文多项式 P_{c,b}(X)%n%n", C * bPay);
+        // ★ α 折叠：EXPAND 的输出是「恰好一个选择子加密常数 C、其余 0」，
+        //   所以把服务端的表在【明文侧】乘上 α = C^{-1} mod t：
+        //       Σ_c CtPtMul(C·1_{c=c*}, α·P_c) = (C·α)·P_{c*} = P_{c*}  ✓
+        //   这样密文侧一次 α 乘法都不需要，SealPIR Theorem 2 里那个 t 因子（约 16 bit）消失。
+        //   等价性已由 ExpandProbe 在 N=4096/C=4 上实测（D 段：解出的就是原表）。
+        long alpha = ExpandOps.alphaFor(m.t, C);
+        for (int c = 0; c < C; c++) {
+            for (int b = 0; b < bPay; b++) {
+                for (int i = 0; i < n; i++) {
+                    P[c][b][i] = java.math.BigInteger.valueOf(alpha)
+                        .multiply(java.math.BigInteger.valueOf(P[c][b][i]))
+                        .mod(java.math.BigInteger.valueOf(m.t)).longValueExact();
+                }
+            }
+        }
+        System.out.printf("    %d 条明文多项式 P_{c,b}(X)（已折 α=%d 供扩展后的选择子使用）%n%n",
+            C * bPay, alpha);
 
         // ============================================================
         // 2. QUERY（客户端）—— 产出 ClientState（私有）+ ServerQuery（发出去）
@@ -285,14 +310,14 @@ public final class CapeEndToEnd4 {
 
         // ---- 发出去的部分 ----
         ServerQuery sq = new ServerQuery();
-        sq.qCol = new Ciphertext[k][C];
+        sq.colMonomial = new Ciphertext[k];
         for (int a = 0; a < k; a++) {
-            for (int c = 0; c < C; c++) {
-                long[] constant = new long[n];
-                constant[0] = (c == client.c[a]) ? 1 : 0;
-                sq.qCol[a][c] = m.encrypt(constant);
-            }
+            long[] mono = new long[n];
+            mono[client.c[a]] = 1;                  // Enc(x^{c_a})：只暴露"一个单项式"
+            sq.colMonomial[a] = m.encrypt(mono);
         }
+        sq.expandExps = ExpandOps.expsFor(n, C);
+        sq.expandKeys = ExpandOps.keysFor(m, C);
         int[] s = new int[d];
         for (int i = 0; i < d; i++) {
             s[i] = keyRnd.nextInt(2);                       // P1-7：协议密钥用 SecureRandom
@@ -318,13 +343,16 @@ public final class CapeEndToEnd4 {
         sq.beta = lweBeta;
         sq.qBfCt = BloomScoring.encryptBloomVector(m, toSlots(client.bQry, be.slotCount()));
 
-        System.out.printf("    列选择器：%d 路 × %d 个独立密文（常数编码）%n", k, C);
+        System.out.printf("    列选择器：%d 路 × 1 个单项式 Enc(x^{c_a})（压缩后；原来是 %d 路 × %d 个独立密文）%n",
+            k, k, C);
+        System.out.printf("    服务端扩展：Galois 指数 %s，%d 套公钥；输出 %d 个选择子（恰好一个加密常数 %d）%n",
+            Arrays.toString(sq.expandExps), sq.expandKeys.length, C, C);
         System.out.printf("    行选择器：%d 个 RGSW + %d 条 LWE%n", d, k);
         System.out.printf("    b_qry = %s，τ = %d%n", Arrays.toString(client.bQry), client.tau);
         System.out.println();
         System.out.println("    [QUERY 的边界] 客户端私有（**不发**）：query、anchor、u、r、c、b_qry、τ");
-        System.out.printf("    服务端可见（**发出去**）：qCol（%d 个密文）、bk、a、beta、qBfCt%n%n",
-            k * C);
+        System.out.printf("    服务端可见（**发出去**）：colMonomial（%d 个密文，压缩前 %d）、bk、a、beta、qBfCt%n%n",
+            k, k * C);
 
         // ============================================================
         // 3. ANSWER（服务器）—— 只用 ServerQuery + 明文表，全程不解密
@@ -334,11 +362,14 @@ public final class CapeEndToEnd4 {
 
         long[][][][] sample = new long[k][bPay][][];
         for (int a = 0; a < k; a++) {
+            // ★ 服务端把压缩的选择子扩展成 C 个 one-hot（恰好一个加密常数 C，其余 0）。
+            //   与原来「客户端送 C 个独立密文」逐位等价，只是把 C 折进了明文表（见上面的 α）。
+            Ciphertext[] sel = ExpandOps.expand(m, n, sq.colMonomial[a], C, sq.expandExps, sq.expandKeys);
             for (int b = 0; b < bPay; b++) {
-                // 第 5 行：Acc ← Σ_{c=0}^{C−1} CtPtMul(q_col,a[c], P_{c,b}(X))
-                //   **全部 C 项都算并累加**：选中的那一项密文里是常数 1、其余是 0，
+                // 第 5 行：Acc ← Σ_{c=0}^{C−1} CtPtMul(sel[c], P_{c,b}(X))
+                //   **全部 C 项都算并累加**：选中的那一项密文里是常数 C、其余是 0×α 折过，
                 //   选择发生在同态内部，服务器看不到 c_a。
-                Ciphertext acc = columnSelect(m, n, P, sq.qCol[a], b, C);
+                Ciphertext acc = columnSelect(m, n, P, sel, b, C);
                 // 第 6 行：盲旋转（要求系数域）
                 if (acc.isNttForm()) {
                     m.evaluator.transformFromNttInplace(acc);
@@ -509,13 +540,19 @@ public final class CapeEndToEnd4 {
         int d = sq.bk.length;
         long[][] rec = new long[k][bPay];
         for (int a = 0; a < k; a++) {
-            Ciphertext[] sel = new Ciphertext[C];
-            for (int c = 0; c < C; c++) {
-                long[] constant = new long[n];
-                if (!allZero && c == Math.floorMod(client.c[a] + shift, C)) {
-                    constant[0] = 1;
+            // 与 QUERY 同样：压缩的选择子（一条单项式）+ 服务端扩展；负对照靠改单项式的指数实现
+            int target = allZero ? -1 : Math.floorMod(client.c[a] + shift, C);
+            Ciphertext[] sel;
+            if (target < 0) {
+                sel = new Ciphertext[C];                    // 全零选择子：C 个 Enc(0)
+                long[] zero = new long[n];
+                for (int c = 0; c < C; c++) {
+                    sel[c] = m.encrypt(zero);
                 }
-                sel[c] = m.encrypt(constant);
+            } else {
+                long[] mono = new long[n];
+                mono[target] = 1;
+                sel = ExpandOps.expand(m, n, m.encrypt(mono), C, sq.expandExps, sq.expandKeys);
             }
             // 与 QUERY 同样地造一条 LWE 行选择子（无噪声索引，见 P0-1）
             long[] aVec = new long[d];
