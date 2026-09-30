@@ -25,6 +25,7 @@
 #include <seal/util/ntt.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <sstream>
@@ -439,8 +440,85 @@ JNIEXPORT jlong JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeBuild
     JNI_END(env, 0)
 }
 
-// A standalone RGSW(mu) key - for the RGSW(1)/RGSW(0) correctness checks.
-// The bootstrap key rows are RGSW(bit_i of the LWE secret), NOT RGSW(0)/RGSW(1),
+// ---------------------------------------------------------------------------
+//  Self-contained blind-rotation benchmark.
+//
+//  Deliberately touches NO serialization: keys, accumulator, the LWE index, the
+//  timing loop and the final decryption all stay inside C++.  Serialising a
+//  ciphertext per call would be wrong for a real integration anyway (the server's
+//  state belongs in native memory), and it also side-steps a Ciphertext::load
+//  "index must be within [0, size)" failure that showed up on the second
+//  serialized round-trip.
+//
+//  Returns { millis, nonZeroCount, where, unitCount }.
+// ---------------------------------------------------------------------------
+JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeSelfTest(
+    JNIEnv *env, jclass, jlong h, jint d, jint reps) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    auto bits = secret_bits(c, d);
+
+    std::vector<RgswKey> bk;
+    bk.reserve(static_cast<std::size_t>(d));
+    for (int i = 0; i < d; ++i) {
+        bk.push_back(build_rgsw_constant(c, static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])));
+    }
+
+    const std::uint64_t two_n = 2 * static_cast<std::uint64_t>(c->n);
+    const int r = 7;
+    Plaintext accPt(c->n);
+    accPt[r] = 1;                       // accumulator = Enc(X^r)
+    Ciphertext acc;
+    c->encryptor->encrypt_symmetric(accPt, acc);
+
+    std::vector<std::uint64_t> a(static_cast<std::size_t>(d));
+    // Hand-rolled xorshift on purpose: pulling in <random>/mt19937_64 changed the
+    // DLL's UCRT imports and made the JVM fail to load it with
+    // "找不到指定的程序" (ERROR_PROC_NOT_FOUND).  A 3-shift xorshift is plenty here.
+    std::uint64_t rngState = 20260930ULL;
+    auto nextRand = [&rngState]() {
+        rngState ^= rngState << 13;
+        rngState ^= rngState >> 7;
+        rngState ^= rngState << 17;
+        return rngState;
+    };
+    std::uint64_t sum = 0;
+    for (int i = 0; i < d; ++i) {
+        a[static_cast<std::size_t>(i)] = nextRand() % two_n;
+        sum = (sum + a[static_cast<std::size_t>(i)] * static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])) % two_n;
+    }
+    const std::uint64_t beta = (sum + static_cast<std::uint64_t>(r)) % two_n;
+
+    Ciphertext out;
+    double best = 1e18;
+    for (int rep = 0; rep < reps; ++rep) {
+        auto t0 = std::chrono::steady_clock::now();
+        blind_rotate(c, bk, acc, a, beta, out);
+        auto t1 = std::chrono::steady_clock::now();
+        double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        if (rep > 0 && ms < best) best = ms;      // rep 0 is warm-up
+    }
+
+    Ciphertext pf = out;
+    if (pf.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(pf);
+    Plaintext res(c->n);
+    c->decryptor->decrypt(pf, res);
+    jlong nonZero = 0, unit = 0, where = -1;
+    for (std::size_t i = 0; i < c->n; ++i) {
+        if (res[i] != 0) {
+            nonZero++;
+            where = static_cast<jlong>(i);
+            if (res[i] == 1 || res[i] == c->t - 1) unit++;
+        }
+    }
+    jlong vals[4] = { static_cast<jlong>(best), nonZero, where, unit };
+    jlongArray arr = env->NewLongArray(4);
+    env->SetLongArrayRegion(arr, 0, 4, vals);
+    return arr;
+    JNI_END(env, nullptr)
+}
+
+// A standalone RGSW(mu) key - for the RGSW(1)/RGSW(0) correctness checks.// The bootstrap key rows are RGSW(bit_i of the LWE secret), NOT RGSW(0)/RGSW(1),
 // so the tests must not borrow them.
 JNIEXPORT jlong JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeRgswConstant(
     JNIEnv *env, jclass, jlong h, jlong mu) {
