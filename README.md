@@ -1404,6 +1404,7 @@ cd coding\native-jni
 | 20 | **`ExpandProbe`** | **N=4096, C=4** | **16/16 ✅** | **SealPIR 的 `EXPAND` 在本移植上可用**：Galois `Sub(c,k)` 可建可用；指数实测为 `e_j = N/2^j + 1`（论文 Figure 3 印的 `N/2^{j+1}+1` 整体差一层）；扩展后噪声 38 → 30 bit，上传少 C 倍；★ **`α` 可整个不做**（折进明文表后精确还原 P） |
 | 21 | **`DecomposeEquiv`** | **N=4096** | **3/3 ✅** | **切段快路径（纯 long）与慢路径（BigInteger）245,760 个值逐位一致**，外加独立重构校验 `Σ d_k·B^k ≡ x (mod q)` |
 | 22 | **`CmuxProfile`** | **N=4096** | 剖析 | 单轮 CMUX 拆分。**①去 BigInteger：15.55 → 8.08 ms；②-a 去每轮 encryptZero：→ 6.03 ms（累计 2.58×）** |
+| 23 | **`RnsProductDebug`** | N=2048/4096 | 定位 | RNS 域外部乘积的四项定位：modmul 语义 / 逐素数切段还原 / 平衡位幅度 / **噪声预算**。判定 **NTT 域切段噪声致命（12 → 0 bit）** |
 
 **本轮从中得到的结论**：
 
