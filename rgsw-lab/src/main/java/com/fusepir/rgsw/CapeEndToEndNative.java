@@ -43,12 +43,22 @@ public final class CapeEndToEndNative {
     public static void main(String[] args) {
         int n = args.length > 0 ? Integer.parseInt(args[0]) : 4096;
         int d = args.length > 1 ? Integer.parseInt(args[1]) : 16;
-        if (run(n, d) != 0) {
+        int q = args.length > 2 ? Integer.parseInt(args[2]) : 2;
+        if (run(n, d, q) != 0) {
             System.exit(1);
         }
     }
 
     public static int run(int n, int d) {
+        return run(n, d, 2);
+    }
+
+    /**
+     * @param qQ 查询关键词个数 Q。CAPE 的 ANSWER 成本是 {@code k × B_pay} 个单元，与 Q <b>无关</b>
+     *           —— 这正是论文强调的「checking all remaining query terms jointly without
+     *           introducing per-keyword query or computation overhead」。本参数就是用来量这一点的。
+     */
+    public static int run(int n, int d, int qQ) {
         failed = 0;
         long t = 65537L;
         System.out.println("=== CAPE 四步端到端（ANSWER = native 真 SEAL C++）===");
@@ -153,9 +163,14 @@ public final class CapeEndToEndNative {
         // ============================================================
         // 2. QUERY（客户端）
         // ============================================================
-        List<String> query = List.of("K_1", "K_2");
+        List<String> query = new java.util.ArrayList<>();
+        for (int i = 1; i <= qQ; i++) {
+            query.add("K_" + i);
+        }
         int anchor = 0;
         System.out.println("--- 2. QUERY（客户端）---");
+        System.out.printf("    Q = %d 个查询关键词（锚 = %s，其余 %d 个进 b_qry）%n",
+            qQ, kw[anchor], qQ - 1);
         int[] cOf = new int[k];
         int[] rOf = new int[k];
         for (int a = 0; a < k; a++) {
@@ -207,24 +222,33 @@ public final class CapeEndToEndNative {
             }
         }
         boolean hit = count > 0 && score == tau;
-        report("4.3 合取判定（⟨b_qry, b_v⟩ == τ）", hit,
-            String.format("值个数=%d，第一个值=%d，得分=%d，τ=%d ⚠️ 明文侧算（同态版见 CapeEndToEnd4 4.3）",
-                count, firstValue, score, tau));
+        if (qQ == 2) {
+            report("4.3 合取判定（⟨b_qry, b_v⟩ == τ）", hit,
+                String.format("值个数=%d，第一个值=%d，得分=%d，τ=%d ⚠️ 明文侧算（同态版见 CapeEndToEnd4 4.3）",
+                    count, firstValue, score, tau));
+        } else {
+            System.out.printf("    [info] Q=%d：得分=%d，τ=%d —— 本演示的玩具库只满足 Q=2 的合取，"
+                + "这里只量时间，不断言命中%n", qQ, score, tau);
+        }
         report("4.4 恢复的值 ∈ 明文答案集", count > 0 && firstValue == 11,
             "第一个值 = " + firstValue);
 
-        // ---- 负对照：选择子必须是承重的 ----
-        int[] badCol = cOf.clone();
-        badCol[0] = (badCol[0] + 1) % C;
-        long[] recBadCol = NativeCapeAnswer.run(n, d, C, k, bPay, p, badCol, rOf);
-        report("4.5 负对照：列选择器错位一列 ⇒ 载荷必须改变",
-            !Arrays.equals(recBadCol, payload[anchor]), "");
+        // ---- 负对照：选择子必须是承重的（与 Q 无关，只在 Q=2 时跑以省时间）----
+        if (qQ == 2) {
+            int[] badCol = cOf.clone();
+            badCol[0] = (badCol[0] + 1) % C;
+            long[] recBadCol = NativeCapeAnswer.run(n, d, C, k, bPay, p, badCol, rOf);
+            report("4.5 负对照：列选择器错位一列 ⇒ 载荷必须改变",
+                !Arrays.equals(recBadCol, payload[anchor]), "");
 
-        int[] badRow = rOf.clone();
-        badRow[0] = (badRow[0] + 1) % R;
-        long[] recBadRow = NativeCapeAnswer.run(n, d, C, k, bPay, p, cOf, badRow);
-        report("4.6 负对照：行选择器错位一行 ⇒ 载荷必须改变",
-            !Arrays.equals(recBadRow, payload[anchor]), "");
+            int[] badRow = rOf.clone();
+            badRow[0] = (badRow[0] + 1) % R;
+            long[] recBadRow = NativeCapeAnswer.run(n, d, C, k, bPay, p, cOf, badRow);
+            report("4.6 负对照：行选择器错位一行 ⇒ 载荷必须改变",
+                !Arrays.equals(recBadRow, payload[anchor]), "");
+        } else {
+            System.out.println("    [跳过] 4.5/4.6 负对照（与 Q 无关，已在 Q=2 验证）");
+        }
 
         System.out.printf("%n=== %s（失败 %d 项）===", failed == 0 ? "四步跑通" : "有失败", failed);
         System.out.println();
