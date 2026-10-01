@@ -29,8 +29,11 @@ public final class CmuxBreakdown {
     public static void main(String[] args) {
         int n = args.length > 0 ? Integer.parseInt(args[0]) : 8192;
 
-        // 两组参数对照：现网（t=65537, base=2^16）与提速后（t=2^32, base=2^32）
-        long[][] cases = {{65537L, 16}, {1L << 32, 32}};
+        // 三组对照，用来分离「t 变大」与「层数变少」各自对每层成本/总成本的影响：
+        //   A 旧现网   t=65537   base=2^16  L=11
+        //   B 同层数   t=2^32    base=2^16  L=11   <- 与 A 只差 t，用来量 t 的代价
+        //   C 现网     t=2^32    base=2^32  L=6    <- 与 B 只差层数
+        long[][] cases = {{65537L, 16}, {1L << 32, 16}, {1L << 32, 32}};
         int rounds = Integer.getInteger("cape.prof.rounds", 3);
 
         System.out.println("=== 一次 CMUX 的成本拆解 ===");
@@ -70,11 +73,14 @@ public final class CmuxBreakdown {
                     decomCalls == (long) r * d * 2 && mulCalls == (long) r * d * levels * 2
                         ? "OK" : "ODD");
 
-                System.out.printf("      ms/CMUX = %.2f ；decompose 调用 %d 次（应 %d），"
-                        + "multiply_plain %d 次（应 %d）%n",
-                    perCmux, decomCalls, (long) r * d * 2, mulCalls, (long) r * d * levels * 2);
-                System.out.printf("      分解合计（正向NTT+多字算术）占 CMUX 的 %.1f%%%n%n",
-                    100 * (fwdNtt + arith) / total);
+                System.out.printf("      ms/CMUX = %.2f ；每层 = %.3f ms（L=%d）"
+                        + "；decompose 调用 %d 次（应 %d），multiply_plain %d 次（应 %d）%n",
+                    perCmux, perCmux / levels, levels,
+                    decomCalls, (long) r * d * 2, mulCalls, (long) r * d * levels * 2);
+                System.out.printf("      分解合计（正向NTT+多字算术）占 CMUX 的 %.1f%%"
+                        + "；其中多字算术 %.1f%%（= %.2f ms/CMUX）%n%n",
+                    100 * (fwdNtt + arith) / total, 100 * arith / total,
+                    arith / (r * d));
             } catch (Throwable ex) {
                 System.out.printf("%-26s [FAIL %s]%n%n",
                     "t=" + t + " base=2^" + b, shortMsg(ex));

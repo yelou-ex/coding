@@ -1,0 +1,1971 @@
+===== PAGE 1 =====
+y= 138.0  122|CAPE:  169|Communication-Efficient  328|Conjunctive  406|Keyword  466|PIR
+y= 252.5  152|Abstract
+y= 254.2  328|Despiteitsimportance,traditionalPIRmakestheimpracti-
+y= 266.1  318|calassumptionthattheclientknowstheindexofthequeryin
+y= 272.6  54|Keywordprivateinformationretrieval(KeywordPIR)allows
+y= 278.1  318|thedatabase.KeywordPIR[10]extendsthisfunctionalityto
+y= 284.5  54|theclienttofetchdataentriesthatmatchaspecifickeyword
+y= 290.0  318|amoreexpressivekeywordsetting,wherearequestisspeci-
+y= 296.5  54|fromtheremotepublicdatabasewhilepreservingquerypri-
+y= 302.0  318|fiedbyasemanticidentifierratherthananexplicitindex.For
+y= 308.4  54|vacy.However,existingkeywordPIRschemesmainlyfocus
+y= 313.9  318|instance,ChalametPIR[8]proposesagenerictransformation
+y= 320.4  54|on  68|the  84|single-keyword  150|setting,  183|where  211|each  233|query  260|retrieves
+y= 325.9  318|thattakestheLWE-basedschemesandkey-valuefiltersas
+y= 332.3  54|data  74|associated  119|with  141|only  162|one  180|keyword.  222|Very  244|recently,the
+y= 337.8  318|inputto  353|generate  390|a  398|conceptually  453|very  474|simple  504|keywordPIR
+y= 344.3  54|firstconjunctiveKeywordPIRscheme,BKPIR(Songetal.
+y= 349.8  318|scheme.  355|Building  394|on  408|this,  428|Hao  448|et  459|al.  473|[21]  493|achieved  532|higher
+y= 356.2  54|NDSS  83|2026),was  131|proposed,enabling  211|the  227|clientto  263|retrieve
+y= 361.7  318|throughputbyconstructingmoreefficientmappings.
+y= 368.2  54|data  74|entries  105|that  124|simultaneously  189|match  217|multiple  254|keywords.
+y= 375.0  328|However,mostexistingschemesfocusonsingle-keyword
+y= 380.1  54|Nevertheless,BKPIRincursprohibitivelyhighcommunica-
+y= 386.7  318|settinganddonotmeettherequirementsofconjunctivere-
+y= 392.1  54|tionoverhead,requiringtheclienttocommunicatetheentire
+y= 398.6  318|trieval[36,46],whichcanimproveprecisionofretrieval.A
+y= 404.1  54|databaseforeachquery.
+y= 410.8  318|naivewaytorealizeconjunctiveretrievalistoencodeeach
+y= 416.6  64|Inthispaper,wepresentCAPE,acommunication-efficient
+y= 422.8  318|keyword–valuepairasanindependentdatabaserecord.The
+y= 428.6  54|conjunctivekeywordPIRschemebasedonacandidate-first
+y= 434.7  318|clientinvokeskeywordPIRseparatelyforeachkeyword,re-
+y= 440.5  54|design.Ourkeyinsightistorestrictconjunctiveevaluationto
+y= 446.7  318|trievesthecorrespondingvaluesets,thencomputestheirinter-
+y= 452.5  54|thevaluesassociatedwithonequeriedkeywordandaggregate
+y= 458.6  318|sectionlocally.Thisapproach,however,duplicateskeywords
+y= 464.5  54|allremainingkeywordsintoasinglefixed-lengthencrypted
+y= 470.6  318|intheencodeddatabaseandrequirestheclienttodownload
+y= 476.4  54|Bloomquery.Thislimitstheevaluationtoasmallcandidate
+y= 482.5  318|everyqueriedvaluesetinfull,eventhoughonlytheirinter-
+y= 488.4  54|set,enablingasymptoticallyoptimalresponsesizewhilekeep-
+y= 494.5  318|sectionisultimatelyneeded.
+y= 500.3  54|inguploadcostandservercomputationindependentofthe
+y= 507.7  328|BKPIR[48]avoidsrepeatedretrievalbyrepresentingthe
+y= 512.3  54|numberof  100|queried  133|keywords.  178|Comprehensive  245|experiments
+y= 519.7  318|valuesassociatedwitheachkeywordasabinaryvaluemap
+y= 524.2  54|demonstratesubstantialimprovementsoverthestateofthe
+y= 531.6  318|overtheglobalvalueuniverseV  452|andevaluatingbooleanop-
+y= 536.2  54|art,BKPIR(NDSS’26).For30keywordconjunctivequeries,
+y= 543.6  318|erationsoverencryptedvaluemapsattheserver.Thismoves
+y= 547.9  54|CAPEachievesuptoan18.2×speedupwhilesignificantly
+y= 555.5  318|thecomputationtotheserverandavoidsdownloadingeach
+y= 560.1  54|reducingcommunicationoverhead.
+y= 567.5  318|valuesetseparately.Despiteimprovedexpressiveness,their
+y= 579.4  318|valuemaprepresentationandper-keywordprocessingstrategy
+y= 591.5  54|1  72|Introduction  318|bringthreedrawbackstotheconjunctivecase.
+y= 604.6  328|First,eachvaluemapcontainsonepositionforeveryvalue
+y= 616.3  318|inV,resultinginO(|V|)responsecommunication.Incon-
+y= 616.5  54|Private  86|information  138|retrieval  175|(PIR)  201|[11]  222|allows  252|a  260|client  286|to
+y= 628.3  318|trast,aconjunctiveresultcontainsatmostmvalues,where
+y= 628.5  54|retrieve  88|a  96|record  125|from  148|an  161|indexed  196|database  234|without  268|reveal-
+y= 640.5  54|ing  72|any  91|information  143|about  170|the  187|target  215|record.  248|During  282|the  318|misthemaximumnumberofvaluesassociatedwithakey-
+y= 652.4  54|past  74|decade,  108|a  117|wealth  148|of  160|research  197|has  215|been  238|conducted  284|on  318|word.AfixedO(m)responseisthereforeasymptoticallyopti-
+y= 664.4  54|PIR  74|[1–3,12,23,24,30–32,35,37,39,42,51,52].  266|Due  286|to  318|malandavoidsrevealingtheactualintersectionsize.Second,
+y= 676.3  54|itsstrongprivacyguarantees,PIRhasbecomeakeycompo-  318|BKPIRgeneratesandprocessesoneencryptedqueryforeach
+y= 688.3  54|nentinmanypracticalapplications,includingcontactdiscov-  318|oftheQqueriedkeywords,causingbothquerysizeandserver
+y= 700.2  54|ery  70|[5,15],anonymous  151|communication  218|[1,5,28,41],route  318|computationtogrowlinearlywithQ.Finally,thenumberof
+y= 712.2  54|navigation[50],andwebsearch[22].  318|queried  351|keyword  390|is  400|directly  434|revealed,which  501|exposes  537|struc-
+y= 742.1  304|1
+===== PAGE 2 =====
+y=  80.9  188|Table1:ComplexitycomparisonofkeywordPIRschemes.
+y=  94.3  115|Scheme  173|ServerStorage  249|QueryCost  309|ComputationCost  395|ResponseCost  464|QueryType
+y= 108.8  97|ChalametPIR[8]  191|O(nm)  263|O(n)  335|O(nm)  415|O(m)  477|Single
+y= 116.0  270|√  427|√
+y= 121.9  105|KPIRkvs[21]  191|O(nm)  259|O(  278|n)  335|O(nm)  408|O(m  435|n)  477|Single
+y= 137.8  109|MMK[48]  191|O(nm)  263|O(n)  323|O(n(m+w))  415|O(m)  477|Single
+y= 145.0  270|√
+y= 152.4  114|FusePIR  191|O(nm)  259|O(  278|n)  335|O(mn)  415|O(m)  477|Single
+y= 165.3  333|O(mn)†
+y= 166.9  109|FusePIR-C  191|O(nm)  256|O(logn)  415|O(m)  477|Single
+y= 183.8  107|BKPIR[48]  187|O(n|V|)  259|O(Qn)  315|O(Qn(|V|+w))  411|O(|V|)  473|Boolean
+y= 190.9  258|√
+y= 198.3  118|CAPE  172|O(nm(1+ℓ  229|))  247|O(  266|n+ℓ  295|)  317|O(m(1+ℓ  368|)n)  415|O(m)  465|Conjunctive
+y= 201.9  219|BF  286|BF  358|BF
+y= 210.2  366|)n)†
+y= 212.8  114|CAPE-C  172|O(nm(1+ℓ  229|))  244|O(logn+ℓ  298|)  314|O(m(1+ℓ  415|O(m)  465|Conjunctive
+y= 216.5  219|BF  289|BF  356|BF
+y= 230.2  62|Here,nisthenumberofkeywords,misthemaximumnumberofvaluesassociatedwithakeyword,|V|isthenumberofdistinctvalues,Qisthenumberof
+y= 239.6  62|conjunctiveterms,andℓBFistheBloom-filterlength.TheparameterwdenotestheHammingweightoftheconstant-weightencodingusedbyMMKand
+y= 247.8  62|BKPIR.ForChalametPIRandKPIRkvs,wetreatthevaluesetassociatedwithakeywordasapayloadofsizeO(m);thereportedcostscorrespondtothe
+y= 257.4  62|FrodoPIR[14]andSimplePIR[23]instantiations,respectively.The†variantshavethesameleadingasymptoticcomputationbutincuradditionalserver-side
+y= 268.2  62|selector-expansionoperationsforquerycompression.Fixedcryptographicparametersandciphertextdimensionsareomitted.
+y= 298.3  54|turalinformationandmaynarrowthesetofplausiblekeyword  338|FusePIR  377|combines  420|Binary  451|Fuse  474|Filter  500|encoding  541|[18]
+y= 310.2  54|combinations.ThesecurityanalysisofBKPIRcomparesonly  337|with  359|fixed-key  400|techniques  446|that  465|makes  494|the  510|retrieved  548|re-
+y= 321.9  54|querieswiththesamelogicalstructureandthusthesameQ  338|sults  360|homomorphically  435|computable  485|on  499|the  514|serverside
+y= 334.1  54|intheconjunctivesetting,leavingthisleakageunaddressed.  337|withoutadditionaldecryption.Thispropertyissufficient
+y= 346.1  64|These  94|limitations  144|motivate  185|our  203|candidate-first  267|design.  338|for  353|CAPE  382|and  400|may  420|also  440|be  453|of  464|independent  517|interest  550|to
+y= 358.0  54|Ratherthanevaluatingtheconjunctionovertheglobalvalue  338|otherapplications.
+y= 370.0  54|universe,  94|we  110|first  130|retrieve  165|the  182|values  212|associated  257|with  279|one
+y= 379.0  329|•  338|BuildingonFusePIR,weproposeCAPEforconjunctive
+y= 381.9  54|queriedkeywordandthenfilterthesecandidatesagainstthe
+y= 391.0  338|retrieval.CAPErestrictsretrievalandevaluationtothe
+y= 393.9  54|remainingkeywords.Sinceeachkeywordisassociatedwith
+y= 402.9  338|valuesassociatedwithonequeriedkeyword,achieving
+y= 405.9  54|at  64|most  87|m  98|values,this  147|approach  187|restricts  222|both  244|the  259|scope  286|of
+y= 414.9  338|optimalresponsesize.Itfurtherrepresentstheremain-
+y= 417.6  54|thesearchandtheresponsetoO(m).Realizingthisdesign,
+y= 426.8  338|ingqueriedkeywordswithasinglefixed-lengthBloom
+y= 429.8  54|however,raises  119|two  138|obstacles.  181|First,the  220|candidate  262|payload
+y= 438.8  338|query,keepingquerysizeandserver-sidecomputation
+y= 441.7  54|mustberetrievedefficientlywhileremainingencryptedfor
+y= 450.8  338|constantwhilehidingthenumberofqueriedkeywords.
+y= 453.7  54|subsequent  103|filtering.  141|Existing  179|approaches  228|either  254|incur  278|sub-
+y= 462.7  337|Theserverevaluatesthisaggregatedqueryonceforeach
+y= 465.6  54|stantialretrievaloverhead[8,35,44,48]orrequireadditional
+y= 474.7  338|candidate.Byreturningonlythecandidatesandtheiren-
+y= 477.6  54|client-sidereconstructionorselectionbeforetheresultcanbe
+y= 486.6  338|cryptedscores,CAPEreducestheresponsecomplexity
+y= 489.5  54|usedinsubsequentcomputation[21].Second,processingthe
+y= 498.3  338|fromO(|V|)toO(m).
+y= 501.5  54|remainingkeywordsseparatelywouldretaintheper-keyword
+y= 513.4  54|queryandcomputationoverheadofpriorwork.
+y= 519.6  329|•  337|Wealsointroducequery-compressedvariantswithmore
+y= 531.5  338|servercomputationcostintrade-offandimplementall
+y= 540.0  54|1.1  81|OurContributions
+y= 543.3  338|constructionsinMPC4J[20].FusePIRis4.08×–12.50×
+y= 555.4  338|fasterinonlinephasethanMMK[48],themulti-value
+y= 560.4  54|Inthispaper,wepresentCAPE,acandidate-firstconjunctive
+y= 567.4  338|keywordPIR  395|scheme  428|underlying  475|BKPIR.  511|The  530|variant
+y= 572.3  54|keyword  93|PIR  112|scheme  146|that  164|addresses  207|the  223|above  250|challenges.
+y= 579.3  338|FusePIR-Creducesitsqueryfromapproximately2305
+y= 584.3  54|CAPE  83|achieves  121|optimal  155|response  194|while  220|keeping  256|the  271|query
+y= 591.3  338|KBto167bytes.For30-keywordconjunctions,CAPE
+y= 596.2  54|sizeandserver-sidecomputationindependentofthenumber
+y= 603.0  338|andCAPE-Cachieve18.2×and17.6×speedupsover
+y= 608.2  54|ofqueriedkeywordsandhidingthisnumber.Torealizethis
+y= 615.2  338|BKPIR,respectively,withCAPE-Cadditionallyreduc-
+y= 620.1  54|design,wedevelopFusePIR,anefficientmulti-valuekeyword
+y= 626.9  338|ingthequerysizebyapproximately30×.
+y= 632.1  54|PIRschemewhoseencryptedoutputcanbedirectlyusedin
+y= 644.0  54|subsequent  102|homomorphic  163|computation.  219|We  236|also  256|introduce
+y= 655.5  318|1.2  345|TechnicalOverview
+y= 656.0  54|query-compressedvariantstoreduceuploadcommunication.
+y= 668.0  54|Table1comparesourconstructionswithpriorwork.Ourmain
+y= 676.3  318|Existing  357|keyword  396|PIR  417|essentially  465|performs  507|the  524|conjunc-
+y= 679.9  54|contributionsaresummarizedasfollows:
+y= 688.3  318|tive  337|retrieval  373|over  395|the  411|global  440|value  465|universe.  506|In  518|particular,
+y= 700.2  65|•  73|WeproposeFusePIR,amulti-valuekeywordPIRpro-  318|BKPIR[48]representsthevaluesassociatedwitheachkey-
+y= 712.2  74|tocol  99|with  123|homomorphically  201|computable  254|responses.  318|wordasabinaryvaluemapoverV.ForaqueryK  517|∧···∧K  557|,
+y= 715.7  511|1  551|Q
+y= 742.1  304|2
+===== PAGE 3 =====
+y=  72.5  318|1.3  345|RelatedWork
+y=  74.2  54|theserverprivatelyretrievesonevaluemapforeachqueried
+y=  86.1  54|keyword  92|and  110|homomorphically  186|combines  228|them  252|to  263|identify
+y=  97.8  54|theirintersection.ThisapproachavoidsdownloadingallQ  318|Private  351|information  404|retrieval  442|was  463|introduced  511|by  526|Chor  551|et
+y= 109.5  318|al.[11],andKushilevitzandOstrovsky[27]subsequentlyes-
+y= 110.0  54|valuesetstotheclient,butitscostistiedtotheglobalvalue
+y= 121.4  318|tablishedcomputationalPIRinthesingle-serversetting.Early
+y= 121.7  54|universe:theresponsecontainsO(|V|)positions,andboth
+y= 133.4  318|constructions[16,19]mainlyreliedonnumber-theoreticho-
+y= 133.7  54|querycommunicationandservercomputationgrowwithQ.
+y= 145.4  318|momorphictechniquestoachievesublinearcommunication.
+y= 146.8  64|Ourstarting  116|pointis  150|to  161|avoidevaluating  231|the  246|conjunction
+y= 157.3  318|Laterlattice-basedconstructionssubstantiallyimprovedcon-
+y= 158.7  54|over  75|V  87|altogether.  133|Since  159|every  184|conjunctive  235|result  260|is  270|a  278|sub-
+y= 169.3  318|creteefficiencythroughpackedhomomorphiccomputation,
+y= 170.7  54|setofthevaluesassociatedwitheachqueriedkeyword,we
+y= 181.2  318|batching,andrecursivedatabaseselection[1,3,37].Subse-
+y= 182.4  54|canfirstretrievethevaluesetofonekeyword,sayK  274|,and
+y= 186.2  270|1
+y= 193.2  318|quentworkfurtherexploredthetradeoffamongservercom-
+y= 194.4  54|useitsatmostmvaluesascandidates.Theremainingtaskis
+y= 205.1  318|putation,queryandresponsecommunication,andrecordsize
+y= 206.5  54|thentodeterminewhichcandidatesarealsoassociatedwith
+y= 217.1  318|using  343|techniques  390|such  412|as  423|ciphertext  467|composition,response
+y= 218.3  54|K  65|,...,K  96|.Thiscandidate-firstformulationreducestherel-
+y= 222.0  60|2  90|Q
+y= 229.0  318|packing,  356|and  374|ring  394|switching  437|[6,38,42].  484|A  495|complementary
+y= 230.2  54|evantvaluedomainfrom|V|tom,andthereforemakesan
+y= 241.0  318|line  336|ofworkreduces  405|online  434|costthroughserver-specific  550|or
+y= 242.2  54|O(m)responsepossible.
+y= 252.9  318|client-specificpreprocessing  437|[23,39,52],while  514|recentcon-
+y= 255.2  64|Thefirstchallengeistoefficientlyretrieveallvaluesasso-
+y= 264.9  318|structionscompressuploadcommunication  499|usingcompact
+y= 267.2  54|ciatedwithonekeywordwhilekeepingtheresultencrypted
+y= 276.9  318|queries  351|and  369|homomorphic  430|selector  465|expansion  510|[26].  534|These
+y= 279.2  54|forsubsequentcomputation.ExistingkeywordPIRschemes
+y= 288.8  318|techniquesimprovepracticalindexPIR,butstillassumethat
+y= 291.1  54|aredesignedtodeliverthequeriedvaluesanddonotsimulta-
+y= 300.8  318|theclientknowsthephysicallocationofthedesiredrecord.
+y= 303.1  54|neouslyoptimizeforefficiencyandserver-sidecomposability.
+y= 315.0  54|Equality-based  118|schemes,such  180|as  192|constant-weight  260|PIR  279|and  328|KeywordPIR.KeywordPIR[10]addressesthislimitation
+y= 327.0  54|MMK[35,48],needsubstantialservercomputationbymatch-  318|by  332|allowing  371|the  387|client  413|to  425|query  451|a  460|semantic  499|keyword  538|with-
+y= 338.9  54|ingtheencryptedqueryagainsttheencodedkeywords.More  318|outknowingitsphysicaldatabaseindex.Existingschemes
+y= 350.9  54|efficientfilter-basedapproachesstillhavelimitationsforour  318|resolve  351|the  367|queried  401|keyword  440|through  475|different  514|techniques.
+y= 362.8  54|purpose.Forexample,ChalametPIR[8]incurslinearquery  318|Constant-weightPIR[35]performshomomorphicequality
+y= 373.4  54|size,whileKPIRkvs
+y= 374.8  136|[21]requiresclient-sidereconstruction  318|testingbetweentheencryptedqueryandencodeddatabase
+y= 386.8  54|ofseparatelyretrievedfilterentries.  318|keywords,whereasSparsePIR[44]encodessparsedatabase
+y= 399.6  64|Theselimitationsmotivateustoredesigntheretrievalpro-  318|entriesaslinearcombinationscompatiblewithstandardPIR
+y= 411.5  54|cesssothatthequeriedresultremainsdirectlyusablebythe  318|optimizationssuchasrecursion.ChalametPIR[8]combines
+y= 423.5  54|server.Thekeydifficultyistomakeindependentlyretrieved  318|LWE-basedPIRwithBinaryFuseFilters[18]andrecovers
+y= 435.5  54|componentshomomorphicallycomposable.Weaddressthis  318|thedesiredvaluethroughanencryptedlinearquery.Haoet
+y= 447.4  54|with  75|a  82|fixed-key  124|retrieval  160|technique,enabling  243|the  259|serverto  318|al.[21]furtherreducekeywordPIRtoaconstantnumberof
+y= 459.4  54|combinethemdirectlyintoanencryptedmulti-valuepayload.  318|standardPIRinvocationsthroughcompactkeyword-to-index
+y= 471.3  54|This  75|forms  102|FusePIR  140|and  158|provides  196|the  212|encrypted  255|candidate  318|encodings,achievingsubstantiallylowercommunicationand
+y= 483.3  54|retrievalrequiredbyCAPE.  318|improvedonlineruntime.Theschemesabovearedesigned
+y= 496.1  64|Encryptedcandidateretrievalalonedoesnotremovethe  318|forsingle-keywordretrievalandthereforecannotdirectlysup-
+y= 508.1  54|dependenceonthenumberofqueriedkeywords.Testingeach  318|portmorepreciseretrievalovermultiplequeriedkeywords.
+y= 520.0  54|candidateagainsttheremainingkeywordsseparatelywould  318|Building  357|on  371|MMK,  402|BKPIR  436|[48]  457|represents  502|the  518|values  548|as-
+y= 532.0  54|stillmake  97|querysize  142|andservercomputation  241|growwithQ,  318|sociatedwitheachkeywordas  447|a  454|valuemap  496|overthe  533|global
+y= 543.9  54|whiledirectlyrevealingthenumberofqueriedkeywords.Our  318|valueuniverse.Foraconjunctivequery,theserverobtainsthe
+y= 555.9  54|keyobservationisthatthesemembershiptestscanbeaggre-  318|encryptedvaluemapselectedbyeachqueriedkeywordand
+y= 567.8  54|gated.CAPEassociateseachcandidatewithaBloomfilter  318|homomorphicallyevaluatestheirelement-wiseconjunction,
+y= 579.8  54|overits  87|relatedkeywords  160|andencodes  214|allremaining  271|query  318|leavingonlythevaluessharedbyallqueriedkeywords.To
+y= 591.8  54|keywordsintoasinglefixed-lengthencryptedBloomvector.  318|thebestofourknowledge,BKPIRistheonlyexistingKPIR
+y= 603.7  54|Theserverthenevaluatesoneencryptedscorepercandidate,  318|schemethatdirectlysupportsconjunctiveretrieval.Thesame
+y= 615.7  54|therebycheckingallremainingquerytermsjointlywithout  318|valuemaprepresentationfurtherenablesBooleanquerieswith
+y= 627.6  54|introducingper-keywordqueryorcomputationoverhead.  318|conjunction,disjunction,andnegation.
+y= 640.5  64|InspiredbyPirouetteH[26],FusePIR-Creplacesthelarge  328|Conjunctive  385|Search  418|in  431|SSE.  456|Conjunctive  509|keyword  548|re-
+y= 652.4  54|RLWEone-hotselectorwithcompactLWEencryptionsofits  318|trievalhasalsobeenextensivelystudiedinsearchablesymmet-
+y= 664.4  54|coordinatesandexpandstheselectorhomomorphicallyatthe  318|ricencryption(SSE),althoughunderasecuritymodeldiffer-
+y= 676.3  54|server.CAPE-Cinheritsthesameoptimizationforitsanchor  318|entfromPIR.PracticalSSEschemesachieveefficientsearch
+y= 688.3  54|retrieval.Thesevariantspreservethedatabaseencodingand  318|over  339|encrypted  382|databases  424|by  437|allowing  476|a  484|formally  522|specified
+y= 700.2  54|response  93|format,trading  157|additional  201|servercomputation  282|for  318|leakageprofile,whichmayincludeaccess,search,volume,or
+y= 712.2  54|substantiallysmalleruploadcommunication.  318|intersectionpatterns.Consequently,theprivacyandefficiency
+y= 742.1  304|3
+===== PAGE 4 =====
+y=  74.2  54|guaranteesofSSEandPIRarenotdirectlycomparable.Early  327|Experiment:ℓ-QINDsingle
+y=  82.5  415|Π,A
+y=  86.1  54|workestablishedpracticalencryptedsingle-keywordsearch
+y=  98.1  54|andformalizeditssecurity[13,47],whilestructuredencryp-  355|$
+y= 103.0  344|b←{0,1}.
+y= 104.8  333|1:
+y= 110.0  54|tion  73|and  91|encrypted  134|multi-maps  184|extended  223|the  239|framework  286|to
+y= 114.9  344|(pp,st  374|,sk)←Setup(DB).
+y= 116.7  333|2:
+y= 118.5  370|S
+y= 122.0  54|richer  81|data  101|structures  144|and  162|query  188|types  213|[9].  230|Building  269|on  283|en-
+y= 126.0  355|(0)  392|(0)  420|(1)  457|(1)
+y= 129.3  344|(K  365|,...,K  402|),(K  430|,...,K  467|)←A(pp,st  522|,DB)
+y= 131.1  333|3:  518|S
+y= 133.9  54|cryptedmulti-maps,Cashetal.[7]introducedOXT,thefirst  354|1  391|ℓ  420|1  456|ℓ
+y= 141.5  344|Q  355|←0/.
+y= 143.0  333|4:
+y= 145.9  54|scalableconstructionforconjunctiveretrieval.Itscentralidea
+y= 153.2  344|forr=1toℓdo
+y= 155.0  333|5:
+y= 157.8  54|isananchor-then-filterstrategy,inwhichtheclientfirstre-
+y= 161.9  474|(b)
+y= 165.1  359|(q  372|,st  393|)←Query(pp,sk,K  484|).
+y= 166.9  333|6:  368|r  383|C,r  474|r
+y= 169.8  54|trievesthevaluesassociatedwiththeleastfrequentqueried
+y= 177.4  359|Q  370|←Q  392|∪{q  414|}.
+y= 178.9  333|7:  410|r
+y= 181.7  54|keywordandthenteststhesecandidatesagainsttheremaining
+y= 189.2  344|endfor
+y= 190.8  333|8:
+y= 193.7  54|terms.  82|Thiscandidate-firstdesignsubstantiallyreducesthe
+y= 199.5  344|b′←A(pp,st
+y= 201.0  404|,DB,Q).
+y= 202.8  333|9:  399|S
+y= 205.7  54|searchscope,butrevealsleakagesincludingthekeyword-pair
+y= 211.4  344|return[b′=b].
+y= 214.7  329|10:
+y= 217.6  54|resultpattern(KPRP)andtheconditionalintersectionpattern
+y= 229.6  54|(IP).  76|Subsequent  126|work  150|[25,29,43,49]  213|further  244|explores  282|the
+y= 241.5  54|tradeoffbetweenefficiencyandprivacy,progressivelyreduc-
+y= 247.2  318|conjunctivequeryK=(K  428|,...,K  459|),theclientretrievesthe
+y= 253.5  54|ingtheleakagerevealedbyOXT.Theanchor-then-filterstrat-  424|1  454|Q
+y= 258.1  318|valuessharedbyallqueriedkeywords,namely(cid:84)Q
+y= 260.8  527|V  540|.
+y= 265.4  54|egyprovidesthemainhighlevelinspirationforourscheme,  532|Ki
+y= 265.9  514|i=1
+y= 273.0  328|AkeywordPIRschemeΠconsistsofthefollowingfour
+y= 277.4  54|althoughourconstructionoperatesinthePIRmodelandrelies
+y= 284.9  318|probabilisticpolynomial-time(PPT)algorithms,eachtaking
+y= 289.3  54|ondifferentcryptographicmechanisms.
+y= 295.4  318|1λasanimplicitinput:
+y= 314.3  329|•  338|Setup(DB)→(pp,st  427|,sk).GivenadatabaseDB,output
+y= 318.0  422|S
+y= 322.6  54|2  72|Preliminaries
+y= 326.3  338|public  367|parameters  416|pp,  432|a  440|server  468|state  491|st  503|,  509|and  527|a  535|client
+y= 330.0  498|S
+y= 338.0  338|secretkeysk.
+y= 348.4  54|In  66|this  83|section,we  132|give  153|a  160|briefdescription  230|ofsome  266|crypto-
+y= 356.4  329|•  338|Query(pp,sk,x)→(q,st  443|).  453|Given  480|a  488|query  514|x,output  553|a
+y= 360.3  54|graphicprimitivesusedthroughoutthewholepaper,suchas  437|C
+y= 368.1  338|client-to-serverquerymessageqandaprivateclientstate
+y= 372.3  54|privateinformationretrievalandbloomfilter.
+y= 380.1  338|st  350|.Forsingle-keywordqueries,x=K;forconjunctive
+y= 384.0  345|C
+y= 392.0  338|queries,x=K=(K  423|,...,K  454|).
+y= 395.8  418|1  448|Q
+y= 404.4  54|2.1  81|Notations
+y= 410.4  329|•  338|Answer(st  384|,q)→resp.  435|Given  462|the  478|server  506|state  528|and  546|the
+y= 414.1  379|S
+y= 422.1  338|querymessage,outputaserverresponseresp.
+y= 426.6  54|We  70|use  88|λ  97|to  108|denote  139|the  155|security  191|parameter.  237|For  254|a  262|positive
+y= 438.1  260|$
+y= 441.7  54|integer  86|n,  96|we  112|write  137|[n]  150|=  161|{1,...,n}.  207|We  225|write  249|x  257|←  270|D  282|for  329|•  338|Decode(sk,st  398|,resp)→R/⊥.  464|Given  492|the  508|client  534|secret
+y= 444.2  393|C
+y= 453.5  54|samplingxfromD.Vectorsaredenotedbyboldlowercase  338|key,clientstate,andserverresponse,outputtheretrieval
+y= 465.6  54|letters,e.g.,x,andmatricesbybolduppercaseletters,e.g.,M.  338|resultRorfailuresymbol⊥.
+y= 477.4  54|Wewritex[i]andM[i,j]fortheircorrespondingentries,and
+y= 486.2  318|Definition1(Correctness).  434|Whentheclientandtheserver
+y= 489.3  54|⟨x,y⟩fortheinnerproductoftwovectors.Forabinaryvector
+y= 498.0  318|executetheprotocolfaithfully,theclientshouldrecoverthe
+y= 501.3  54|b,∥b∥  87|denotesitsHammingweight.Weusex∥ytodenote
+y= 505.0  80|1
+y= 509.9  318|valuessatisfyingthequeryexceptwithnegligibleprobability.
+y= 513.2  54|concatenationandnegl(λ)todenoteanegligiblefunction.
+y= 521.9  317|Formally,akeywordPIRschemeΠhascorrectnesserrorδ(λ)
+y= 533.8  318|if,foreverydatabaseDBandeveryqueryK=(K  522|,...,K  553|),
+y= 537.6  518|1  548|Q
+y= 545.6  54|2.2  81|KeywordPrivateInformationRetrieval
+y= 547.6  328|  509|
+y= 551.5  390|(pp,st  420|,sk)←Setup(DB),
+y= 555.1  415|S
+y= 559.5  356|Q
+y= 565.1  328|  353|(cid:92)  390|(  394|q  399|,  403|st  415|)  422|←  434|Q  441|u  446|e  451|r  454|y  459|(  463|p  468|p  473|,  477|s  481|k,K),  509|
+y= 567.8  54|F  59|o  64|ll  70|ow  81|i  84|n  89|g  96|B  103|K  110|PI  119|R  128|[  131|4  136|8  141|]  144|,  149|w  156|e  163|c  167|o  172|nsi  184|d  189|er  199|a  206|g  211|e  215|n  220|e  224|ra  232|l  237|m  245|an  254|y-  262|to  270|-  273|m  280|a  285|n  290|y  410|C
+y= 569.8  318|Pr  328|  334|R=  365|V  380|:  509|  517|≥1−δ(λ).
+y= 573.1  370|Ki
+y= 577.5  328|  390|re  398|s  402|p  409|←  421|A  428|ns  437|w  443|e  448|r  451|(  455|s  459|t  467|,  471|q  476|)  480|,  509|
+y= 579.7  54|ke  63|y  68|w  75|or  84|d  89|-  92|v  97|al  104|ue  116|d  121|at  128|a  133|b  138|a  142|s  146|e  151|.L  162|e  166|t  172|K  181|,  185|V  196|b  201|e  208|t  211|h  216|e  223|k  228|e  232|y  237|wo  250|rd  260|u  266|n  271|i  273|ve  282|r  286|s  290|e  463|S
+y= 582.9  353|i=1
+y= 587.4  390|R←Decode(sk,st  470|,resp)
+y= 591.4  54|andvalueuniverse,respectively.ThedatabaseDBcontainsn  465|C
+y= 603.4  54|keywordsK  106|,...,K  138|∈K,whereeachkeywordK  258|isassoci-
+y= 607.2  102|1  132|n  253|i  317|WesaythatΠiscorrectifδ(λ)isnegligibleinλ.Asingle-
+y= 615.4  54|atedwithasetV  126|={v  154|,...,v  189|}⊆V.Themany-to-many
+y= 618.9  117|Ki  145|i,1  177|i,mi  318|keywordqueryisthespecialcaseQ=1.
+y= 627.5  54|relationshipallowsdifferentkeywordstosharethesameval-
+y= 630.8  424|ForaPPTadversaryA,letPsingle
+y= 633.4  318|Definition2(IND-CKA).
+y= 639.5  54|ues,i.e.,it  100|is  110|possible  147|thatV  179|∩V  204|̸=0/  222|for  237|i̸=  255|j.  264|We  281|use  539|Π,A
+y= 642.9  170|K  193|K
+y= 645.3  175|i  198|j  431|ℓ-QINDs  466|in  472|gle
+y= 648.6  318|denote  348|the  364|probability  412|that  484|outputs  518|1.  529|We  544|say
+y= 651.2  54|m=max  108|m  121|to  132|denote  162|th  170|e  178|max  196|i  198|mum  223|number  257|of  268|values
+y= 655.4  91|i∈[n]  115|i  463|Π  469|,A
+y= 660.6  318|thatakeywordPIRschemeΠisIND-CKAsecure(indistin-
+y= 663.4  54|associatedwithanykeyword.
+y= 672.6  318|guishableunderchosenkeywordattack)forsingle-keyword
+y= 676.3  64|KeywordPIRallowsaclienttoretrievethevaluesassoci-
+y= 684.5  318|retrievalif,forallPPTadversaryA,
+y= 688.3  54|atedwithqueriedkeywordswithoutrevealing  245|thequeryto
+y= 697.1  391|(cid:12)  436|(cid:12)
+y= 700.2  54|t  57|h  62|e  70|se  78|r  82|v  87|er  94|.  100|F  106|o  111|r  117|a  125|s  129|i  132|n  137|g  142|le  150|-  153|ke  162|y  167|w  175|o  180|r  183|d  192|q  197|u  202|e  206|r  210|y,  220|t  222|h  227|e  235|cl  243|i  246|e  250|n  255|t  261|in  269|p  274|u  279|ts  290|a
+y= 703.1  391|(cid:12)  430|1  436|(cid:12)
+y= 705.0  401|sin  409|gle−
+y= 709.0  391|(cid:12)  395|P  436|(cid:12)  442|≤negl(λ).
+y= 712.2  54|k  59|e  63|yw  76|o  81|r  84|d  92|K  103|a  107|n  112|d  121|re  128|t  131|r  135|i  138|ev  147|e  151|s  158|it  164|s  171|a  176|s  180|s  184|oc  193|ia  201|t  204|e  208|d  216|v  221|a  226|l  228|ue  241|s  245|e  250|t  255|V  267|.  273|F  278|o  283|r  290|a
+y= 715.0  391|(cid:12)  400|Π  405|,A  430|2  436|(cid:12)
+y= 715.5  261|K
+y= 742.1  304|4
+===== PAGE 5 =====
+y=  72.5  318|2.4  345|BinaryFuseFilter
+y=  74.6  63|Experiment:ℓ-QINDconj
+y=  82.4  151|Π,A
+y=  92.8  318|BinaryFuseFilter(BFF)[18]isastaticdatastructurethat
+y=  99.5  91|$
+y= 102.9  80|b←{0,1}.
+y= 104.7  69|1:  318|compactlyrepresentafixedsetbyassociatingafingerprint
+y= 114.9  80|(pp,st  110|,sk)←Setup(DB).
+y= 116.6  69|2:  106|S  318|witheachelement.ABFFconsistsofanarrayandkpublic
+y= 126.0  92|(  95|0)  129|(  132|0)  159|(  162|1)  196|(  199|1)
+y= 129.2  80|(K  102|,...,K  139|),(K  169|,...,K  206|)←A(pp,st  262|,DB),  318|hashfunctions.  383|EachelementK  452|is  462|mappedto  508|k  515|array  539|loca-
+y= 131.0  69|3:  258|S
+y= 134.5  92|1  129|ℓ  159|1  196|ℓ
+y= 141.0  263|(β)  318|tions,andthearrayisconstructedsuchthatthebitwiseXOR
+y= 144.5  80|where,  111|for  127|every  154|r  162|∈  172|[ℓ]  187|and  206|β  215|∈  225|{0,1},  255|K  277|=
+y= 147.6  263|r
+y= 152.2  80|(cid:18)  149|(cid:19)  318|oftheentriesattheselocationsequalsthefingerprintofK.
+y= 158.9  95|(  98|β  102|)  132|(  135|β  139|)
+y= 162.2  88|K  105|,...,K  157|.  318|Following[8,21],weuseanarithmeticadaptationoverZ
+y= 164.6  557|,
+y= 167.3  94|r  96|,  98|1  140|(  143|β)  554|t
+y= 170.9  131|r  133|,  135|Q
+y= 173.2  140|r
+y= 176.5  318|whichreplacesbitwiseXORwithcomponent-wiseaddition
+y= 181.2  69|4:  80|Q  91|←0/.
+y= 188.2  318|modulot  358|andtherebysupportstherecoveryofan  524|encoded
+y= 193.2  69|5:  80|forr=1toℓdo
+y= 200.1  211|(  214|b)  318|payloadassociatedwitheachkeyword.
+y= 205.2  69|6:  95|(q  108|,st  129|)←Query(pp,sk,K  221|).
+y= 206.9  104|r  119|C,r  211|r
+y= 212.2  328|SupposethedatabasecontainsnkeywordsK  506|,...,K  536|,with
+y= 217.1  69|7:  95|Q  106|←Q  128|∪{q  150|}.  502|1  532|n
+y= 218.9  147|r
+y= 222.2  408|∈ZB.AnarithmeticBFFconsistsof
+y= 224.3  318|encodedpayloadsy
+y= 229.1  69|8:  80|endfor  399|Ki  424|t
+y= 234.3  370|(cid:0)Z  381|B(cid:1)LBFF,andkpublichashfunctionsH={h
+y= 237.7  80|b′←A(pp,st  318|anarrayD∈
+y= 241.0  69|9:  140|,DB,Q).  557|:
+y= 242.8  135|S  381|t  552|j
+y= 249.7  80|return[b′=b].  367|−1]}k  392|−  398|1.
+y= 253.0  65|10:  318|K  330|→[L  408|It  418|provides  456|the  472|following  515|algorithms
+y= 256.0  351|BFF
+y= 257.2  390|j=  398|0
+y= 264.2  318|(moredetaileddescription,seeAlgorithm3):
+y= 285.5  329|•  338|BFF.Setup(n,k):ItselectsthearraylengthL  535|,sam-
+y= 289.3  54|Definition3(IND-CCKA).  166|ForaPPTadversaryA,letPconj  521|BFF
+y= 294.5  280|Π,A
+y= 297.5  338|ples  358|a  366|public  395|seed,  418|derives  451|the  467|hash  489|functions  530|H,  543|and
+y= 304.5  54|denote  85|the  101|probability  150|that  169|ℓ-QINDconj  219|outputs  253|1.  265|We  281|say
+y= 309.9  201|Π,A  338|initializesanemptyarrayD.
+y= 316.4  54|thata  81|keywordPIR  136|scheme  180|is  190|IND-CCKA  240|secure  269|(indis-
+y= 316.8  169|Π
+y= 328.4  54|tinguishableunderchosen  165|conjunctivekeywordattack)for  450|)}n
+y= 329.1  329|•  338|BFF.Encode(D,H,{(K,y  471|):  484|It  495|first  516|runs  539|S  548|←
+y= 332.4  431|i  442|Ki  459|i=1
+y= 340.4  54|conjunctiveretrievalif,foreveryPPTadversaryA,  338|BFF.MappingStep({K}n
+y= 340.8  448|,H),  470|where  498|S  507|is  517|a  525|stack  550|of
+y= 344.4  429|i  436|i=1
+y= 352.0  447|(K)}k−1
+y= 354.3  338|pairs  361|(K,p),and  414|p  424|∈{h  486|is  496|the  512|location  548|as-
+y= 357.6  130|(cid:12)  170|(cid:12)  371|i  383|i  419|i  445|j  458|i
+y= 361.5  164|1  470|j=  478|0
+y= 363.6  130|(cid:12)  170|(cid:12)
+y= 365.5  130|(cid:12)Pconj−  338|signedto  377|K  386|.Ifnova  422|lidass  447|ign  460|me  473|nt  483|isfound,itrestarts
+y= 368.0  170|(cid:12)≤negl(λ).  383|i
+y= 373.3  138|Π,A
+y= 375.5  130|(cid:12)  164|2(cid:12)
+y= 378.2  337|withafreshhashseed.Theprocedureinitializesallar-
+y= 388.0  338|rayentrieswithrandomelementsofZB
+y= 390.2  502|andprocesses
+y= 394.5  494|t
+y= 395.3  53|Thechallengequeriesmaycontaindifferentnumbersofkey-
+y= 401.9  338|Sinlast-in-first-outorder.Foreachpair(K,p),where
+y= 406.0  144|(0)  181|(1)  510|i  522|i
+y= 409.2  54|words;inparticular,Q  157|andQ  194|neednotbeequalforany
+y= 411.8  371|(K)}k−1,itsets
+y= 412.6  144|r  181|r  339|p  348|∈{h
+y= 417.4  344|i  368|j  381|i
+y= 421.2  54|r∈[ℓ].  394|j=0
+y= 436.5  430|∑
+y= 437.4  361|D[p]←y  410|−  452|D[h  471|(K)]  500|(mod  525|t).
+y= 441.0  377|i  401|Ki  468|j  481|i
+y= 449.9  424|0≤j<k
+y= 456.9  54|2.3  81|BloomFilter
+y= 457.8  419|hj(Ki)̸=pi
+y= 477.4  54|Bloom  86|filter  109|[4]  125|is  136|a  145|compact  183|probabilistic  238|data  259|structure  338|Itfinallyoutputs  409|the  424|completedarrayD  504|togetherwith
+y= 489.3  54|for  69|set  84|membership  138|testing.  171|It  181|consists  216|of  228|a  236|bit  250|vector  279|b∈  338|thehashfunctionsH.
+y= 499.6  54|{0,1}ℓBF,initially  130|set  145|to  156|zero,and  197|h  206|public  234|hash  256|functions
+y= 508.2  329|•  338|BFF.Check(D,H,K):  431|It  442|evaluates  486|the  504|k  514|hash  538|func-
+y= 513.0  54|g  63|,...,g  94|:K  111|→[ℓ  139|].Itsupportsthefollowingoperations:
+y= 516.8  59|1  87|h  130|BF
+y= 519.9  338|tionsonK  383|andreturnsthecorrespondingarrayentries
+y= 527.9  338|(cid:0)  444|(cid:1)
+y= 531.9  342|D[h  361|(K)],...,D[h  427|(K)]  449|.
+y= 535.3  74|BF.Gen(b,S):ForeveryK∈S,setb[g  231|(K)]←1forall
+y= 535.5  65|•  357|0  413|k−1
+y= 538.9  228|j
+y= 547.2  75|j∈[h],andoutputb.
+y= 551.8  329|•  338|BFF.Reconstruct(D,H,K):  454|It  464|invokes  500|BFF.Check  550|to
+y= 563.7  338|obtain  367|the  383|k  391|array  416|entries  446|associated  492|with  513|K,  526|denoted
+y= 567.8  65|•  74|BF.Check(b,K):Output1ifb[g  205|(K)]=1forall  269|j∈[h],
+y= 571.1  202|j
+y= 575.6  338|byd  360|,...,d  398|,andreturnstheircomponent-wisesum
+y= 579.7  74|andoutput0otherwise.  356|0  385|k−1
+y= 596.1  424|k−1
+y= 602.0  64|If  76|K  88|∈  99|S,  111|then  135|BF.Check(BF.Gen(S),K)  242|=  254|1;  269|hence,  425|∑d
+y= 604.7  404|y←  457|(mod  482|t).
+y= 608.3  444|j
+y= 613.7  54|Bloomfilterhasnofalsenegatives.IfK∈/S,thecheckmay
+y= 617.1  425|j=0
+y= 625.9  54|stillreturn1becausedifferentelementscansetthesameposi-
+y= 637.8  54|tions.Underthestandardindependent-hashassumption,the  328|For  345|every  370|encoded  408|keyword  446|K,the  476|assignment  525|of  537|D[p]
+y= 642.7  452|i  553|i
+y= 649.1  385|k  389|−  394|1
+y= 649.8  54|f  57|a  62|l  64|se  73|-p  81|o  86|si  93|ti  98|v  103|e  110|p  115|ro  123|b  128|a  133|bi  140|li  146|ty  156|fo  164|r  170|a  177|fi  183|l  185|t  188|e  193|r  198|c  203|ontainingselementsis  318|e  322|n  327|s  331|u  337|r  340|es  356|t  359|h  364|a  369|t  378|∑  400|D  407|[h  419|(  422|K  431|)]  443|=  456|y  473|(  477|m  485|o  490|d  498|t  501|)  505|.  517|T  523|h  528|e  532|r  536|e  540|fo  549|r  552|e  557|,
+y= 654.7  416|j  429|i  461|Ki
+y= 656.2  386|j  389|=  394|0
+y= 660.0  140|(cid:0)  193|(cid:1)  197|h
+y= 664.3  54|a  58|p  63|p  68|ro  77|x  82|im  92|a  97|t  99|e  104|ly  114|ε  130|≈  145|1  151|−  160|e  165|−  170|hs/  181|ℓ  201|.  318|B  325|F  330|F  336|.  339|R  345|eco  359|n  364|s  368|t  371|ru  380|ct  388|(  392|D  399|,  403|H  411|,K  424|)  431|=  441|y  454|.  460|T  467|hu  477|s  481|,  486|r  490|ec  499|o  504|n  509|str  519|u  524|c  529|ti  534|o  539|n  548|r  552|e  556|-
+y= 665.2  184|B  188|F
+y= 668.0  118|B  123|F  421|i  446|Ki
+y= 676.3  64|Moreover,  109|for  124|fixed  148|Bloom  179|filter  201|parameters,  252|if  261|S  273|⊆S  293|,  318|quireskarrayaccessesandk−1component-wiseadditions
+y= 679.8  266|1  289|2
+y= 688.1  54|everypositionsetinBF.Gen(S  184|)isalsosetinBF.Gen(S  289|).  318|over  339|Z.  356|For  374|a  382|keyword  421|that  441|was  460|not  477|encoded,  517|the  534|recon-
+y= 691.8  180|1  285|2  346|t
+y= 700.2  54|CAPEusesthispropertytocheckthenon-anchorquerykey-  318|structedvectormaybearbitrary.Wethereforeprependafin-
+y= 712.2  54|wordsagainsteachcandidate.  318|gerprintofK  374|toeachencodedpayloadandaccepttheresult
+y= 715.5  369|i
+y= 742.1  304|5
+===== PAGE 6 =====
+y=  74.2  54|onlyiftherecoveredfingerprintmatchesthequeriedkeyword.  328|Homomorphicoperations.Homomorphicencryptionsup-
+y=  86.1  54|Themappingandarrayassignmentproceduresaredetailedin  318|portscomputationdirectlyoverciphertexts.Weusethefol-
+y=  98.1  54|AppendixA.  318|lowingbasicoperations:
+y= 122.3  363|CtCtAdd(ct  416|,ct  432|)→Enc(m  483|+m  503|),
+y= 125.3  54|2.5  81|HomomorphicEncryption  412|0  428|1  477|0  499|1
+y= 137.2  365|CtPtMul(ct  417|,m  432|)→Enc(m  481|m  493|),
+y= 141.0  413|0  428|1  477|0  489|1
+y= 145.8  54|Our  73|constructions  131|use  149|lattice-based  204|homomorphic  265|encryp-
+y= 152.2  364|CtCtMul(ct  416|,ct  432|)→Enc(m  481|m  493|),
+y= 155.9  412|0  428|1  477|0  489|1
+y= 157.7  54|tion  74|to  86|perform  122|private  154|selection  194|and  212|filtering  248|without  283|de-
+y= 167.1  376|CtRotate(ct,i)→Enc(Rot(m,i)).
+y= 169.7  54|crypting  92|intermediate  148|results.  182|We  200|use  218|LWE,  245|RLWE,  279|and
+y= 181.6  54|RGSW[17,33,34,45]ciphertexts,togetherwithseveralstan-
+y= 191.6  318|ThefirsttwooperationsareusedextensivelyinFusePIRfor
+y= 193.6  54|dardhomomorphicoperationsandconversionprocedures.We
+y= 203.5  318|encryptedselectionandreconstruction.CAPEadditionally
+y= 205.6  54|reviewonlytheprimitivesrequiredbyourconstructions.
+y= 217.4  81|t  106|q  318|usesciphertext–ciphertextmultiplicationandrotationtoeval-
+y= 217.6  64|Let  88|and  115|denote  146|the  163|plaintext  202|and  220|ciphertext  264|moduli,
+y= 229.3  140|d  318|uateencryptedBloomscores.
+y= 229.5  54|respectively,  108|and  126|let  150|denote  181|the  197|LWE  223|dimension.  272|For  290|a
+y= 241.3  54|power-of-twopolynomialdegreeN,defineR  234|=Z[X]/(XN+  328|FHEsubroutines.Basedontheaboveciphertextrepresen-
+y= 244.8  228|t  250|t
+y= 253.2  54|1),R  79|=Z  100|[X]/(XN+1).  318|tationsandhomomorphicoperations,weusethefollowing
+y= 256.8  73|q  96|q
+y= 264.8  318|standardFHEsubroutines.Thecorrespondingpublicevalua-
+y= 269.4  64|LWEciphertexts.AnLWEsecretkeyisavectors∈Zd.
+y= 275.9  289|q  318|tionkeysareomittedfromthenotationwhentheyareclear
+y= 285.0  201|$  210|Zd
+y= 288.6  54|To  67|encrypta  108|message  146|m,sample  190|a←  224|anda  250|smallerror  318|fromcontext.
+y= 292.9  217|q
+y= 300.3  54|e,  64|and  82|compute  121|ct  147|=(a,b),  185|where  214|b=⟨a,s⟩+∆m+e
+y= 304.2  129|LWE
+y= 312.3  54|(mod  79|q),  93|∆  103|is  113|a  121|scaling  153|factor  180|determined  229|by  243|the  259|plaintext
+y= 316.5  329|•  338|BlindRotate(ct  404|,ct  421|)→ct′:GivenaLWEencryption
+y= 319.9  399|L  416|R  447|R
+y= 324.5  54|encoding.Wewrite
+y= 328.2  338|ct  353|←LWE.Enc  406|(r)andanRLWEencryptionofanac-
+y= 331.8  346|L  403|s
+y= 340.4  338|cumulator  382|P(X)=∑  423|N  429|−  435|1p  448|Xi,it  472|homomorphically  548|ro-
+y= 346.3  126|ct  151|←LWE.Enc  205|(m).  423|i=  431|0  446|i
+y= 350.2  134|LWE  201|s  338|tatestheaccumulatoraccordingtotheencryptedindex
+y= 364.1  338|r,suchthat  386|p  397|ismovedtothedesignatedcoefficientof
+y= 368.6  54|Correct  88|decryption  134|recovers  172|m  182|as  194|long  215|as  227|the  243|accumulated  391|r
+y= 374.5  338|ct′,whichwetaketobetheconstantcoefficient.
+y= 380.5  54|errorremainsbelowthedecodingbound.  346|R
+y= 392.5  64|RLWE  97|ciphertexts.  151|RLWE  183|extends  217|LWE  242|from  265|vectors
+y= 402.4  75|Z  329|•  338|SampleExtract  402|(ct  419|)→ct  451|:  457|Given  485|an  497|RLWE  529|encryp-
+y= 404.5  54|over  90|to  102|polynomials  156|over  177|R  187|.  194|An  210|RLWE  242|secret  269|key  287|is  399|j  414|R  446|L
+y= 407.9  82|q  183|q
+y= 411.7  431|(cid:0)  469|Xi(cid:1)
+y= 413.7  443|N  448|−  454|1m
+y= 416.3  54|s∈R  80|.  86|To  99|encrypta  140|plaintextpolynomialm(X)∈R  271|,sam-  338|tionct  370|←RLWE.Enc  436|∑  483|,itextractsthe  544|j-th
+y= 419.8  76|q  268|t  363|R  427|s  443|i=  451|0  467|i
+y= 428.9  94|$  338|coefficientandoutputsct  441|←LWE.Enc  494|(m  509|).Whennec-
+y= 432.3  54|plea(X)←  103|R  116|andasmallerrorpolynomiale(X),andform  435|L  491|s  507|j
+y= 435.9  109|q
+y= 439.9  338|essary,thenotationincludeskeyswitchingtotheLWE
+y= 444.3  54|ct  84|=(a(X),b(X)),whereb(X)=a(X)s(X)+∆m(X)+
+y= 448.2  62|RLWE
+y= 451.9  338|keyusedbythesubsequentcomputation.
+y= 456.2  54|e(X)  78|(mod  103|q).Wewrite
+y= 478.3  113|ct  143|←RLWE.Enc  203|(m(X)).  329|•  338|Pack({ct  384|}  391|)→{ct  434|}  443|:GivenacollectionofLWE
+y= 481.0  375|L,i  389|i
+y= 482.2  121|RLWE  200|s  423|R,β  439|β
+y= 489.6  338|ciphertexts  387|ct  407|←  421|LWE.Enc  462|(m),  486|it  496|packs  524|their  547|en-
+y= 493.0  395|L,i  459|s  473|i
+y= 500.6  54|As  68|withLWE,correctdecryption  193|recovers  230|m(X)  255|whenever  338|cryptedmessagesintooneormoreRLWEciphertexts
+y= 512.5  54|thenoiseremainswithinthecorrectnessbound.  338|underthecorrespondingRLWEkey.
+y= 524.5  64|RGSWciphertexts.RGSWextendsRLWEwithagadget
+y= 536.5  54|representationthatenablesefficientmultiplicationbetweenan
+y= 539.4  329|•  338|LWEtoRGSW(ct  411|)→C  441|:  448|Given  476|ct  492|←LWE.Enc  546|(µ)
+y= 542.7  406|L  437|µ  484|L  543|s
+y= 548.4  54|encryptedcontrolvalueandanRLWEciphertext.LetGde-
+y= 551.1  338|forµ∈{0,1},itoutputsC  448|←RGSW.Enc  510|(µ),convert-
+y= 554.7  442|µ  507|s
+y= 560.4  54|notethepublicgadgetmatrixdeterminedbyadecomposition
+y= 563.3  338|ingtheencryptedbitintotheRGSWrepresentationused
+y= 572.4  54|base.  78|AnRGSWencryptionofamessageµcanbeviewed
+y= 575.2  338|forselectorexpansioninthequery-compressedvariants..
+y= 584.1  54|asamatrixofRLWEciphertextsoftheformC  254|=Z+µG
+y= 587.7  248|µ
+y= 596.1  54|(mod  79|q),whereZconsistsofRLWEencryptionsofzeroun-
+y= 608.0  54|dersecretkeys.Wewrite
+y= 625.7  318|3  336|ComposableMulti-ValueKeywordPIR
+y= 630.1  129|C  142|←RGSW.Enc  204|(µ).
+y= 633.6  135|µ  200|s
+y= 652.2  64|Inourconstructions,µ∈{0,1},soanRGSWciphertext  318|FusePIR  357|provides  397|efficient  434|multi-value  485|keyword  525|retrieval
+y= 664.4  54|servesasanencryptedselectorbit.Itsgadgetstructureallows  318|while  344|keeping  380|encrypted  424|values  454|that  473|can  491|be  504|directly  539|used
+y= 676.3  54|theencryptedbittobemultipliedwithanRLWEciphertext  318|insubsequentcomputation.ForaqueriedkeywordK,itre-
+y= 688.3  54|withoutfirstdecrypting  153|eitheroperand.  217|RGSW  250|ciphertexts  318|trievesafixed-lengthencryptionoftheassociatedvalueset
+y= 700.2  54|are  70|used  92|internally  135|by  148|blind  173|rotation  208|and  226|explicitly  268|by  282|the  317|V  329|,paddedtothepubliccapacitym.Figure1illustratesthe
+y= 703.6  323|K
+y= 712.2  54|query-compressedvariantsforselectorexpansion.  318|mainidea,andAlgorithm1givesthecompleteprotocol.
+y= 742.1  304|6
+===== PAGE 7 =====
+y=  75.8  282|Setup
+y= 100.9  189|Padding  316|Encoding
+y= 115.8  70|Keyword-Values  304|Arithmetic  335|BFF
+y= 124.1  80|Database
+y= 157.9  83|Client  107|Query  167|Server  193|Answer  479|Client  502|Decode
+y= 171.4  104|1  196|2  317|3  399|4
+y= 172.5  489|5
+y= 211.1  387|+
+y= 248.3  257|BlindRotate
+y= 293.2  54|Figure1:OverviewofFusePIR.ForthequeriedkeywordK,theclientgeneratesencryptedqueriesforthethreeBFFpositions.
+y= 296.8  290|i
+y= 305.2  54|TheserverretrievesthecorrespondingcolumnsandappliesBlindRotatewiththeencryptedrowindices,movingtheselected
+y= 317.4  54|entriestotheconstantcoefficient.Thethreeresultingciphertextsarethenhomomorphicallyaddedtoreconstructanencryption
+y= 329.1  54|ofPayload.
+y= 333.5  97|i
+y= 359.9  54|3.1  81|Construction  318|embeddedfingerprint.Amismatchresultsin⊥;otherwise,
+y= 373.3  318|theencodedvaluecountdeterminesthereturnedsetV
+y= 373.5  538|.The
+y= 376.9  532|K
+y= 383.2  54|FusePIRfollowsthesingle-keywordPIRsyntaxdefinedin
+y= 385.5  318|encryptedpayloadobtainedduringANSWERcanalsobeused
+y= 395.2  54|Section2.2.WeinstantiatethearithmeticBFFwiththreepo-  318|directlybythesubsequentcomputationinCAPE.
+y= 407.1  54|sitionfunctionsandusethesamepairofHEkeysthroughout  318|Query-compressed  406|variant.  447|FusePIR-C  500|preserves  546|the
+y= 419.1  54|thethreeretrievalpaths.  318|database  358|representation  421|and  441|encrypted  486|reconstruction  550|of
+y= 432.3  64|Encoding.ForeachkeywordK  193|,theserverformsafixed-  318|FusePIR,butreplacesitsone-hotRLWEselectorswithcom-
+y= 435.9  190|i
+y= 444.5  54|lengthpayloadcontainingitsfingerprint,thenumberofasso-  318|pactLWEencryptionsofthecorrespondingcoordinates.The
+y= 456.3  54|ciatedvalues,andthevaluesetpaddedtom.Thefingerprint  318|serverexpandsthesecompactquerieshomomorphicallybe-
+y= 468.4  54|identifiesinvalidreconstruction,whilepaddingensuresthat  318|foreexecutingthesameretrievalprocedure.FusePIR-Cthere-
+y= 480.4  54|therepresentationandresponselengthdonotdependonthe  318|fore  338|trades  366|additional  410|server  437|computation  492|for  507|substantially
+y= 492.4  54|numberofvaluesassociatedwiththequeriedkeyword.  318|smalleruploadcommunication.  450|Itsdetailedconstructionis
+y= 505.1  318|giveninAppendixB.
+y= 505.9  64|The  83|keyword–payload  159|pairs  182|are  198|then  219|encoded  256|using  282|the
+y= 517.8  54|BFFofSection2.4,withthreepositionsassignedtoeachkey-
+y= 529.8  54|word.Wefurtherrepresentthearrayintoatwo-dimensional  318|3.2  345|CorrectnessandSecurity
+y= 541.7  54|layout  83|and  100|pack  123|each  144|column  178|into  197|polynomial  247|coefficients.
+y= 552.6  317|WenowshowthatFusePIRsatisfiesthecorrectnessandse-
+y= 553.7  54|Thisdesignallowstheservertoselectthetargetcolumnho-
+y= 564.5  318|curity  345|definitions  392|of  404|Section  438|2.2.  458|Full  478|proofs  508|are  524|given  550|in
+y= 565.6  54|momorphicallyandthenextractthedesiredentryusingthe
+y= 576.5  318|AppendixD.
+y= 577.6  54|encryptedrowindex.
+y= 591.0  64|QueryandAnswer.Theclientgeneratesencryptedrow
+y= 596.4  318|Theorem1(Correctness).  429|Assumingthecorrectnessofthe
+y= 603.0  54|and  73|column  109|selectors  150|for  166|the  183|three  209|BFF  232|positions  274|of  287|K
+y= 608.2  318|BFFconstructionandtheunderlyinghomomorphicencryp-
+y= 615.0  54|(Lines  83|2–6  103|of  115|QUERY  150|in  162|Algorithm  208|1).  223|The  243|server  271|evalu-
+y= 620.2  318|tion  337|procedures,  388|the  404|construction  458|FusePIR  497|in  509|Algorithm  553|1
+y= 627.0  54|atesthethreeselectionsoverthepackedBFFrepresentation
+y= 632.1  318|achievescorrectness.
+y= 638.9  54|andobtainsthecorrespondingencryptedentries(Lines2–9
+y= 650.9  54|ofANSWER).AllthreeselectionsusethesameHEkeys,al-  318|Proofsketch.ForeachofthethreeBFFpositionsofaqueried
+y= 662.8  54|lowingtheselectedentriestobeaddeddirectlyattheserver  318|keywordK,theencryptedcolumnselection,blindrotation,
+y= 674.8  54|(Lines10–12).BytheBFFreconstructionproperty,theirsum  318|and  336|sample  369|extraction  413|recover  447|an  460|encryption  507|of  519|the  535|corre-
+y= 686.5  54|encryptsthecompletepayloadassociatedwithK.Theresult  318|spondingentryD[h  401|(K)].Sinceallthreeretrievalpathsuse
+y= 691.6  396|a
+y= 698.7  54|isthenpackedandreturnedtotheclient.  318|compatible  367|keys,  392|these  417|ciphertexts  466|can  485|be  499|added  527|directly.
+y= 712.1  64|Decoding.Theclientdecryptstheresponseandverifiesthe  318|By  334|the  350|BFF  372|reconstruction  435|property,  474|∑2  496|D[h  515|(K)]  536|=  547|y
+y= 716.7  481|a=0  511|a  552|K
+y= 742.1  304|7
+===== PAGE 8 =====
+y=  73.8  54|Algorithm1FusePIR
+y=  90.5  68|SETUP(1λ,DB={Ki(cid:55)→VKi  211|}}n
+y=  91.6  160|={vi,1,...,vi,mi  229|)  315|7:  326|q:=(q0,q1,q2),stC←K.
+y=  95.6  219|i=1
+y= 103.3  57|1:  68|(D,H,fp)←BFF.Setup(n,3).  315|8:  326|return(q,stC).
+y= 112.1  326|ANSWER(stS,q)
+y= 112.7  57|2:  68|LBFF←|D|,m←max  153||VKi  166||.
+y= 115.9  140|i∈[n]
+y= 122.2  57|3:  68|Selectpublicparameters(N,d,t,q),andgenerateHEkeyssk=(sL,sR).  315|1:  326|ParsestS=({Pc,b}c,b,pp).
+y= 131.7  57|4:  68|SelectR,CsuchthatRC≥LBFF,R≤N.  315|2:  326|fora=0to2do
+y= 141.1  57|5:  68|fori=1tondo  315|3:  337|Parse(qcol,qrow)fromq.
+y= 145.2  364|a  380|a
+y= 147.4  287|Bpay.
+y= 150.6  57|6:  80|PadVKi  105|tomvaluesandsetyKi  177|←fp(Ki)∥mi∥vi,1∥···∥vi,m∈Z  315|4:  337|forb=1  369|toB  382|paydo
+y= 153.8  287|t
+y= 160.1  57|7  61|:  68|e  71|nd  82|fo  88|r  382|∑C  392|−  396|1  439|c  442|o  445|l
+y= 161.9  315|5  319|:  349|A  355|c  359|c  373|←  401|C  406|tP  415|t  418|M  425|u  429|l(  435|q  447|[c  453|]  455|,P  470|(X)).
+y= 166.1  146|(cid:0)  214|(cid:1)  363|a  366|,  367|b  388|c  391|=  395|0  439|a  462|c  465|,  466|b
+y= 169.4  68|(D  76|,H  87|)  92|←BFF.Encode  150|D,H,{(Ki,yKi  197|)}n
+y= 169.5  57|8  61|:  218|.  315|6  319|:  349|A  355|c  359|c  363|′  373|←B  388|l  390|i  392|n  396|d  401|R  406|o  410|ta  418|t  421|e(  427|q  432|r  434|o  437|w  442|,  445|A  451|c  454|c  466|)  469|.
+y= 173.4  204|i=1  363|a  366|,  367|b  432|a  458|a,  463|b
+y= 179.0  57|9  61|:  68|foru  85|=  93|L  112|to  120|R  124|C  131|−  138|1do  431|(Acc′
+y= 181.8  98|BFF  315|7  319|:  349|c  353|t  359|,b←SampleExtract  455|).
+y= 186.7  124|B  356|a  427|0  447|a,b
+y= 189.9  54|1  58|0  62|:  80|D  86|[u]  96|←  106|0∈  119|Z  128|pa  133|y.
+y= 193.0  124|t  315|8  319|:  337|end  352|f  354|o  358|r
+y= 199.4  54|11:  68|endfor
+y= 201.1  315|9:  326|endfor
+y= 208.8  54|12:  68|forc=0toC−1do  312|10:  326|forb=1toBpaydo
+y= 216.7  402|(cid:0)  494|(cid:1)
+y= 218.3  54|13:  80|forb=1toBpaydo  312|11:  338|ctpay,b←CtCtAdd  406|CtCtAdd(ct  447|0,b,ct  465|1,b),ct  498|.
+y= 222.8  486|2,b
+y= 228.9  54|1  58|4  62|:  92|P  104|(X)←∑R  137|−  141|1D[r+cR][b]Xr.  326|e  330|n  334|d  341|f  343|or
+y= 231.7  96|c  99|,b  312|1  316|2  320|:
+y= 232.9  133|r=  140|0
+y= 238.4  54|1  58|5  62|:  80|end  95|f  97|o  101|r  401|B  405|pa  410|y).
+y= 239.0  312|1  316|3  320|:  326|re  333|s  336|p  342|←  352|Pack({ctpay,b}
+y= 243.0  401|b=  409|1
+y= 247.9  54|16:  68|endfor  312|14:  326|returnresp.
+y= 257.3  54|17:  68|pp←(H,fp,R,C,N,d,t,q).  326|DECODE(sk,stC,resp)
+y= 266.8  54|18:  68|stS←({Pc,b}c,b,pp).
+y= 269.0  315|1:  326|K←stC.
+y= 276.3  54|19:  68|return(pp,stS,sk).
+y= 278.5  315|2:  326|foreachpackedciphertextct  436|∈respdo
+y= 281.5  419|pay,β
+y= 287.1  68|QUERY(pp,sk,K)  315|3:  337|y[β]←DecsR  382|(ct  406|).
+y= 291.0  392|pay,β
+y= 297.9  57|1:  68|q←[].  315|4:  326|endfor
+y= 307.4  57|2:  68|fora=0to2do  315|5:  326|Recover(f,mK,v1,...,vm)←y.
+y= 316.3  315|6:  326|if  334|f̸=fp(K)then
+y= 316.8  57|3:  80|ua←ha(K),  129|ra←uamodR,  189|ca←⌊ua/R⌋.
+y= 324.8  192|C
+y= 326.3  57|4  61|:  80|e  91|←  101|(0  108|,  111|.  114|.  117|.  120|,  123|0  127|,  130|1,  137|0,  144|.  148|..  154|,  157|0)  166|∈  173|{  177|0  181|,1  188|}  196|,  200|w  206|i  208|t  210|h  216|th  222|e  228|1  234|at  242|i  244|n  248|d  252|e  255|x  261|c  265|a.  315|7  319|:  337|r  341|e  344|turn⊥.
+y= 328.9  83|c  86|a
+y= 334.3  105|c  107|o  111|l  120|r  122|o  125|w  143|(cid:0)  261|(cid:1)
+y= 335.7  57|5  61|:  80|q  89|=  97|(q  113|,  116|q  130|)  135|=  147|R  152|L  156|W  164|E  169|.E  176|n  180|c  191|(  194|e  203|)  206|,  210|L  213|W  221|E  226|.  229|En  238|c  248|(  251|r  258|)  264|.  315|8  319|:  326|end  340|i  342|f
+y= 338.4  84|a  105|a  120|a  184|sR  197|ca  242|s  244|L  254|a
+y= 345.2  57|6:  68|endfor  315|9:  326|return{v1,...,vmK  388|}.
+y= 375.7  54|(mod  78|t),sotheclientrecoverstheencodedpayloadandhence
+y= 387.7  54|V  65|.  71|The  89|remaining  134|failure  163|events  192|arise  214|from  237|BFF  258|construc-
+y= 391.2  59|K
+y= 399.8  54|tionandtheunderlyinghomomorphicoperations;theircom-
+y= 403.9  322|1  341|1  360|1  370|1  390|1  409|1  428|1  444|1  454|0  463|1  483|1  492|1  512|1  531|1  541|0  551|1
+y= 411.8  54|bined  80|probability  129|is  139|negligible.  186|The  206|full  224|proof  249|is  260|given  286|in
+y= 423.7  54|AppendixD.1.
+y= 440.3  54|Theorem2(Security).  152|AssumingtheIND-CPAsecurityof
+y= 452.1  54|theunderlyingLWEandRLWEencryptionschemes,FusePIR
+y= 464.1  54|isIND-CKAsecureforsingle-keywordretrieval.
+y= 471.2  318|Figure2:Bloom-filtermembershiptestinCAPE.Thecan-
+y= 480.7  54|Proofsketch.Intheℓ-queryexperimentofDefinition2,the
+y= 483.1  318|didate  347|Bloom  379|filter  402|contains  440|the  457|positions  498|contributed  548|by
+y= 492.9  54|challenge-dependentpartofeachFusePIRqueryconsistsof
+y= 494.8  318|K  328|,K  343|,K  357|.Forthequeryset{K  446|,K  461|}(left),allrequiredposi-
+y= 498.6  324|1  339|2  353|3  442|2  457|3
+y= 504.9  54|the  70|encrypted  113|column  147|and  165|row  183|selectors  222|for  237|the  253|three  276|BFF
+y= 506.8  318|tionsareset,yieldings=τ.For{K  462|,K  476|}(right),atleastone
+y= 510.6  457|2  472|4
+y= 516.8  54|positions.  97|We  113|considera  158|standard  196|hybrid  225|argument  266|that  284|re-
+y= 518.8  318|requiredpositionisunset(red),yieldings<τandrejecting
+y= 528.8  54|placesthesechallengeciphertextsoneatatime.Replacing
+y= 530.9  318|thecandidate.
+y= 540.7  54|acolumnselectorisindistinguishablebyRLWEIND-CPA
+y= 552.7  54|security,whilereplacingarowselectorisindistinguishableby
+y= 562.5  318|thesubsequentevaluationtotheatmostmvaluesassociated
+y= 564.6  54|LWEIND-CPAsecurity.Sincethehybridsequencecontains
+y= 574.4  318|withK
+y= 576.6  54|onlypolynomiallymanytransitions,thetotaldistinguishing  348|.EachcandidatevalueisaugmentedwithaBloomfil-
+y= 578.2  344|1
+y= 588.6  54|advantageremainsnegligible.Thus,  318|terdescribingthekeywordsassociatedwiththatvalue.There-
+y= 598.4  318|mainingquerykeywordsK  429|,...,K
+y= 601.4  127|(cid:12)  172|(cid:12)  463|arerepresentedbyasin-
+y= 602.1  425|2  455|Q
+y= 607.4  127|(cid:12)  166|1(cid:12)
+y= 609.4  127|(cid:12)Psingle−
+y= 611.8  172|(cid:12)≤negl(λ).  318|glefixed-lengthencryptedBloomvector,allowingtheserver
+y= 619.3  127|(cid:12)  136|Π,A  166|2(cid:12)
+y= 622.5  318|toevaluatethemjointlyforeveryanchorcandidate.
+y= 635.1  54|ThefullhybridargumentappearsinAppendixD.2.
+y= 654.3  318|4.1  345|Construction
+y= 662.4  54|4  72|CAPE:ConjunctiveKeywordPIRwithEn-
+y= 676.3  72|cryptedBloomScores  318|CAPEfollowstheconjunctivekeywordPIRsyntaxofSec-
+y= 688.3  318|tion2.2andreusesFusePIRforencryptedanchorretrieval.
+y= 700.2  54|CAPE  87|extends  125|FusePIR  168|to  183|conjunctive  237|queries  274|K  286|=  318|ThemainadditionalcomponentisaBloomfilterassociated
+y= 712.0  54|(K  68|,...,K  100|).ItusesK  151|astheanchorkeywordandrestricts  318|witheachdatabasevalue.Itsproceduralspecificationisgiven
+y= 715.7  64|1  94|Q  144|1
+y= 742.1  304|8
+===== PAGE 9 =====
+y=  73.8  54|Algorithm2CAPE
+y=  86.0  92|(cid:16)  233|(cid:17)
+y=  90.5  97|1λ,DB={Ki(cid:55)→VKi  215|}}n
+y=  91.8  70|SETUP  164|={vi,1,...,vi,mi  326|ANSWER(stS,q)
+y=  95.6  223|i=1
+y= 103.4  315|1:  326|Parse(qanc,qBF)fromq.
+y= 105.5  57|1:  68|SelectpublicBloom-filterparametersℓBFandG={g1,...,gh}.
+y= 114.9  57|2  61|:  68|m  75|←  85|m  91|ax  112||V  124||  127|.  315|2  319|:  326|re  332|s  335|p  351|←  361|F  366|u  370|s  373|e  377|P  382|I  385|R  390|.  392|A  398|ns  406|w  411|e  415|r(  421|s  424|t  431|,q  438|a  441|n  445|c).
+y= 118.1  99|i∈  104|[n  109|]  118|K  340|an  346|c  427|S
+y= 119.5  122|i  374|B  379|F  386|}m
+y= 124.4  57|3  61|:  68|f  70|or  80|ea  87|ch  96|v  101|∈  109|(cid:83)  115|n  125|V  138|do  315|3  319|:  326|P  330|a  333|r  336|se  345|{  349|(  352|ctv  364|,  368|c  371|t  383|)  403|fr  408|o  412|m  420|r  423|e  427|s  430|p  444|.
+y= 127.0  129|Ki  362|j  375|j  391|j  393|=1  434|an  441|c
+y= 127.9  115|i=  121|1
+y= 132.6  326|ctscore,j←CtCtMul(qBF,ctB  423|F).
+y= 133.9  57|4:  80|Sv←{Ki:v∈VKi  138|}.  315|4:
+y= 137.8  419|j
+y= 143.3  57|5  61|:  80|b  89|←BF.Gen(0,Sv).  315|5  319|:  326|for  337|r  343|=  351|0  356|t  359|o  365|log  379|ℓ  392|−  399|1  405|d  410|o
+y= 146.0  84|v  375|2  383|BF
+y= 149.6  405|(cid:0)  510|(cid:1)
+y= 152.8  57|6  61|:  68|end  82|f  84|or  315|6  319|:  337|c  341|t  360|j←  374|C  379|tC  388|tA  397|d  401|d  409|c  413|tscore,j,CtRotate(ctscore,j,2r)  514|.
+y= 155.6  344|sco  353|re  358|,
+y= 162.3  57|7:  68|fori=1tondo  315|7:  326|endfor
+y= 169.2  146|)}m  351|(cid:0)  415|(cid:1)
+y= 171.7  57|8:  79|V  85|C  89|APE←{(vi,j,bvi,j  158|i  164|.  315|8:  326|resp←  355|{ctvj  372|,ctscore,j}m  418|.
+y= 175.4  84|K
+y= 177.4  87|i  154|j=  161|1  405|j=1
+y= 181.2  57|9:  68|endfor  315|9:  326|returnresp.
+y= 190.5  68|DBCAPE←{Ki(cid:55)→V  136|C  140|APE}n
+y= 190.7  54|10:  167|.  326|DECODE(sk,stC,resp)
+y= 194.3  135|K  139|i  157|i=1
+y= 202.5  54|11:  68|(pp  85|,stF  99|,sk)←FusePIR.Setup(1λ,DBCAPE).  354|anc,τ)fromstC,(resp  434|,{ctscore,j}m
+y= 203.0  315|1:  326|Parse(st  481|)fromresp.
+y= 205.7  80|F  94|S  354|C  425|anc  471|j=1
+y= 211.9  54|1  58|2  62|:  68|p  73|p  79|←  88|(  92|p  96|p  105|,  108|ℓ  120|,  123|G  129|,  132|m).  315|2  319|:  325|V  339|←  348|F  353|u  357|se  364|P  370|IR  378|.Decode(sk,st  426|anc,resp  463|).
+y= 215.2  100|F  111|B  116|F  330|K  426|C  453|anc
+y= 219.9  96|F  333|1
+y= 221.4  54|1  58|3  62|:  68|s  71|t  80|←  90|s  93|t  100|.  315|3  319|:  326|if  332|V  346|=  354|⊥  362|th  369|e  372|n
+y= 224.0  74|S  96|S  336|K
+y= 227.9  340|1
+y= 230.8  54|1  58|4  62|:  68|r  72|e  75|tu  82|rn  92|(  95|p  99|p  104|,  107|s  110|t  117|,  120|s  123|k)  130|.  361|⊥
+y= 233.5  113|S  315|4  319|:  337|r  341|et  347|u  352|r  355|n  368|.
+y= 242.1  315|5:  326|endif
+y= 247.3  70|QUERY(pp,sk,K=(K1,...,KQ))
+y= 251.5  315|6:  326|R←0/.
+y= 258.4  57|1  61|:  68|(  71|q  85|,  88|s  91|t  94|a  97|n  100|c  104|)  109|←  118|F  123|u  127|s  131|e  134|P  140|I  142|R  148|.  150|Q  156|u  160|e  164|ry  171|(  174|p  179|p  188|,sk,K1).
+y= 261.0  75|a  78|nc  94|C  183|F  315|7  319|:  326|for  339|j  343|=  351|1  357|to  365||  367|V  379||  383|d  387|o
+y= 263.6  371|K
+y= 267.8  57|2  61|:  68|b  83|←  92|B  98|F  103|.  105|G  111|e  115|n  119|(  122|0  126|,  129|{  133|K  142|,  145|.  148|.  151|.  154|,  157|K  167|}  171|)  174|.  375|1
+y= 270.5  72|q  75|r  77|y  138|2  162|Q  315|8  319|:  337|s  346|←  355|D  361|e  365|c  375|(  378|c  382|t  396|e,j).
+y= 273.1  341|j  369|sR  385|s  388|c  390|or
+y= 277.3  57|3  61|:  68|τ  73|←  83|∥  87|b  100|∥  107|.
+y= 279.9  91|q  94|ry  104|1  315|9  319|:  337|i  340|f  344|s  352|=  360|τ  366|t  369|h  373|e  376|n
+y= 282.5  348|j
+y= 285.3  72|B  76|F
+y= 286.8  57|4  61|:  68|q  82|←  92|R  97|L  101|W  109|E  114|.  116|E  121|n  126|c  129|s  136|(  139|b  143|q  147|r  149|y  152|)  155|.  312|1  316|0  320|:  350|R  357|←  366|R  372|∪  379|{  383|v  390|}  394|.
+y= 291.3  132|R  387|j
+y= 294.8  108|B  112|F
+y= 296.2  57|5  61|:  68|q  74|←  83|(  87|q  101|,  104|q  116|)  119|.
+y= 298.8  91|a  94|n  97|c  312|1  316|1  320|:  338|e  342|n  346|d  352|if
+y= 304.2  99|anc,τ).
+y= 305.7  57|6:  68|stC←(st
+y= 309.5  99|C  312|12:  326|endfor
+y= 315.2  57|7:  68|return(q,stC).
+y= 317.8  312|13:  326|returnR.
+y= 348.9  54|inAlgorithm2.  318|andretainsthoseequaltothelocallystoredthresholdτ.
+y= 362.3  64|Encoding.  112|We  130|use  147|a  156|public  186|Bloom-filter  240|length  269|ℓ  286|=  318|Query-compressedvariant.AppendixCpresentsCAPE-C,
+y= 366.1  273|BF
+y= 374.1  54|ℓ(n,ε  85|),determinedbythenumberofkeywordsnandthe  318|whichreplaces  382|the  397|FusePIR  435|anchorquerywithFusePIR-C
+y= 378.0  75|BF
+y= 386.3  54|target  80|false-positive  138|probability  186|ε  200|.  207|For  224|each  246|value  272|v,  282|the  318|whilepreservingtheencryptedBloomquery,Bloom-score
+y= 390.0  191|BF
+y= 397.5  318|computation,andresponseformatofCAPE.
+y= 398.2  54|server  82|constructs  127|a  135|Bloom  167|filter  190|over  211|all  225|keywords  268|associ-
+y= 410.2  54|ated  74|with  95|v.  106|Each  129|keyword  168|payload  203|then  224|pairs  247|every  272|value
+y= 422.1  54|withitscorrespondingBloomfilterbeforebeingencodedby
+y= 428.7  318|4.2  345|CorrectnessandSecurity
+y= 434.1  54|FusePIR.AllBloomfiltersandqueryBloomvectorsharethe
+y= 445.8  54|samelengthℓ  117|,ensuringthattheencryptedBloomscorecan
+y= 449.7  107|BF  317|WenowshowthatCAPEsatisfiesthecorrectnessandsecurity
+y= 458.0  54|be  67|evaluatedthroughhomomorphicinnerproducts.  267|Conse-
+y= 462.5  318|definitionsofSection2.2.
+y= 470.0  54|quently,retrievingthepayloadofananchorkeywordyields
+y= 481.9  54|notonlyitscandidatevaluesbutalsoencryptedmembership
+y= 484.7  318|Theorem  362|3  372|(Correctness).  436|Assuming  481|the  499|correctness  550|of
+y= 493.9  54|informationforevaluatingthesecandidatesagainstremaining
+y= 496.5  317|FusePIR  356|and  374|the  390|underlying  437|homomorphic  497|evaluation  543|pro-
+y= 505.8  54|querykeywords.  318|cedures,andassumingnegligibleBloomfilterfalse-positive
+y= 519.1  64|QueryandAnswer.Foraquery(K  216|,...,K  247|),theclient  318|probability,theconstructionCAPEinAlgorithm2achieves
+y= 522.9  211|1  241|Q
+y= 531.1  54|usesFusePIRtoquerytheanchorkeywordK  242|.Ratherthan  318|correctnessforconjunctivekeywordretrieval.
+y= 534.8  238|1
+y= 543.3  54|generatingaseparatemembershipqueryforeveryremaining
+y= 555.0  54|keyword,itinsertsK  143|,...,K  177|intooneBloomfilteranden-  318|Proofsketch.ByTheorem1,CAPEcorrectlyobtainstheen-
+y= 558.7  138|2  168|Q
+y= 567.2  54|cryptstheresultingfixed-lengthvector.ItsHammingweight  318|cryptedcandidatesassociatedwiththeanchorkeywordK  557|,
+y= 570.4  553|1
+y= 579.1  54|τisretainedlocallyastheacceptancethreshold.Afterrecon-  318|exceptwithnegligibleprobability.Foreachcandidatev  541|,the
+y= 582.2  538|j
+y= 591.1  54|structingtheencryptedanchorpayload,theservercompares  318|decrypted  361|Bloom  392|score  417|is  428|s  438|=⟨b  469|,b  482|⟩,and  509|τ=∥b  548|∥  557|.
+y= 594.1  433|j  458|qry  479|j  538|qry  553|1
+y= 603.0  54|this  73|encrypted  116|query  143|representation  205|with  227|the  243|Bloom  275|filter  414|binary,s  455|≤τ.  486|v  497|∈(cid:84)Q  527|V
+y= 604.6  318|Since  344|both  365|vectors  398|are  476|If  540|,the
+y= 607.9  450|j  492|j  515|i=1  533|Ki
+y= 615.0  54|attached  91|to  102|each  124|candidate.  169|The  189|comparison  239|produces  279|one  532|s  542|=τ.
+y= 616.5  318|no-false-negative  391|property  429|of  441|Bloom  472|filters  498|implies
+y= 619.9  537|j
+y= 626.9  54|encryptedscorepercandidate,measuringhowmanyquery  318|Conversely,s  378|<τcertifiesthatatleastonerequiredBloom
+y= 631.9  373|j
+y= 638.9  54|positions  94|are  110|present  143|in  155|the  171|candidate  213|filter.  239|As  253|illustrated  318|positionisabsent,sov  411|isrejected.Anon-matchingcandidate
+y= 643.8  406|j
+y= 650.9  54|in  65|Figure  95|2,a  114|matching  155|candidate  198|reaches  232|the  247|threshold  288|τ,  318|cansatisfys  374|=τonlythroughBloomfilterfalsepositives.
+y= 655.8  369|j
+y= 662.8  54|whereasanymissingrequiredpositiongivesasmallerscore.  318|Acrossatmostmcandidates,thiseventhasnegligibleprob-
+y= 674.8  54|Only  78|the  94|encrypted  138|candidate  180|values  210|and  228|these  253|scores  282|are  318|abilityunderthechosenBloomfilterparameters.  522|Together
+y= 686.7  54|returnedtotheclient.  318|withthenegligibleerrorsofFusePIRandthehomomorphic
+y= 700.2  64|Decoding.Theclientfirstverifiesanddecodestheanchor  318|evaluation,CAPEsatisfiesDefinition1.Thedetailedanalysis
+y= 712.2  54|payloadasinFusePIR.Itthendecryptsthecandidatescores  318|isgiveninAppendixD.3.
+y= 742.1  304|9
+===== PAGE 10 =====
+y=  74.1  54|Theorem4(Security).  149|AssumingthatFusePIRisIND-CKA  318|bit  332|length  361|ℓ  370|.  377|We  393|report  421|preprocessing  481|time,online  533|server
+y=  77.5  364|V
+y=  85.9  54|secureandthattheunderlyingRLWEencryptionschemeis  318|time,querysize,andresponsesize.Forconjunctiveretrieval,
+y=  97.8  54|IND-CPAsecure,CAPEisIND-CCKAsecureforconjunctive  318|weadditionallyvarythenumberofqueriedkeywordsQ.
+y= 109.8  54|keywordretrieval.
+y= 126.5  318|5.2  345|Single-KeywordRetrieval
+y= 129.2  54|Proofsketch.ACAPEqueryconsistsofaFusePIRanchor
+y= 141.4  54|queryandoneRLWEciphertextencryptingthefixed-length
+y= 147.4  317|We  336|evaluate  376|MMK,  408|FusePIR,  449|and  469|FusePIR-C  520|over  542|n  551|∈
+y= 153.4  54|Bloomvectorofallnon-anchorkeywords.Wefirstreplace
+y= 157.7  318|{128,256,512},m∈{213,214,215},andvaluelengthsfrom
+y= 165.3  54|theanchorqueriesusingtheIND-CKAsecurityofFusePIR
+y= 171.3  317|16to1024bits.  385|Table2summarizesbothsetupandonline
+y= 177.3  54|andthenreplacetheencryptedBloomqueriesusingtheIND-
+y= 183.2  318|performance.
+y= 189.2  54|CPAsecurityofRLWE.Astandardhybridargumenttherefore
+y= 195.4  318|Preprocessingtime.MMKconsistentlyhasthelowestpre-
+y= 201.2  54|makesthetwochallengetranscriptscomputationallyindistin-
+y= 207.4  318|processing  364|cost,whereas  422|FusePIR  460|incurs  488|additionaloffline
+y= 213.1  54|guishable.
+y= 219.4  318|overheadfromconstructingthearithmetic-BFFrepresenta-
+y= 225.1  64|Moreover,the  124|Bloom  155|filterciphertext  221|has  238|the  253|same  277|pub-
+y= 231.3  318|tionofthemulti-valuepayloads.FusePIR-Ccloselyfollows
+y= 237.0  54|licformatregardlessofthenumberofnon-anchorkeywords,
+y= 243.3  318|FusePIR,withonlyasmalladditionalcostassociatedwiththe
+y= 249.0  54|whilethethresholdτremainsintheprivateclientstate.Hence,
+y= 255.3  318|query-compression  399|setup.  426|Forshortvalues,the  513|preprocess-
+y= 260.9  54|theargumentalsoholdswhenthetwochallengequeriescon-
+y= 267.2  318|ingtimeofbothFusePIRvariantsremainsrelativelystable
+y= 272.9  54|taindifferentnumbersofkeywords.Therefore,
+y= 279.2  318|as  330|n  339|and  357|m  368|increase.  407|As  422|the  438|value  464|length  493|grows,  523|however,
+y= 289.2  130|(cid:12)  170|(cid:12)
+y= 291.1  318|t  321|h  326|e  333|e  337|n  342|la  349|r  352|g  357|e  362|d  369|p  374|a  379|y  384|l  387|o  392|a  396|d  404|m  411|a  416|k  421|e  425|s  432|t  434|h  439|e  446|e  451|f  454|fe  462|ct  471|of  482|d  487|a  492|ta  499|b  504|a  508|s  512|e  519|s  523|i  526|ze  537|m  545|o  550|r  554|e
+y= 295.2  130|(cid:12)  164|1  170|(cid:12)
+y= 297.2  139|co  146|nj−
+y= 301.2  130|(cid:12)  133|P  170|(cid:12)  176|≤negl(λ),
+y= 303.1  318|p  323|r  326|on  336|o  341|u  346|n  351|c  356|e  360|d  365|,  370|p  375|a  380|rt  386|i  389|c  393|u  398|la  406|rl  412|y  419|f  423|o  428|r  433|l  436|a  441|rg  449|e  453|r  459|m  466|.O  479|v  483|e  488|ra  496|ll  501|,  506|F  512|u  517|s  521|e  525|P  531|IR  543|a  548|n  553|d
+y= 307.1  130|(cid:12)  138|Π  144|,A  164|2  170|(cid:12)
+y= 315.0  318|FusePIR-Ctradehigherofflinepreprocessingfortheironline
+y= 326.4  54|as  66|required  103|by  116|Definition  161|3.  172|The  191|full  208|proof  233|is  243|given  269|in  280|Ap-  318|computationandcommunicationbenefits,whilequerycom-
+y= 338.3  54|pendixD.4.  318|pressionintroduceslittleadditionalpreprocessingoverhead.
+y= 351.1  318|Onlineperformance.FusePIRachievestheshortestonline
+y= 363.1  318|servertimethroughouttheevaluation,outperformingMMK
+y= 366.2  54|5  72|ImplementationandEvaluation
+y= 374.9  318|by4.08×–12.50×.Asthepayloadincreases,theperformance
+y= 387.1  318|gap  336|typically  375|widens,reflecting  451|the  467|advantage  511|of  523|avoiding
+y= 390.1  54|WeimplementFusePIR,CAPE,andtheirquery-compressed
+y= 399.0  318|homomorphic  378|keyword  416|matching  457|on  471|the  486|encoded  523|database
+y= 402.1  54|variantsFusePIR-CandCAPE-CintheMPC4J[20]frame-
+y= 411.0  318|andinsteaddirectlyretrievingthedesiredBFFentries.
+y= 414.0  54|workwithnativehomomorphicencryptionroutines.Wereport
+y= 423.2  328|FusePIR-Cintroducesadditionalserver-sidecomputation
+y= 426.0  54|offlinepreprocessingtime,onlineservertime,querycommu-
+y= 434.9  318|forexpandingthecompressedquery,andistherefore3.20×–
+y= 438.0  54|nication,andresponsecommunication.MMK[48]isusedas
+y= 446.9  318|5.52×slowerthanFusePIR.Evenwiththisadditionalcost,
+y= 449.9  54|thesingle-keywordbaseline,whileBKPIR[48]isusedfor
+y= 459.1  318|FusePIR-CremainsfasterthanMMKinalmostallevaluated
+y= 461.9  54|conjunctiveretrieval.
+y= 471.0  318|settings.TheseresultsshowthatFusePIRfavorsonlinecom-
+y= 483.0  318|putationefficiency,whereasFusePIR-Cshiftspartofthisgain
+y= 488.6  54|5.1  81|ExperimentalSetup
+y= 494.9  318|towardreducingquerycommunication.
+y= 507.1  318|Querycommunication.Thequerysizeisessentiallyindepen-
+y= 509.0  54|OurimplementationusesMicrosoftSEAL[40]withtheBFV
+y= 518.9  318|dentofmandthevaluelength.MMKrequiresapproximately
+y= 520.9  54|homomorphicencryptionscheme.Wesettheplaintextmodu-
+y= 531.1  318|768.25KiB,whileFusePIRusesapproximately2304.97KiB
+y= 532.6  54|lustot=65537andusethedefaultconfigurationinSEALto
+y= 543.0  318|duetoitsthreeencryptedselections.FusePIR-Creducesthe
+y= 544.8  54|achieve128-bitsecurity.Thedegreeofthepolynomialmod-
+y= 555.0  318|query  344|to  356|about  381|0.16KiB,corresponding  485|to  496|more  520|than  541|four
+y= 556.8  54|ulus  74|is  84|N  94|=16384.  135|The  154|BFF  175|uses  196|three  220|hash  241|positions  281|per
+y= 566.9  318|ordersofmagnitudereductionrelativetoFusePIR.
+y= 568.7  54|keywordandthefingerprintlengthis40bits.ForBloomfilters
+y= 580.7  54|usedinCAPEandCAPE-C,wefixtheBloomfilterparame-
+y= 592.6  54|terswithineachexperimentsothattheencryptedBloomquery  318|5.3  345|ConjunctiveRetrieval
+y= 604.6  54|hadafixedlength.Forconjunctiveexperiments,wesetthe
+y= 614.8  259|=2−20.  317|WenextevaluateBKPIR,CAPE,andCAPE-Cforconjunctive
+y= 616.5  54|false-positiveprobabilityoftheBloomfiltertoε
+y= 620.2  247|BF
+y= 626.6  318|retrieval.Weconsidern∈{128,256,512},m∈{29,210,211},
+y= 628.5  64|All  81|experiments  136|are  153|conducted  199|on  214|a  223|machine  263|running
+y= 640.5  54|Ubuntu22.04.5LTSwithLinuxkernel6.8.0.Themachine  318|and  336|Q  347|∈  357|{3,5,10,20,30}.  429|All  446|values  476|are  492|16  507|bits,  527|and  546|the
+y= 652.4  54|has  71|an  83|IntelCore  128|i9-14900K  175|CPU  198|and62  229|GiB  249|ofmemory.  318|globalvalueuniverseofBKPIRissetto|V|=64m.Table3
+y= 664.4  54|ThesoftwareenvironmentusesOpenJDK17.0.19,Apache  318|reportsthecompletesetupandonlinemeasurements.
+y= 676.3  54|Maven3.6.3,GCC/G++11.4.0,andCMake3.22.1.  318|Preprocessing  382|time.  407|BKPIR  440|has  457|the  472|lowest  502|preprocessing
+y= 688.3  64|Wegeneratemulti-valuekeyworddatabases.Aconfigura-  318|cost,whereasCAPErequiresadditionalofflineworktocon-
+y= 700.0  54|tiondenotedbyn×m×ℓ  164|-bitcontainsnkeywords,where  318|structthe  359|Bloom  390|filters  416|and  434|encode  466|the  481|enlarged  519|candidate
+y= 703.6  158|V
+y= 712.0  54|eachkeywordisassociatedwithmvaluesandeachvaluehas  318|payloads.  361|CAPE-C  401|remains  437|close  461|to  473|CAPE,  505|showing  543|that
+y= 742.1  301|10
+===== PAGE 11 =====
+y= 122.6  171|Table2:Setupandonlineperformanceforsingle-keywordretrieval.
+y= 134.7  153|16-bitand64-bit  399|256-bitand1024-bit
+y= 144.7  74|Parameter  170|Setup  240|Online  326|Parameter  422|Setup  492|Online
+y= 149.2  132|Scheme  384|Scheme
+y= 154.3  57|ValueLen.  99|n  114|m  166|Prep.(s)  197|QueryTime(s)  249|QuerySize(KiB)  309|ValueLen.  351|n  366|m  418|Prep.(s)  449|QueryTime(s)  501|QuerySize(KiB)
+y= 164.2  134|MMK  172|3.64  212|43.75  266|768.25  386|MMK  424|4.20  462|349.77  518|768.25
+y= 173.1  112|213  131|FusePIR  171|23.08  214|7.26  264|2304.97  364|213  383|FusePIR  422|25.33  464|53.49  516|2304.97
+y= 183.2  127|FusePIR-C  171|25.50  212|40.08  270|0.16  379|FusePIR-C  422|29.00  462|214.16  522|0.16
+y= 192.8  134|MMK  172|3.47  212|43.48  266|768.25  386|MMK  424|4.83  462|698.94  518|768.25
+y= 202.0  95|128  112|214  131|FusePIR  171|24.04  212|10.65  264|2304.97  347|128  364|214  383|FusePIR  422|26.57  462|102.58  516|2304.97
+y= 211.8  127|FusePIR-C  171|26.85  212|54.49  270|0.16  379|FusePIR-C  422|29.12  462|396.41  522|0.16
+y= 221.3  134|MMK  172|3.62  212|86.30  266|768.25  386|MMK  424|6.31  460|1394.63  518|768.25
+y= 230.2  112|215  131|FusePIR  171|24.34  212|17.53  264|2304.97  364|215  383|FusePIR  422|29.23  462|202.10  516|2304.97
+y= 240.4  127|FusePIR-C  171|27.95  212|71.44  270|0.16  379|FusePIR-C  422|32.41  462|759.83  522|0.16
+y= 249.9  134|MMK  172|3.98  212|87.36  266|768.25  386|MMK  424|5.12  462|697.52  518|768.25
+y= 258.8  112|213  131|FusePIR  171|23.76  212|10.61  264|2304.97  364|213  383|FusePIR  422|26.17  464|84.03  516|2304.97
+y= 268.9  127|FusePIR-C  171|26.64  212|48.48  270|0.16  379|FusePIR-C  422|29.05  462|299.71  522|0.16
+y= 278.4  134|MMK  172|3.85  212|86.34  266|768.25  386|MMK  424|6.64  460|1387.66  518|768.25
+y= 287.7  64|16-bit  95|256  112|214  131|FusePIR  171|24.70  212|15.73  264|2304.97  314|256-bit  347|256  364|214  383|FusePIR  422|28.90  462|166.84  516|2304.97
+y= 297.5  127|FusePIR-C  171|26.81  212|65.16  270|0.16  379|FusePIR-C  422|32.29  462|568.24  522|0.16
+y= 307.0  134|MMK  172|4.00  210|172.60  266|768.25  386|MMK  424|9.34  460|2751.93  518|768.25
+y= 315.9  112|215  364|215
+y= 316.5  131|FusePIR  171|24.77  212|25.90  264|2304.97  383|FusePIR  422|33.27  462|318.42  516|2304.97
+y= 326.0  127|FusePIR-C  171|27.37  212|98.80  270|0.16  379|FusePIR-C  422|36.82  460|1102.90  522|0.16
+y= 335.5  134|MMK  172|4.72  210|175.59  266|768.25  386|MMK  424|7.09  460|1412.83  518|768.25
+y= 344.5  112|213  131|FusePIR  171|24.15  212|14.05  264|2304.97  364|213  383|FusePIR  422|29.65  462|141.90  516|2304.97
+y= 354.6  127|FusePIR-C  171|26.26  212|71.59  270|0.16  379|FusePIR-C  422|33.44  462|568.83  522|0.16
+y= 364.1  134|MMK  172|4.57  210|172.49  266|768.25  386|MMK  422|10.09  460|2809.91  518|768.25
+y= 373.4  95|512  112|214  347|512  364|214
+y= 373.6  131|FusePIR  171|24.78  212|22.62  264|2304.97  383|FusePIR  422|35.73  462|271.63  516|2304.97
+y= 383.1  127|FusePIR-C  171|27.14  212|96.75  270|0.16  379|FusePIR-C  422|39.02  460|1098.11  522|0.16
+y= 392.6  134|MMK  172|4.91  210|345.94  266|768.25  386|MMK  422|15.54  460|5622.93  518|768.25
+y= 401.6  112|215  131|FusePIR  171|27.50  212|38.54  264|2304.97  364|215  383|FusePIR  422|48.65  462|533.44  516|2304.97
+y= 411.7  127|FusePIR-C  171|31.01  210|171.06  270|0.16  379|FusePIR-C  422|53.18  460|2157.08  522|0.16
+y= 421.6  134|MMK  172|3.67  212|88.09  266|768.25  386|MMK  424|6.28  460|1402.29  518|768.25
+y= 430.6  112|213  131|FusePIR  171|30.79  212|19.33  264|2304.97  364|213  383|FusePIR  422|27.63  462|197.02  516|2304.97
+y= 440.7  127|FusePIR-C  171|33.64  212|77.28  270|0.16  379|FusePIR-C  422|30.28  462|761.27  522|0.16
+y= 450.2  134|MMK  172|3.80  210|176.16  266|768.25  386|MMK  424|9.21  460|2800.09  518|768.25
+y= 459.5  95|128  112|214  131|FusePIR  171|25.01  212|34.78  264|2304.97  347|128  364|214  383|FusePIR  422|32.35  462|400.62  516|2304.97
+y= 469.2  127|FusePIR-C  171|28.39  210|113.36  270|0.16  379|FusePIR-C  422|36.97  460|1490.42  522|0.16
+y= 478.7  134|MMK  172|4.18  210|349.65  266|768.25  386|MMK  422|15.03  460|5575.51  518|768.25
+y= 487.7  112|215  131|FusePIR  171|25.50  212|53.92  264|2304.97  364|215  383|FusePIR  422|42.46  462|794.01  516|2304.97
+y= 497.8  127|FusePIR-C  171|29.27  210|214.03  270|0.16  379|FusePIR-C  422|46.78  460|2947.70  522|0.16
+y= 507.3  134|MMK  172|4.16  210|175.02  266|768.25  386|MMK  424|9.73  460|2787.41  518|768.25
+y= 516.2  112|213  131|FusePIR  171|25.48  212|27.49  264|2304.97  364|213  383|FusePIR  422|31.32  462|316.69  516|2304.97
+y= 526.3  127|FusePIR-C  171|28.82  212|98.86  270|0.16  379|FusePIR-C  422|35.81  460|1104.11  522|0.16
+y= 535.9  134|MMK  172|4.45  210|349.22  266|768.25  386|MMK  422|15.23  460|5585.45  518|768.25
+y= 545.1  64|64-bit  95|256  112|214  131|FusePIR  171|25.46  212|44.39  264|2304.97  312|1024-bit  347|256  364|214  383|FusePIR  422|39.83  462|637.79  516|2304.97
+y= 554.9  127|FusePIR-C  171|29.13  210|152.88  270|0.16  379|FusePIR-C  422|45.45  460|2176.86  522|0.16
+y= 564.4  134|MMK  172|5.15  210|695.74  266|768.25  386|MMK  422|27.50  458|11169.47  518|768.25
+y= 573.3  112|215  131|FusePIR  171|25.94  212|83.64  264|2304.97  364|215  383|FusePIR  422|58.19  460|1248.64  516|2304.97
+y= 583.4  127|FusePIR-C  171|28.40  210|299.58  270|0.16  379|FusePIR-C  422|62.99  460|3989.72  522|0.16
+y= 593.0  134|MMK  172|5.04  210|352.19  266|768.25  386|MMK  422|15.91  460|5595.95  518|768.25
+y= 601.9  112|213  131|FusePIR  171|25.11  212|37.90  264|2304.97  364|213  383|FusePIR  422|44.28  462|527.95  516|2304.97
+y= 612.0  127|FusePIR-C  171|27.83  210|170.87  270|0.16  379|FusePIR-C  422|48.71  460|2130.46  522|0.16
+y= 621.5  134|MMK  172|5.72  210|706.99  266|768.25  386|MMK  422|27.59  458|11115.50  518|768.25
+y= 630.8  95|512  112|214  131|FusePIR  171|26.84  212|75.51  264|2304.97  347|512  364|214  383|FusePIR  422|66.38  460|1059.88  516|2304.97
+y= 640.6  127|FusePIR-C  171|30.81  210|303.52  270|0.16  379|FusePIR-C  422|73.54  460|3939.38  522|0.16
+y= 650.1  134|MMK  172|7.05  208|1402.60  266|768.25  386|MMK  422|52.14  458|22232.44  518|768.25
+y= 659.0  112|215  131|FusePIR  171|28.24  210|136.93  264|2304.97  364|215  383|FusePIR  420|110.58  460|2087.81  516|2304.97
+y= 669.1  127|FusePIR-C  171|32.19  210|568.69  270|0.16  379|FusePIR-C  420|122.08  460|7505.61  522|0.16
+y= 742.1  301|11
+===== PAGE 12 =====
+y=  80.9  177|Table3:Setupandonlineperformanceforconjunctiveretrieval.
+y=  93.2  56|Parameter  120|SetupPhase  338|OnlinePhase
+y= 102.2  91|Scheme  183|Q=3  254|Q=5  324|Q=10  397|Q=20  470|Q=30
+y= 106.8  60|n  76|m  125|Prep.(s)  519|Resp.(MiB)
+y= 111.9  159|Time(s)  187|Query(MiB)  229|Time(s)  258|Query(MiB)  301|Time(s)  331|Query(MiB)  374|Time(s)  404|Query(MiB)  448|Time(s)  477|Query(MiB)
+y= 121.7  92|BKPIR  131|2.77  161|261.91  200|2.25  232|442.52  270|3.75  304|886.49  344|7.50  375|1802.11  415|15.00  448|2610.71  488|22.51  531|3.00
+y= 130.4  75|29
+y= 131.0  93|CAPE  129|15.16  161|450.10  200|3.00  232|445.00  270|3.00  304|450.61  344|3.00  377|441.64  417|3.00  450|456.55  490|3.00  531|0.09
+y= 140.3  90|CAPE-C  129|22.58  161|450.50  200|0.75  232|485.40  270|0.75  304|454.01  344|0.75  377|472.32  417|0.75  450|459.77  490|0.75  531|0.09
+y= 149.7  92|BKPIR  131|3.20  161|524.69  200|2.25  232|872.08  270|3.75  302|1737.63  344|7.50  375|3440.02  415|15.00  448|5273.15  488|22.51  531|6.00
+y= 158.7  56|128  74|210  93|CAPE  129|29.13  161|848.35  200|3.00  232|839.50  270|3.00  304|849.68  344|3.00  377|845.78  417|3.00  450|786.97  490|3.00  531|0.19
+y= 168.4  90|CAPE-C  129|36.14  161|853.90  200|0.75  232|870.64  270|0.75  304|877.32  344|0.75  377|858.30  417|0.75  450|857.19  490|0.75  531|0.19
+y= 177.7  92|BKPIR  131|4.17  159|1055.25  200|2.25  230|1723.07  270|3.75  302|3427.51  344|7.50  375|6927.15  415|15.00  446|10440.26  488|22.51  529|12.00
+y= 186.4  74|211  93|CAPE  129|54.32  159|1332.78  200|3.00  230|1329.73  270|3.00  302|1345.04  344|3.00  375|1338.56  417|3.00  448|1332.29  490|3.00  531|0.38
+y= 196.4  90|CAPE-C  129|62.87  159|1337.51  200|0.75  230|1378.38  270|0.75  302|1362.13  344|0.75  375|1371.94  417|0.75  448|1536.61  490|0.75  531|0.38
+y= 206.2  92|BKPIR  131|2.74  161|523.95  200|2.25  232|880.07  270|3.75  302|1714.47  344|7.50  375|3434.87  415|15.00  448|5215.41  488|22.51  531|3.00
+y= 214.9  75|29  93|CAPE  129|16.39  161|474.70  200|3.00  232|472.62  270|3.00  304|475.42  344|3.00  377|479.64  417|3.00  450|475.59  490|3.00  531|0.09
+y= 224.8  90|CAPE-C  129|23.08  161|480.82  200|0.75  232|480.38  270|0.75  304|475.94  344|0.75  377|482.89  417|0.75  450|479.41  490|0.75  531|0.09
+y= 234.2  92|BKPIR  131|4.13  159|1084.01  200|2.25  230|1732.43  270|3.75  302|3434.03  344|7.50  375|6865.42  415|15.00  446|10409.68  488|22.51  531|6.00
+y= 243.2  56|256  74|210  93|CAPE  129|30.93  161|997.51  200|3.00  232|987.24  270|3.00  304|997.34  344|3.00  377|996.06  417|3.00  448|1016.75  490|3.00  531|0.19
+y= 252.9  90|CAPE-C  129|37.27  159|1030.68  200|0.75  230|1027.36  270|0.75  302|1003.81  344|0.75  375|1110.29  417|0.75  448|1021.29  490|0.75  531|0.19
+y= 262.2  92|BKPIR  131|5.81  159|2122.19  200|2.25  230|3569.38  270|3.75  302|6860.46  344|7.50  373|13701.57  415|15.00  446|20805.30  488|22.51  529|12.00
+y= 270.9  74|211
+y= 271.6  93|CAPE  129|59.26  159|1802.18  200|3.00  230|1808.77  270|3.00  302|1839.52  344|3.00  375|1811.22  417|3.00  448|1818.42  490|3.00  531|0.38
+y= 280.9  90|CAPE-C  129|68.82  159|1823.15  200|0.75  230|1849.65  270|0.75  302|1862.38  344|0.75  375|1875.25  417|0.75  448|1845.07  490|0.75  531|0.38
+y= 290.7  92|BKPIR  131|4.36  159|1050.55  200|2.25  230|1729.46  270|3.75  302|3429.78  344|7.50  375|6837.49  415|15.00  446|10409.62  488|22.51  531|3.00
+y= 299.4  75|29  93|CAPE  129|31.75  161|606.23  200|3.00  232|617.03  270|3.00  304|622.89  344|3.00  377|633.56  417|3.00  450|624.74  490|3.00  531|0.09
+y= 309.3  90|CAPE-C  129|39.24  161|617.72  200|0.75  232|655.04  270|0.75  304|642.29  344|0.75  377|636.65  417|0.75  450|632.17  490|0.75  531|0.09
+y= 318.7  92|BKPIR  131|5.85  159|2098.35  200|2.25  230|3446.91  270|3.75  302|6976.75  344|7.50  373|13673.54  415|15.00  446|20817.04  488|22.51  531|6.00
+y= 327.7  56|512  74|210  93|CAPE  127|139.20  159|1091.16  200|3.00  230|1146.59  270|3.00  302|1078.10  344|3.00  375|1080.64  417|3.00  448|1101.86  490|3.00  531|0.19
+y= 337.4  90|CAPE-C  127|145.22  159|1099.19  200|0.75  230|1098.18  270|0.75  302|1100.52  344|0.75  375|1176.95  417|0.75  448|1144.13  490|0.75  531|0.19
+y= 346.7  92|BKPIR  131|9.01  159|4172.11  200|2.25  230|6889.49  270|3.75  300|13898.51  344|7.50  373|27803.97  415|15.00  446|41590.21  488|22.51  529|12.00
+y= 355.4  74|211
+y= 356.1  93|CAPE  127|324.32  159|2294.85  200|3.00  230|2298.45  270|3.00  302|2380.70  344|3.00  375|2287.40  417|3.00  448|2286.94  490|3.00  531|0.38
+y= 365.4  90|CAPE-C  127|336.81  159|2319.60  200|0.75  230|2259.12  270|0.75  302|2388.72  344|0.75  375|2304.98  417|0.75  448|2367.77  490|0.75  531|0.38
+y= 396.3  54|querycompressionintroducesonlylimitedadditionalsetup  318|from  342|2.25  363|MiB  386|at  397|Q  407|=  418|3  427|to  439|22.51  465|MiB  488|at  499|Q  509|=  520|30,  535|while
+y= 408.3  54|overhead.Thegapbecomesmorepronouncedasthedatabase  318|CAPEremainsatapproximately3MiBandCAPE-Catap-
+y= 420.2  54|grows,particularly  134|with  156|increasing  201|m,because  249|the  265|Bloom-  318|proximately0.75MiB.Consequently,CAPEhasacommu-
+y= 432.2  54|filtermetadataisattachedtoeverycandidatevalue.Thus,the  318|nicationdisadvantageonlyforverysmallconjunctions;asQ
+y= 444.1  54|maincostofCAPEisshiftedtotheofflinephase,whilethe  318|grows,itsfixed-sizequerybecomesincreasinglyfavorable.
+y= 456.1  54|compressedvariantdoesnotmateriallyincreasethisprepro-  318|AtQ=30,CAPEandCAPE-Creducethequerycommunica-
+y= 468.0  54|cessingoverhead.  318|tionofBKPIRbyapproximately7.5×and30×,respectively.
+y= 480.0  318|CAPE-Cthereforeremovesmostoftheuploadoverheadof
+y= 481.6  54|Online  86|performance.  148|The  167|mostnotable  222|difference  266|among
+y= 492.0  318|the  334|anchor  365|retrieval  401|without  436|sacrificing  482|the  498|Q-independent
+y= 493.6  54|the  70|schemes  107|is  117|theirdependence  189|on  203|the  218|numberofqueried
+y= 505.4  54|keywords.ForsmallQ,BKPIRcanremaincompetitive,and  318|queryformat.
+y= 517.3  241|Q=3.  287|Q
+y= 517.5  54|is  64|faster  90|in  101|several  132|of  144|the  160|smallest  196|settings  231|at  272|As
+y= 524.3  318|Responsecommunication.The  453|responseexhibits  527|adiffer-
+y= 529.5  54|increases,  97|however,  136|its  149|server  177|time  199|grows  227|rapidly,  261|whereas
+y= 536.3  318|ent  333|scaling  365|behavior  404|from  427|the  442|query.  471|As  485|shown  515|in  526|Table  552|3,
+y= 541.5  54|CAPE  84|and  102|CAPE-C  142|remain  174|nearly  203|unchanged  250|for  266|a  274|fixed
+y= 548.3  318|the  333|BKPIR  366|response  405|grows  433|withthe  469|globalvalue  523|universe,
+y= 553.4  54|database.ThistrendisevidentinFigure3(a)andholdsacross
+y= 560.2  318|reaching3,6,and12MiBforthethreeevaluatedvaluesof
+y= 565.4  54|theconfigurationsreportedinTable3.
+y= 572.0  318|m.CAPEandCAPE-C,incontrast,returnonlythebounded
+y= 579.0  64|Theadvantagebecomessubstantialoncetheconjunction
+y= 584.1  318|anchorcandidatesetanditsencryptedscores,reducingthe
+y= 591.0  54|contains  91|more  116|keywords.  161|At  175|Q=10,CAPE  240|and  258|CAPE-C
+y= 595.9  318|responsebyapproximately32×.Theirresponsesizesarealso
+y= 602.9  54|outperform  104|BKPIR  138|across  167|all  181|evaluated  223|database  262|settings,
+y= 607.8  318|unaffectedbynandQ.Hence,thecandidate-firstdesignpro-
+y= 614.9  54|by  67|up  81|to  92|6.47×  121|and  139|6.34×,respectively.  224|At  237|Q=30,these
+y= 620.0  318|videsasubstantialresponsereductionindependentlyofthe
+y= 626.6  54|gainsincreasetoasmuchas18.89×and18.19×.CAPE-C
+y= 632.0  318|numberofconjunctiveterms.
+y= 638.8  54|closelytracksCAPEthroughouttheexperiments,indicating
+y= 650.7  54|that  72|anchor-query  130|compression  184|adds  206|relatively  248|little  270|server  328|Overall,BKPIRiscompetitiveforconjunctionswithfew
+y= 662.7  54|overheadcomparedwiththeremainingconjunctiveevalua-  318|queriedkeywords,butitsquerysizeandonlineservertime
+y= 674.6  54|tion.Thesemeasurementsconfirmthattheonlinecostofour  318|increasewithQ.CAPEkeepsbothcostsnearlyindependent
+y= 686.4  54|constructionsiseffectivelydecoupledfromQ.  318|ofQ,andCAPE-Cfurtherreducestheuploadcommunication.
+y= 700.2  54|Querycommunication.Figure3(b)showsacorresponding  318|Bothschemesalsoreducetheresponsebyprocessingonly
+y= 712.2  54|differenceinuploadcommunication.BKPIR’squerygrows  318|theanchorcandidatesetratherthantheglobalvalueuniverse.
+y= 742.1  301|12
+===== PAGE 13 =====
+y=  78.2  136|BKPIR  367|BKPIR
+y=  82.3  87|40000
+y=  86.5  136|CAPE  367|CAPE
+y=  92.3  332|20
+y=  97.5  87|35000  136|CAPE-C  367|CAPE-C
+y= 101.6  321|)BiM(
+y= 105.9  76|)s(
+y= 112.6  87|30000
+y= 120.2  76|emit  332|15
+y= 127.7  87|25000  321|ezis
+y= 143.1  76|revreS  87|20000
+y= 147.8  332|10
+y= 149.9  321|yreuQ
+y= 158.0  87|15000
+y= 173.1  87|10000
+y= 175.6  336|5
+y= 188.2  92|5000
+y= 203.4  105|0  336|0
+y= 208.1  118|3  130|5  158|10  218|20  279|30  349|3  362|5  393|10  457|20  522|30
+y= 217.3  131|Number  171|of  182|queried  219|keywords  265|Q  368|Number  408|of  420|queried  457|keywords  503|Q
+y= 242.6  144|(a)Onlineservertime  402|(b)Querysize
+y= 257.2  54|Figure3:OnlineperformanceforconjunctiveretrievalasthenumberofqueriedkeywordsQincreases.Thedatabaseisfixedto
+y= 267.8  54|512×211×16-bit.
+y= 298.5  54|6  72|Conclusion  318|CAPE-9CE1.Theartifactalsoincludesinstructionsforrepro-
+y= 312.1  318|ducingtheexperimentalresultsreportedinthispaper.
+y= 322.4  54|WepresentedCAPE,acandidate-firstconstructionforcon-
+y= 334.4  54|junctivekeywordPIR.Ratherthanevaluatingaconjunction
+y= 340.4  318|References
+y= 346.4  54|overtheglobalvalueuniverse,CAPErestrictstheevaluation
+y= 358.3  54|tothevaluesassociatedwithonequeriedkeyword.Toenable
+y= 364.4  323|[1]  339|IshtiyaqueAhmad,YuntianYang,DivyakantAgrawal,
+y= 370.3  54|thisdesign,wedevelopedFusePIR,amulti-valuekeyword
+y= 376.3  339|AmrElAbbadi,andTrinabhGupta.  488|Addra:Metadata-
+y= 382.2  54|PIR  73|scheme  107|whose  136|encrypted  179|output  208|remains  243|available  282|for
+y= 388.3  339|privatevoicecommunicationoverfullyuntrustedinfras-
+y= 394.2  54|subsequenthomomorphiccomputation.CAPEfurtheraggre-
+y= 400.2  339|tructure.  377|InOSDI.USENIXAssociation,2021.
+y= 406.1  54|gatestheremainingquerykeywordsintoasinglefixed-length
+y= 417.9  54|encryptedBloomquery,achievinganO(m)responsewhile
+y= 420.4  323|[2]  339|Asra  365|Ali,  384|Tancrède  428|Lepoint,  466|Sarvar  497|Patel,  524|Mariana
+y= 430.0  54|keepingthequerysizeandservercomputationindependentof
+y= 432.3  339|Raykova,PhillippSchoppmann,KarnSeth,andKevin
+y= 442.0  54|thenumberofqueriedkeywordsandhidingthisnumber.We
+y= 444.3  339|Yeo.  364|Communication-computation  487|trade-offs  530|in  541|PIR.
+y= 454.0  54|alsointroducedFusePIR-CandCAPE-C,whichreduceup-
+y= 456.2  339|In  353|USENIX  393|Security  431|Symposium,  483|pages  511|1811–1828.
+y= 465.9  54|loadcommunicationatthecostofadditionalserver-sidecom-
+y= 468.2  339|USENIXAssociation,2021.
+y= 477.9  54|putation.Ourimplementationconfirmsthesetradeoffs,with
+y= 489.8  54|FusePIRimprovingsingle-keywordretrievaloverMMKand  323|[3]  339|Sebastian  382|Angel,  413|Hao  433|Chen,  460|Kim  482|Laine,  511|and  529|Srinath
+y= 501.8  54|CAPEprovidingsubstantiallybetterscalabilitythanBKPIR  339|T.V.Setty.  386|PIRwithcompressedqueriesandamortized
+y= 513.7  54|asthenumberofconjunctivetermsincreases.  339|queryprocessing.  413|InIEEESymposiumonSecurityand
+y= 523.9  339|Privacy,pages962–979.IEEEComputerSociety,2018.
+y= 541.2  54|EthicalConsiderations
+y= 544.3  323|[4]  339|BurtonH.Bloom.  414|Space/timetrade-offsinhashcoding
+y= 556.2  339|withallowableerrors.  430|Commun.ACM,13(7):422–426,
+y= 565.1  54|Thisworkdevelopseffectivesolutionsforconjunctivekey-
+y= 568.2  339|1970.
+y= 577.1  54|wordprivateinformationretrieval,encouraginggreateratten-
+y= 589.0  54|tiontotheprivacyofdatabasequeries.Theexperimentsin  323|[5]  339|NikitaBorisov,GeorgeDanezis,andIanGoldberg.DP5:
+y= 601.0  54|thispaperareallbasedon  165|syntheticallygenerateddatasets  339|Aprivatepresenceservice.  449|Proc.Priv.EnhancingTech-
+y= 613.0  54|anddonotcontainanypersonalorillegalinformation.  281|We  339|nol.,2015(2):4–24,2015.
+y= 624.9  54|firmlybelievethatourresearchwasdoneethically.
+y= 632.3  323|[6]  339|AlexanderBurton,SamirJordanMenon,andDavidJ.
+y= 644.3  339|Wu.  361|Respire:  398|High-ratePIRfordatabaseswithsmall
+y= 652.4  54|OpenScience
+y= 656.2  339|records.  375|InCCS,pages1463–1477.ACM,2024.
+y= 676.3  54|We  70|fully  93|support  126|the  142|principles  185|of  197|open  220|science  253|and  271|repro-  323|[7]  339|DavidCash,StanislawJarecki,CharanjitS.Jutla,Hugo
+y= 688.3  54|ducible  88|research.  129|We  146|have  169|made  195|the  212|source  242|code,  267|experi-  339|Krawczyk,Marcel-CatalinRosu,andMichaelSteiner.
+y= 700.2  54|mental  85|configurations,  149|and  168|scripts  198|used  220|in  232|this  251|paper  277|pub-  339|Highly-scalablesearchablesymmetricencryptionwith
+y= 711.5  54|liclyavailableathttps://anonymous.4open.science/r/  339|supportforbooleanqueries.  459|InCRYPTO(1),volume
+y= 742.1  301|13
+===== PAGE 14 =====
+y=  73.9  76|8042ofLectureNotesinComputerScience,pages353–  318|[20]  339|AlibabaGroup.  405|MPC4J:Amulti-partycomputationli-
+y=  85.4  401|https://github.com/alibaba-edu/
+y=  86.1  76|373.Springer,2013.  339|braryforjava.
+y=  97.4  339|mpc4j.
+y= 105.4  59|[8]  76|SofíaCeliandAlexDavidson.  206|Callmebymyname:
+y= 117.4  76|Simple,practicalprivateinformationretrievalforkey-  318|[21]  339|Meng  367|Hao,  390|Weiran  423|Liu,  443|Liqiang  479|Peng,  505|Cong  531|Zhang,
+y= 129.3  75|wordqueries.  133|InCCS,pages4107–4121.ACM,2024.  339|Pengfei  375|Wu,  394|Lei  412|Zhang,  444|Hongwei  485|Li,  500|and  518|Robert  550|H.
+y= 140.3  339|Deng.  368|Practicalkeywordprivateinformationretrieval
+y= 148.6  59|[9]  76|MelissaChaseandSenyKamara.  209|Structuredencryption
+y= 152.3  339|fromkey-to-indexmappings.  456|InUSENIXSecurity2025,
+y= 160.3  181|InASIACRYPT2010(LNCS,
+y= 160.6  76|andcontrolleddisclosure.
+y= 164.3  339|pages3397–3416.USENIXAssociation,2025.
+y= 172.3  75|Vol.6477),pages577–594.Springer,2010.
+y= 182.6  318|[22]  339|Alexandra  392|Henzinger,  442|Emma  479|Dauterman,  533|Henry
+y= 191.8  54|[10]  76|Benny  105|Chor,Niv  149|Gilboa,and  199|Moni  225|Naor.  253|Private  284|in-
+y= 194.6  339|Corrigan-Gibbs,andNickolaiZeldovich.  510|Privateweb
+y= 203.8  76|formationretrievalbykeywords.  209|IACRCryptol.ePrint
+y= 206.5  339|search  369|with  390|tiptoe.  424|In  436|SOSP,  465|pages  492|396–416.  534|ACM,
+y= 215.5  75|Arch.,1998:3,1998.
+y= 218.5  339|2023.
+y= 235.0  54|[11]  76|Benny  106|Chor,  132|Eyal  155|Kushilevitz,  207|Oded  233|Goldreich,  279|and
+y= 236.9  318|[23]  339|Alexandra  389|Henzinger,  439|Matthew  482|M.  503|Hong,  533|Henry
+y= 247.0  76|MadhuSudan.  140|Privateinformationretrieval.  262|J.ACM,
+y= 248.8  339|Corrigan-Gibbs,SarahMeiklejohn,andVinodVaikun-
+y= 258.9  75|45(6):965–981,1998.
+y= 260.8  339|tanathan.Oneserverforthepriceoftwo:Simpleandfast
+y= 272.7  339|single-serverprivateinformationretrieval.  513|InUSENIX
+y= 278.2  54|[12]  76|Henry  108|Corrigan-Gibbs,  180|Alexandra  230|Henzinger,  279|and
+y= 284.5  339|SecuritySymposium,pages3889–3905.USENIXAsso-
+y= 290.2  76|Dmitry  108|Kogan.  145|Single-server  202|private  233|information  284|re-
+y= 296.6  339|ciation,2023.
+y= 302.1  76|trievalwithsublinearamortizedtime.  228|InEUROCRYPT
+y= 313.9  75|(2),volume  125|13276  154|ofLecture  199|Notes  225|in  236|ComputerSci-  318|[24]  339|AlexanderHoover,SarvarPatel,GiuseppePersiano,and
+y= 325.8  76|ence,pages3–33.Springer,2022.  339|Kevin  367|Yeo.  394|Plinko:  427|Single-server  484|PIR  503|with  525|efficient
+y= 338.9  339|updatesviainvertibleprfs.  446|InEUROCRYPT(6),volume
+y= 345.4  54|[13]  76|RezaCurtmola,JuanA.Garay,SenyKamara,andRafail
+y= 350.7  339|15606ofLectureNotesinComputerScience,pages3–
+y= 357.3  76|Ostrovsky.  121|Searchablesymmetricencryption:improved
+y= 362.8  339|33.Springer,2025.
+y= 369.3  76|definitions  122|and  140|efficient  176|constructions.  239|In  251|CCS  273|2006,
+y= 381.2  76|pages79–88.ACM,2006.  318|[25]  339|SenyKamara  398|andTarikMoataz.  478|Boolean  515|searchable
+y= 393.2  339|symmetricencryptionwithworst-casesub-linearcom-
+y= 400.5  54|[14]  76|Alex  102|Davidson,  148|Gonçalo  189|Pestana,  227|and  248|Sofía  276|Celi.
+y= 405.1  339|plexity.  372|InEUROCRYPT(3),volume10212ofLecture
+y= 412.5  76|Frodopir:Simple,scalable,single-serverprivateinfor-
+y= 416.9  339|NotesinComputerScience,pages94–124,2017.
+y= 424.4  76|mation  109|retrieval.  157|Proc.  185|Priv.  210|Enhancing  259|Technol.,
+y= 436.4  76|2023(1):365–383,2023.  318|[26]  339|JiayiKangandLeonardSchild.  473|Pirouette:Queryeffi-
+y= 447.4  339|cientsingle-serverPIR.  435|Proc.Priv.EnhancingTechnol.,
+y= 455.7  54|[15]  76|Daniel  108|Demmler,  153|Peter  178|Rindal,  212|Mike  239|Rosulek,  279|and
+y= 459.4  339|2026(2):215–241,2026.
+y= 467.6  76|Ni  89|Trieu.  119|PIR-PSI:  159|scaling  191|private  222|contact  255|discovery.
+y= 477.7  318|[27]  339|EyalKushilevitzandRafailOstrovsky.  502|Replicationis
+y= 479.4  75|Proc.Priv.EnhancingTechnol.,2018(4):159–178,2018.
+y= 489.7  339|not  356|needed:  391|Single  420|database,computationally-private
+y= 498.9  54|[16]  76|Craig  102|Gentry  133|and  151|Zulfikar  187|Ramzan.  230|Single-database
+y= 501.7  339|informationretrieval.  428|InProceedings38thannualsym-
+y= 510.8  76|privateinformationretrievalwithconstantcommunica-
+y= 513.4  339|posiumonfoundationsofcomputerscience,pages364–
+y= 522.8  76|tionrate.  116|InICALP,volume3580ofLectureNotesin
+y= 525.6  339|373.IEEE,1997.
+y= 534.5  75|ComputerScience,pages803–815.Springer,2005.
+y= 543.9  318|[28]  339|AlbertKwon,DavidLazar,SrinivasDevadas,andBryan
+y= 554.0  54|[17]  76|Craig  103|Gentry,  137|Amit  162|Sahai,  191|and  210|Brent  237|Waters.  280|Ho-  339|Ford.  365|Riffle:Anefficientcommunicationsystemwith
+y= 566.0  76|momorphic  129|encryption  179|from  205|learning  245|with  269|errors:  339|strong  369|anonymity.  424|Proc.  450|Priv.  474|Enhancing  522|Technol.,
+y= 578.0  76|Conceptually-simpler,asymptotically-faster,attribute-  339|2016(2):115–134,2016.
+y= 589.9  76|based.  105|InCRYPTO(1),volume8042ofLectureNotes
+y= 598.2  318|[29]  339|ShangqiLai,SikharPatranabis,AminSakzad,JosephK.
+y= 601.6  76|inComputerScience,pages75–92.Springer,2013.
+y= 610.1  339|Liu,DebdeepMukhopadhyay,RonSteinfeld,Shifeng
+y= 621.2  54|[18]  76|ThomasMuellerGrafandDanielLemire.  247|Binaryfuse  339|Sun,DongxiLiu,andCongZuo.  474|Resultpatternhiding
+y= 633.1  76|filters:  105|Fastandsmallerthan  196|xorfilters.  243|ACM  267|J.  278|Exp.  339|searchableencryptionforconjunctivequeries.  528|InCCS,
+y= 644.8  75|Algorithmics,27:1.5:1–1.5:15,2022.  339|pages745–762.ACM,2018.
+y= 664.4  54|[19]  76|JensGroth,AggelosKiayias,andHelgerLipmaa.Multi-  318|[30]  339|Arthur  372|Lazzaretti  420|and  441|Charalampos  502|Papamanthou.
+y= 676.3  76|querycomputationally-privateinformationretrievalwith  339|Treepir:Sublinear-timeandpolylog-bandwidthprivate
+y= 688.3  76|constantcommunicationrate.  196|InPublicKeyCryptogra-  339|informationretrievalfromDDH.  476|InCRYPTO(2),vol-
+y= 700.0  76|phy,volume6056ofLectureNotesinComputerScience,  339|ume14082ofLectureNotesinComputerScience,pages
+y= 712.2  76|pages107–123.Springer,2010.  339|284–314.Springer,2023.
+y= 742.1  301|14
+===== PAGE 15 =====
+y=  74.2  54|[31]  76|ArthurLazzarettiandCharalamposPapamanthou.  279|Sin-  318|[43]  339|SarvarPatel,GiuseppePersiano,JoonYoungSeo,and
+y=  86.1  76|gle  92|pass  114|client-preprocessing  200|private  232|information  284|re-  339|KevinYeo.  386|Efficientbooleansearchoverencrypteddata
+y=  98.1  76|trieval.  107|InUSENIXSecuritySymposium.USENIXAs-  339|withreducedleakage.InASIACRYPT(3),volume13092
+y= 110.0  76|sociation,2024.  339|ofLectureNotesinComputerScience,pages577–607.
+y= 122.0  339|Springer,2021.
+y= 132.2  54|[32]  76|Jian  95|Liu,Jingyu  146|Li,Di  174|Wu,and  211|Kui  230|Ren.  255|PIRANA:
+y= 141.9  318|[44]  339|SarvarPatel,JoonYoungSeo,andKevinYeo.  534|Don’t
+y= 144.1  76|fastermulti-queryPIRviaconstant-weightcodes.  272|InSP,
+y= 153.9  339|bedense:  381|EfficientkeywordPIRforsparsedatabases.
+y= 156.1  76|pages4315–4330.IEEE,2024.
+y= 165.8  339|In  353|USENIX  393|Security  431|Symposium,  483|pages  511|3853–3870.
+y= 178.2  54|[33]  76|VadimLyubashevsky,ChrisPeikert,andOdedRegev.  339|USENIXAssociation,2023.
+y= 190.2  76|Onideallatticesandlearningwitherrorsoverrings.  286|In
+y= 197.7  318|[45]  339|OdedRegev.  395|Onlattices,learningwitherrors,random
+y= 201.9  75|EUROCRYPT,volume6110ofLectureNotesinCom-
+y= 209.7  339|linearcodes,andcryptography.  467|InSTOC,pages84–93.
+y= 213.8  76|puterScience,pages1–23.Springer,2010.
+y= 221.7  339|ACM,2005.
+y= 236.2  54|[34]  76|VadimLyubashevsky,ChrisPeikert,andOdedRegev.  287|A
+y= 241.4  339|GerardSaltonandMichaelMcGill.IntroductiontoMod-
+y= 241.6  318|[46]
+y= 248.2  76|toolkitforring-lwecryptography.  210|InThomasJohansson
+y= 253.3  339|ern  356|Information  408|Retrieval.
+y= 253.6  453|McGraw-HillBook  537|Com-
+y= 259.9  76|andPhongQ.Nguyen,editors,AdvancesinCryptology
+y= 265.5  339|pany,1984.
+y= 271.8  74|–EUROCRYPT2013,pages35–54,Berlin,Heidelberg,
+y= 284.0  76|2013.SpringerBerlinHeidelberg.  318|[47]  339|DawnXiaodongSong,DavidWagner,andAdrianPerrig.
+y= 297.4  339|Practicaltechniquesforsearchesonencrypteddata.  550|In
+y= 306.2  54|[35]  76|Rasoul  108|Akhavan  149|Mahdavi  190|and  208|Florian  242|Kerschbaum.
+y= 309.2  339|S&P2000,pages44–55.IEEE,2000.
+y= 318.1  76|Constant-weight  146|PIR:  169|single-round  224|keyword  262|PIR  282|via
+y= 330.1  76|constant-weightequalityoperators.  216|InUSENIXSecurity  318|[48]  339|JieSong,ZhenXu,YanZhang,PengweiZhan,Mingx-
+y= 341.8  75|Symposium,pages  153|1723–1740.  205|USENIX  245|Association,  339|uanLi,ShuaiMa,andRuXie.BKPIR:keywordPIRfor
+y= 354.0  76|2022.  339|privatebooleanretrieval.  439|InNDSS.TheInternetSociety,
+y= 365.2  339|2026.
+y= 376.1  54|[36]  76|ChristopherD.Manning,PrabhakarRaghavan,andHin-
+y= 385.2  318|[49]  339|YunlingWang,Shi-FengSun,JianfengWang,Xiaofeng
+y= 388.1  76|rich  95|Schütze.  140|Introduction  194|to  207|information  259|retrieval.
+y= 397.1  339|Chen,  367|Joseph  398|K.  412|Liu,  432|and  450|Dawu  479|Gu.  502|Practical  541|non-
+y= 400.0  76|CambridgeUniversityPress,2008.
+y= 409.1  339|interactiveencryptedconjunctivesearchwithleakage
+y= 421.0  339|suppression.  393|InCCS,pages4658–4672.ACM,2024.
+y= 422.2  54|[37]  76|CarlosAguilarMelchor,JorisBarrier,LaurentFousse,
+y= 434.1  76|andMarc-OlivierKillijian.  186|XPIR:Privateinformation
+y= 441.0  318|[50]  339|David  369|J.  381|Wu,  402|Joe  420|Zimmerman,  477|Jérémy  511|Planul,  543|and
+y= 446.1  76|retrievalforeveryone.  168|Proc.Priv.EnhancingTechnol.,
+y= 452.9  339|JohnC.Mitchell.  411|Privacy-preservingshortestpathcom-
+y= 458.0  76|2016(2):155–174,2016.
+y= 464.9  339|putation.  378|InNDSS.TheInternetSociety,2016.
+y= 480.2  54|[38]  76|SamirJordanMenonandDavidJ.Wu.  238|SPIRAL:fast,
+y= 484.9  318|[51]  339|MingxunZhou,Wei-KaiLin,YiannisTselekounis,and
+y= 492.1  76|high-rate  115|single-serverPIR  189|via  205|FHE  227|composition.  286|In
+y= 496.8  339|ElaineShi.  389|Optimalsingle-serverprivateinformation
+y= 503.9  75|SP,pages930–947.IEEE,2022.
+y= 508.8  339|retrieval.  377|InEUROCRYPT(1),volume14004ofLecture
+y= 520.5  339|NotesinComputerScience,pages395–425.Springer,
+y= 526.2  54|[39]  76|Samir  103|Jordan  134|Menon  166|and  184|David  212|J.  222|Wu.  245|YPIR:  274|high-
+y= 532.7  339|2023.
+y= 538.2  76|throughputsingle-serverPIRwithsilentpreprocessing.
+y= 549.9  76|InUSENIXSecuritySymposium.USENIXAssociation,
+y= 552.6  318|[52]  339|Mingxun  382|Zhou,  410|Andrew  447|Park,  472|Wenting  511|Zheng,  543|and
+y= 562.1  76|2024.
+y= 564.6  339|ElaineShi.  386|Piano:Extremelysimple,single-serverPIR
+y= 576.5  339|withsublinearservercomputation.  482|InSP,pages4296–
+y= 584.2  54|[40]  76|Microsoft  120|Research.  171|Microsoft  215|SEAL.  254|https://
+y= 588.5  339|4314.IEEE,2024.
+y= 595.5  76|github.com/microsoft/SEAL.
+y= 618.3  54|[41]  76|PrateekMittal,FemiG.Olumofin,CarmelaTroncoso,  318|A  338|BinaryFuseFilter
+y= 630.3  76|Nikita  105|Borisov,  142|and  160|Ian  177|Goldberg.  226|Pir-tor:  260|Scalable
+y= 640.5  318|This  339|appendix  380|describes  421|the  437|construction  490|of  502|the  518|BFF  539|used
+y= 642.2  76|anonymouscommunicationusingprivateinformation
+y= 652.4  318|in  330|Section  365|2.4.  386|The  406|procedure  451|follows  486|the  503|mapping-and-
+y= 654.2  76|retrieval.  118|In  130|USENIX  168|Security  205|Symposium.  257|USENIX
+y= 664.4  318|assignmentstructure  405|ofstandardBFF,butreplaces  529|bitwise
+y= 666.1  75|Association,2011.
+y= 674.2  318|XORwithcomponent-wiseadditionoverZ.Theconstruc-
+y= 679.7  495|t
+y= 688.3  54|[42]  76|MuhammadHarisMughees,HaoChen,andLingRen.  318|tionsupportsk∈{3,4}locationsperkeyword.Ourconcrete
+y= 700.2  76|Onionpir:Responseefficientsingle-serverPIR.  264|InCCS,  318|FusePIR  356|instantiation  410|uses  431|k=3,  460|whereas  497|the  513|description
+y= 712.2  76|pages2292–2306.ACM,2021.  318|belowremainsvalidforbothchoices.
+y= 742.1  301|15
+===== PAGE 16 =====
+y=  74.2  64|During  97|setup,  125|the  142|parameter  186|s  194|determines  244|the  260|segment  318|reconstructionareexactlythoseofFusePIR.
+y=  86.1  54|size  74|of  86|the  102|BFF  124|layout.  156|The  176|position  213|functions  255|generated  328|TheredlinesinAlgorithm4indicatethestepsintroduced
+y=  97.8  54|byBFF.HashGenmapeachkeywordtokdistinctlocations  318|ormodifiedforquerycompression.
+y= 109.8  54|distributedacrosskconsecutivesegments.Theconcretefinite-  318|CorrectnessandSecurity.FusePIR-Cchangesonlytherep-
+y= 121.7  54|sizechoicesofsandL  157|followtheparameterizationofBFF  318|resentationandserver-siderecoveryoftheencryptedselectors.
+y= 125.7  141|BFF
+y= 133.9  54|used  76|in  88|ChalametPIR  147|[8].  166|For  183|large  207|n,  218|the  234|resulting  274|array  318|Oncetheseselectorsarereconstructed,theselection,BFFre-
+y= 145.7  54|lengthsapproach1.125nand1.075nfork=3andk=4,re-  318|construction,packing,anddecodingproceduresareidentical
+y= 157.8  54|spectively.Theseedsρ  155|andρ  187|aresampledindependently.  318|toFusePIR.
+y= 161.2  146|H  178|fp
+y= 169.8  54|TheformerdeterminestheBFFlocations,whereasthelatter
+y= 178.5  436|Assuming  481|the  499|correctness  550|of
+y= 178.6  318|Theorem  362|5  372|(Correctness).
+y= 181.7  54|isusedtodetectqueriesforkeywordsthatwerenotencoded.
+y= 190.4  317|FusePIR,  360|LWEtoRGSW,  423|and  444|the  462|homomorphic  524|selector-
+y= 193.7  64|Themappingstepdeterminesanorderinwhichthekeys
+y= 202.4  318|expansion  362|procedure,FusePIR-C  458|achieves  496|correctness  546|for
+y= 205.5  277|T[u]
+y= 205.7  54|can  71|be  84|assigned  122|to  134|filter  156|locations.  198|The  217|temporary  262|set
+y= 214.3  318|single-keywordretrievalaccordingtoDefinition1.
+y= 217.4  54|containsallremainingkeysmappedtolocationu.Whenever
+y= 229.4  54|T[u]containsexactlyonekeyK,locationuisdesignatedas
+y= 235.0  328|The  347|argument  388|follows  422|that  440|of  452|Theorem  492|1.  503|The  522|common
+y= 241.3  54|thewritelocationofK.Thepair(K,u)isrecordedinS,and
+y= 247.0  318|seedallowstheservertoreconstructthesameLWEcipher-
+y= 253.3  54|K  176|k
+y= 253.5  65|is  75|removed  114|from  137|all  151|of  163|its  184|locations.  227|This  249|may  270|create
+y= 258.9  318|textsgeneratedbytheclient,andthesubsequentconversion
+y= 265.2  54|newsingletonlocations,whichareaddedtoQ.Themapping
+y= 270.9  318|andselectorexpansionrecoverencryptionsofthesamerow
+y= 277.2  54|succeedsifallnkeysareeventuallyplacedinS.
+y= 282.8  318|andcolumnselectionsusedbyFusePIR.Theremainingcom-
+y= 289.2  64|TheEncodeprocedurefirstinvokesMappingSteptoobtain
+y= 294.8  318|putationisunchanged,sotheadditionalcorrectnesserroris
+y= 301.1  54|thepeelingstackS.Ifthemappingfails,thecurrentconstruc-
+y= 306.8  318|negligibleundertheunderlyinghomomorphicprocedures.
+y= 313.1  54|tionattemptisdiscarded,andSetupisrepeatedwithafresh
+y= 325.3  54|position-functionseed.Afterasuccessfulmapping,allarray
+y= 327.2  318|Theorem6(Security).  416|AssumingtheIND-CPAsecurityof
+y= 335.1  54|entriesareinitializeduniformlyinZ  204|B.  214|Theprocedurethen
+y= 339.0  318|theunderlyingLWEandRLWEencryptionschemesandthe
+y= 341.5  204|t
+y= 348.9  54|processesSinlast-in-first-outorder.Foreachpair(K,p),it
+y= 350.9  318|pseudorandomnessofPRG,FusePIR-CisIND-CKAsecure
+y= 361.1  54|overwritesthedesignatedlocation  194|psothatthesumofthek
+y= 362.9  318|forsingle-keywordretrievalaccordingtoDefinition2.
+y= 372.9  54|entriesassociatedwithK  156|equalsy  198|modulot.
+y= 376.4  189|K
+y= 384.8  64|Finally,Checkprocedureevaluatesthekpositionfunctions  328|The  347|security  383|argument  424|is  435|analogous  479|to  491|Theorem  531|2.  542|The
+y= 396.8  54|onKandreturnsthecorrespondingarrayentries.Reconstruct  318|transmitted  368|seed  391|is  402|independent  456|of  469|the  487|queried  521|keyword,
+y= 409.0  54|procedure  98|then  119|adds  141|them  165|component-wise  236|modulo  271|t.  280|For  318|and  336|its  349|PRG  373|outputs  407|can  425|be  438|replaced  476|by  490|uniform  526|LWE  551|a-
+y= 420.9  54|every  80|encoded  118|keyword  157|K,  172|the  189|assignment  238|performed  284|by  318|components  370|withnegligible  435|distinguishing  495|advantage.  542|The
+y= 424.3  163|i
+y= 432.7  54|Encodeguaranteesthattheresultisexactlyy  241|.  318|resulting  357|query  383|components  436|are  452|then  472|handled  508|by  521|the  537|same
+y= 436.2  234|Ki
+y= 443.4  318|LWE-basedhybridargumentasinFusePIR.Allselectorex-
+y= 455.3  318|pansionisperformedlocallybytheserveraspost-processing
+y= 461.0  54|B  74|FusePIR-C:Query-CompressedFusePIR
+y= 467.3  318|oftheencryptedqueryandthereforedoesnotrevealadditional
+y= 479.2  318|informationaboutthequeriedkeyword.
+y= 485.0  54|FusePIR-CreducestheuploadcommunicationofFusePIRby
+y= 497.0  54|compressingitsencryptedselectors.Thearithmetic-BFFen-
+y= 508.2  318|C  338|CAPE-C:Query-CompressedCAPE
+y= 508.9  54|coding,payloadlayout,andencryptedreconstructionremain
+y= 520.9  54|unchanged.  104|Insteadofdirectly  182|sending  216|the  232|RLWE  263|one-hot
+y= 532.5  318|CAPE-C  361|applies  397|the  417|query-compression  503|technique  550|of
+y= 532.8  54|columnselectorsandLWErowselectors,theclientsendscom-
+y= 544.4  318|FusePIR-C  368|to  381|the  398|anchor  430|retrieval  467|of  480|CAPE.  514|The  535|value-
+y= 544.8  54|pactseededLWEencryptionsoftheirbinarycoordinates.The
+y= 556.4  318|specificBloom-filterencoding,encryptedBloomquery,score
+y= 556.7  54|serverreconstructstheseciphertextsandhomomorphically
+y= 568.4  318|evaluation,  365|and  384|response  423|format  454|remain  486|unchanged.  536|Thus,
+y= 568.7  54|recovers  92|the  108|selectors  147|required  184|by  198|the  214|FusePIR  252|answering
+y= 580.3  318|CAPE-Creducesthecommunicationrequiredtoquerythe
+y= 580.7  54|procedure.
+y= 592.4  83|ℓ  95|=  108|⌈log  129|C⌉  167|ℓ  179|=  192|⌈log  214|R⌉.  254|bin  270|(x)  286|=  318|anchorkeywordwithoutmodifyingtheconjunctivefiltering
+y= 592.6  64|Let  147|and  234|For
+y= 596.0  87|c  125|2  172|r  209|2  266|ℓ
+y= 604.4  54|(x  66|,...,x  103|),  214|x  222|=  240|ℓ  243|−  249|1  254|2jx  318|mechanismofCAPE.
+y= 604.6  113|we  129|use  147|the  164|convention  233|∑  271|.  279|Fol-
+y= 608.1  62|0  90|ℓ−1  241|j  243|=  249|0  269|j
+y= 616.5  287|a-  328|Morespecifically,theanchorqueryisgeneratedandevalu-
+y= 616.5  54|lowing  87|the  104|seeded-query  163|technique  207|of  220|PirouetteH,  270|the
+y= 628.3  318|atedusingFusePIR-CinsteadofFusePIR.Theserverthere-
+y= 628.5  54|componentsofallLWEciphertextsarederivedfromasingle
+y= 640.5  54|randomseedρ.Hence,theonlinequerycontainsonlyρand  318|forereconstructsthesameencryptedextendedpayloadasin
+y= 652.4  54|the  70|corresponding  132|LWE  157|β-components.  222|At  236|the  252|server,  282|the  318|CAPE,afterwhichtheoriginalBloom-scorecomputationis
+y= 664.4  54|same  78|seed  99|reconstructs  152|the  168|omitted  202|a-components.  265|The  284|re-  318|applied  351|directly.  387|The  406|red  422|lines  445|in  456|Algorithm  502|5  510|indicate  546|the
+y= 676.3  54|sulting  85|LWE  109|encryptions  160|are  175|converted  218|to  229|RGSW  261|form  284|by  318|stepsthatdifferfromCAPE.
+y= 688.1  54|LWEtoRGSW;  117|the  132|column  166|bits  184|are  200|then  221|expanded  263|into  282|the  318|Correctness  373|and  393|Security.  434|CAPE-C  473|changes  510|only  531|the  547|en-
+y= 700.2  54|encryptedone-hotselector,whiletherowbitsdrivethebit-  318|cryptedretrievaloftheanchorpayload.OncetheFusePIR-C
+y= 712.0  54|wiseevaluationofBlindRotate.Theremainingretrievaland  318|selectorexpansioniscompleted,theserverobtainsthesame
+y= 742.1  301|16
+===== PAGE 17 =====
+y=  73.8  54|Algorithm3BinaryFuseFilter
+y=  91.7  68|SETUP(n,k,B,t,µ)  314|24:  364|if|T[v]|=1then
+y= 101.4  57|1:  68|ifk=3then  314|25:  376|PushvintoQ.
+y= 109.4  80|s←2⌊log3.33(n)+2.25⌋.
+y= 110.8  57|2:  314|26:  364|endif
+y= 115.3  122|(cid:40)  284|(cid:41)
+y= 120.1  129|(cid:108)(cid:16)  195|(cid:110)  231|(cid:111)(cid:17)  245|(cid:109)  314|2  318|7  322|:  352|e  356|n  360|dfor
+y= 123.5  200|1,log  216|(  218|10  224|6)
+y= 125.9  57|3:  80|LBFF←max  138|0.875+0.25max  242|n  251|,⌈1.125n⌉  290|.
+y= 130.2  213|lo  218|g  221|n  314|2  318|8  322|:  340|end  354|i  357|f
+y= 139.2  314|29:  328|endwhile
+y= 142.3  57|4:  68|elseifk=4then
+y= 150.3  80|s←2⌊log2.91(n)−0.5⌋.  314|30:  328|if|S|̸=nthen
+y= 151.8  57|5:
+y= 156.2  122|(cid:40)  288|(cid:41)
+y= 158.2  314|3  318|1  322|:  340|r  343|e  347|turnfail.
+y= 161.0  129|(cid:108)(cid:16)  195|(cid:110)  226|05)  235|(cid:111)(cid:17)  250|(cid:109)
+y= 164.4  200|1,log  216|(  218|6  221|·1
+y= 166.8  57|6:  80|LBFF←max  138|0.77+0.305max  246|n  255|,⌈1.075n⌉  295|.  314|3  318|2  322|:  328|end  343|i  345|f
+y= 171.1  215|l  217|o  220|g  224|n
+y= 177.1  314|33:  328|returnS.
+y= 183.3  57|7:  68|endif
+y= 186.7  413|n
+y= 188.1  328|E  333|N  338|C  343|O  348|D  353|E  357|(  360|D  366|,  369|H  375|,{  382|(K  392|,  396|y  406|)}  423|)
+y= 191.1  203|$  229|λ  390|i  399|Ki  413|i=  419|1
+y= 194.0  57|8  61|:  68|Sa  76|m  82|p  86|le  93|in  100|de  107|p  111|en  119|d  123|e  126|nt  134|pub  146|li  151|c  156|s  159|e  163|e  166|d  170|s  176|ρH  185|,ρ  200|←  210|{  214|0  218|,1  225|}  233|.
+y= 196.8  193|fp  391|(cid:0)  410|n  448|(cid:1)
+y= 200.0  317|1  321|:  328|S  333|←  343|M  350|a  355|p  359|p  363|i  365|n  370|g  374|S  379|te  385|p  394|{  398|K  403|i}  419|,H  429|,LBFF  452|.
+y= 205.0  57|9  61|:  68|D  73|e  77|riv  85|e  91|H  99|=  107|{  111|h  120|:  124|K  133|→  143|[L  162|]  164|}  168|k  171|−  175|1  180|←  190|B  196|F  201|F  206|.H  214|a  218|s  221|h  225|G  231|e  235|n(ρH,LBFF,s,k).  410|i=  416|1
+y= 207.6  116|j  150|B  154|F  157|F
+y= 208.9  169|j  170|=  175|0  317|2  321|:  328|i  330|f  334|S  340|=  348|f  351|a  355|i  357|l  361|t  364|h  368|e  371|n
+y= 214.2  192|→{0,1}µ.
+y= 215.6  54|10:  68|Deriveafingerprintfunctionfp  179|:K
+y= 219.1  168|ρfp  317|3:  339|returnfail.
+y= 226.3  54|11:  68|foru=0toLBFF−1do
+y= 228.4  317|4:  328|endif
+y= 235.8  54|12:  80|D[u]←⊥.  317|5:  328|foru=0toLBFF−1do
+y= 245.2  54|1  58|3  62|:  68|e  72|n  76|d  83|fo  89|r  351|]←$
+y= 249.9  317|6  321|:  339|D  345|[u  365|Z  370|B.
+y= 251.3  92|(cid:0)  155|(cid:1)  370|t
+y= 254.7  54|1  58|4  62|:  68|re  75|t  78|ur  86|n  96|D,H,fp  130|,LBFF,s  159|.
+y= 258.2  121|ρfp  317|7  321|:  328|end  342|fo  348|r
+y= 266.0  68|MAPPINGSTEP({Ki}n  146|,H,LBFF)
+y= 271.3  136|i=1  317|8:  328|whileS̸=0/do
+y= 278.5  57|1:  68|OrderK1,...,Knbyh0(Ki)anddenotetheresultingsequencebyL.  317|9:  339|Pop(K,p)fromS.
+y= 288.0  57|2:  68|foru=0toLBFF−1do  314|10:  340|RetrievethepayloadyKassociatedwithK.
+y= 297.5  57|3:  80|T[u]←0/.  314|11:  340|D[p]←yK.
+y= 306.9  57|4:  68|endfor  314|12:  340|for  353|j=0tok−1do
+y= 316.4  57|5:  68|foreachK∈Ldo  314|13:  352|ifhj(K)̸=pthen
+y= 325.4  364|D[p]←D[p]−D[hj(K)]  446|(modt).
+y= 325.9  57|6:  80|for  93|j=0tok−1do  314|14:
+y= 335.3  57|7:  91|T[hj(K)]←T[hj(K)]∪{K}.  314|15:  352|endif
+y= 344.8  57|8:  80|endfor  314|16:  340|endfor
+y= 354.3  57|9:  68|endfor  314|17:  328|endwhile
+y= 363.7  54|10:  68|InitializeanemptystackQandanemptystackS.  314|18:  328|returnD.
+y= 373.2  54|11:  68|foru=0toLBFF−1do
+y= 374.4  328|CHECK(D,H,K)
+y= 382.5  80|if|T[u]|=1then
+y= 382.6  54|12:  317|1:  328|for  341|j=0tok−1do
+y= 392.1  54|13:  92|PushuintoQ.  317|2:  339|dj←D[hj(K)].
+y= 401.6  54|14:  80|endif  317|3:  328|endfor
+y= 411.0  54|15:  68|endfor  317|4:  328|return(d0,...,dk−1  393|).
+y= 420.5  54|16:  68|whileQ̸=0/do
+y= 421.7  328|RECONSTRUCT(D,H,K)
+y= 430.0  54|17:  80|PopalocationufromQ.
+y= 432.4  317|5:  328|(d0,...,dk−1  369|)←Check(D,H,K).
+y= 439.4  54|18:  80|if|T[u]|=1then
+y= 441.9  317|6:  328|y←0B.
+y= 448.9  54|19:  92|K←theuniquekeywordinT[u].  317|7:  328|for  341|j=0tok−1do
+y= 458.4  54|20:  92|Push(K,u)ontoS.
+y= 460.8  317|8:  339|y←y+dj  379|(modt).
+y= 467.8  54|21:  92|for  105|j=0tok−1do
+y= 470.3  317|9:  328|endfor
+y= 477.3  54|22:  104|v←hj(K).
+y= 479.7  314|10:  328|returny.
+y= 486.8  54|23:  104|T[v]←T[v]\{K}.
+y= 529.4  54|encryptedcandidatevaluesandvalue-specificBloomfilters  318|CKAsecureandthattheunderlyingRLWEencryptionscheme
+y= 541.4  54|as  66|in  78|CAPE.  110|The  129|subsequent  178|Bloom-score  234|evaluation  279|and  318|isIND-CPAsecure,CAPE-CisIND-CCKAsecureforcon-
+y= 553.3  54|decodingareunchanged.  318|junctivekeywordretrievalaccordingtoDefinition3.
+y= 570.4  54|Theorem  98|7  108|(Correctness).  172|Assuming  217|the  235|correctness  286|of
+y= 582.1  53|FusePIR-Candtheunderlyinghomomorphicevaluationpro-
+y= 594.1  54|cedures,andassumingnegligibleBloom-filterfalse-positive
+y= 606.1  54|probability,  104|CAPE-C  143|achieves  182|correctness  232|for  247|conjunctive  328|ThesecurityargumentisanalogoustoTheorem4.Inthe
+y= 616.3  318|ℓ-query
+y= 618.0  54|keywordretrievalaccordingtoDefinition1.  352|experiment,the  418|anchor  449|components  502|are  517|hidden  548|by
+y= 628.5  318|theIND-CKAsecurityofFusePIR-C,whilethefixed-length
+y= 635.3  64|TheargumentfollowsTheorem3withtheFusePIRanchor
+y= 640.5  318|encryptedBloomqueriesarehiddenbyRLWEIND-CPAse-
+y= 647.3  54|retrievalreplacedbyFusePIR-C.BycorrectnessofFusePIR-
+y= 652.4  318|curity.Astandardhybridargumentthereforegivesnegligible
+y= 659.2  54|C,the  82|same  106|encrypted  149|anchorpayload  215|is  225|recovered  268|except
+y= 664.4  318|distinguishingadvantage.SincetheBloom-queryformatis
+y= 671.2  54|withnegligibleprobability.CAPE-Cthenperformsexactly
+y= 676.3  318|independentofthenumberofnon-anchorkeywordsandthe
+y= 683.1  54|theBloom-scoretestofCAPE,sotheno-false-negativeprop-
+y= 688.3  318|thresholdτremainsintheprivateclientstate,theargument
+y= 695.1  54|ertyandfalse-positiveanalysisremainunchanged.
+y= 700.2  318|alsoappliestochallengequeriescontainingdifferentnumbers
+y= 712.1  54|Theorem  96|8  105|(Security).  154|Assuming  197|that  216|FusePIR-C  265|is  275|IND-  318|ofkeywords.
+y= 742.1  301|17
+===== PAGE 18 =====
+y=  73.8  54|Algorithm4FusePIR-C
+y=  90.5  68|SETUP(1λ,DB)
+y=  91.8  315|4:  337|for  351|j=0toℓc+ℓr−1do
+y= 102.4  68|(pp,stS,sk)←FusePIR.Setup(1λ,DB).  315|5:  349|aa,j←PRG(ρ,a,j).
+y= 103.7  57|1:
+y= 110.7  315|6:  349|(cid:98)za,j←(aa,j,βa,j).
+y= 113.2  57|2:  68|GeneratethepublicevaluationmaterialrequiredbyLWEtoRGSW.
+y= 120.2  315|7:  349|Ca,j←LWEtoRGSW((cid:98)za,j).
+y= 122.6  57|3:  68|return(pp,stS,sk).
+y= 129.6  315|8:  337|endfor
+y= 133.7  68|Q  74|U  79|E  83|R  87|Y  92|(  95|p  100|p  104|,  107|s  110|k  114|,K  123|)
+y= 139.1  315|9  319|:  337|C  343|c  346|o  349|l  353|←  363|(  366|C  380|,  383|.  386|.  389|.  392|,  395|C  419|)  422|.
+y= 142.5  343|a  372|a  375|,  376|0  401|a  404|,ℓ  411|−  415|1
+y= 144.2  57|1  61|:  68|ℓ  76|←  86|⌈  89|lo  95|g  103|C  109|⌉  112|,  123|ℓr←⌈log  159|R⌉.  408|c
+y= 146.8  71|c  99|2  155|2  344|r  346|o  349|w  356|←  365|(  385|,  388|.  391|.  394|.  397|,  434|)
+y= 148.6  312|1  316|0  320|:  338|C  369|C  374|a  377|,  379|ℓ  400|C  406|a  409|,  411|ℓ  416|+  420|ℓ  425|−  430|1  437|.
+y= 154.0  76|$  344|a  381|c  413|c  423|r
+y= 156.9  57|2  61|:  68|ρ  74|←  83|{  87|0  91|,  95|1  98|}  102|λ  106|.
+y= 159.1  312|1  316|1  320|:  338|H  344|o  348|m  354|o  358|m  364|o  368|r  371|p  375|h  379|i  381|c  385|a  388|l  390|l  393|y  399|e  402|x  406|p  410|a  413|n  417|d  423|C  429|c  432|o  435|l  439|into(cid:98)  454|qc  461|ol,anencryptionofeca  534|.
+y= 162.5  429|a  458|a
+y= 166.4  57|3  61|:  68|f  70|o  74|r  80|a  85|=  93|0  99|t  101|o  107|2  113|d  118|o
+y= 168.5  312|1  316|2  320|:  338|f  341|o  345|r  350|b  356|=  364|1  370|t  372|o  378|B  394|d  399|o
+y= 171.2  383|p  386|a  389|y
+y= 175.8  57|4:  80|ua←ha(K),  129|ra←uamodR,  189|ca←⌊ua/R⌋.  383|C−1
+y= 184.3  385|∑CtPtMul(  429|qc  436|ol[c],Pc,b(X)).
+y= 185.3  57|5:  80|za←binℓc  115|(ca)∥binℓr  152|(ra).  312|13:  350|Acca,b←
+y= 188.2  429|(cid:98)  433|a
+y= 194.8  57|6  61|:  80|for  93|j  97|=  105|0  111|to  119|ℓ  127|+  134|ℓ  141|−  149|1  155|d  159|o  383|c=  391|0
+y= 197.4  122|c  137|r
+y= 201.9  312|14:  350|Acc′  373|←B  389|li  393|ndRotate(Cr  436|ow,Acca,b).
+y= 204.2  57|7  61|:  91|a  105|←  115|P  120|R  126|G  131|(  134|ρ  139|,  142|a,  150|j)  157|∈  165|Zd  174|.  363|a,b  434|a
+y= 206.8  95|a  98|,j  170|q
+y= 210.9  431|(Acc′
+y= 213.7  57|8:  91|βa,j←⟨aa,j,sL⟩+∆za[j]+ea,j  195|(modq).  312|15:  350|cta,b←SampleExtract  456|).
+y= 216.1  428|0  448|a,b
+y= 223.2  57|9:  80|endfor  312|16:  338|endfor
+y= 231.6  312|17:  326|endfor
+y= 232.6  54|10:  68|endfor
+y= 241.1  312|18:  326|forb=1toBpaydo
+y= 242.1  54|11:  68|q←(ρ,{βa,j}a,j).
+y= 247.2  402|(cid:0)  494|(cid:1)
+y= 250.4  338|ctpay,b←CtCtAdd  406|CtCtAdd(ct  447|0,b,ct  465|1,b),ct
+y= 251.5  54|12:  68|stC←K.  312|19:  486|2,b  498|.
+y= 261.0  54|13:  68|re  75|tu  82|r  86|n  92|(  95|q  99|,  103|s  106|t  113|)  117|.  312|2  316|0  320|:  326|e  330|n  334|d  341|f  343|or
+y= 263.8  109|C
+y= 266.3  401|B  405|pa  410|y).
+y= 269.5  312|2  316|1  320|:  326|re  333|s  336|p  342|←  352|Pack({ctpay,b}
+y= 272.1  68|A  74|N  79|S  83|W  89|E  94|R  98|(  101|s  104|t  111|,  115|q  119|)  401|b=  409|1
+y= 274.9  107|S
+y= 278.9  312|22:  326|returnresp.
+y= 282.6  57|1:  68|ParsestS=({Pc,b}c,b,pp).
+y= 292.1  57|2:  68|Parseq=(ρ,{βa,j}a,j).  326|DECODE(sk,stC,resp)
+y= 301.4  68|fora=0to2do  315|1:  326|returnFusePIR.Decode(sk,stC,resp).
+y= 301.6  57|3:
+y= 323.9  54|Algorithm5CAPE-C
+y= 336.1  92|(cid:16)  233|(cid:17)
+y= 340.5  215|}}n
+y= 341.9  70|SETUP  97|1λ,DB={Ki(cid:55)→VKi  164|={vi,1,...,vi,mi  315|3:  326|τ←∥bqry∥1.
+y= 345.8  223|i=1
+y= 351.4  315|4  319|:  326|q  330|B  334|F  340|←  350|R  355|L  359|W  367|E  372|.  374|E  379|ncsR  394|(bqry).
+y= 355.4  148|rparametersℓBFandG={g1,...,gh}.
+y= 355.6  57|1  61|:  68|S  72|e  76|le  81|c  85|t  89|p  93|u  97|b  101|l  103|i  105|c  111|B  116|l  118|o  122|o  126|m  133|-  135|fi  140|l  142|t  144|e
+y= 360.9  315|5  319|:  326|q  332|←  341|(  345|q  359|,  362|q  366|B  370|F  374|)  377|.
+y= 363.5  349|a  352|n  355|c
+y= 365.1  57|2  61|:  68|m  75|←  85|m  91|a  95|x  112||V  124||  127|.
+y= 368.2  99|i  100|∈  104|[  106|n  109|]  118|K  122|i  315|6  319|:  326|s  329|t  338|←  348|(  351|s  354|t  357|a  360|n  363|c  367|,  370|τ  373|)  376|.
+y= 372.4  109|(cid:83)  115|n  332|C
+y= 374.6  57|3  61|:  68|f  70|o  74|r  80|e  83|a  87|c  90|h  96|v  101|∈  125|V  138|d  142|o  357|C
+y= 378.1  115|i  116|=  121|1  129|K  133|i
+y= 379.8  315|7  319|:  326|r  329|e  332|t  335|u  340|r  343|n  349|(  352|q  357|,  360|s  363|t  366|C  371|)  374|.
+y= 384.0  57|4  61|:  80|S  88|←  98|{  102|K  111|:  115|v  120|∈  127|V  138|}  142|.
+y= 386.6  83|v  107|i  132|K
+y= 388.6  135|i  328|A  358|(  361|s  364|t  371|,  374|q  378|)
+y= 393.5  57|5  61|:  80|b  89|←  99|B  104|F  109|.  111|G  117|e  121|n  125|(  128|0  132|,  135|S  142|)  145|.  334|N  339|S  343|W  349|E  354|R  367|S
+y= 396.1  84|v  139|v
+y= 403.0  57|6:  68|endfor  315|1:  326|Parse(qanc,qBF)fromq.
+y= 412.4  57|7:  68|fori=1tondo  315|2:  326|resp  351|←FusePIR-C.Answer(stS,qanc).
+y= 415.2  340|anc
+y= 420.4  85|C  89|APE←{(vi,j,bvi,j  146|)}m  158|i  315|3:  326|Parse{(ctvj  364|,ctB  379|F)}m  403|fromresp  444|.
+y= 421.9  57|8:  79|V  164|.
+y= 425.6  84|K  154|j=  161|1  375|j  391|j=1  434|anc
+y= 427.5  87|i
+y= 431.3  57|9:  68|endfor  315|4:  326|for  339|j=1tomdo
+y= 439.4  136|C  140|APE}n  337|ctscore,j←CtCtMul(qBF,ctB  435|F).
+y= 440.8  54|10:  68|DBCAPE←{Ki(cid:55)→V  167|.  315|5:
+y= 444.5  135|K  157|i=1  431|j
+y= 446.4  139|i
+y= 451.1  94|F  145|IR-C.Setup(1λ,DBCAPE).  315|6  319|:  337|for  349|r  355|=  362|0  368|t  371|o  377|log  391|ℓ  404|−  411|1  417|d  422|o
+y= 452.6  54|1  58|1  62|:  68|(  71|p  76|p  85|,s  91|t  99|,  102|s  105|k  109|)  114|←  124|Fu  133|se  140|P  387|2  395|BF
+y= 455.9  80|F  94|S  417|(cid:0)  522|(cid:1)
+y= 459.3  315|7  319|:  349|c  353|t  372|j←  386|C  391|tC  400|tA  408|d  413|d  421|c  425|tscore,j,CtRotate(ctscore,j,2r)  526|.
+y= 462.1  54|1  58|2  62|:  68|p  73|p  79|←  88|(  92|p  96|p  105|,  108|ℓ  116|F,G  129|,m  138|)  141|.  356|sco  365|re  370|,
+y= 465.3  100|F  111|B
+y= 468.7  315|8  319|:  337|e  341|n  345|d  352|f  354|o  358|r
+y= 471.5  54|1  58|3  62|:  68|s  71|t  80|←  90|s  93|t  96|F  100|.
+y= 474.2  74|S  96|S
+y= 478.2  315|9  319|:  326|e  329|n  333|d  340|f  342|o  346|r
+y= 481.0  54|1  58|4  62|:  68|r  72|e  75|t  78|u  82|r  86|n  92|(  95|p  99|p  104|,  107|s  110|t  117|,  120|sk)  130|.
+y= 483.6  113|S  352|(cid:0)  415|(cid:1)
+y= 487.5  326|r  329|e  333|s  336|p  342|←  356|{  360|c  363|t  372|,ctscore,j}m
+y= 487.7  312|1  316|0  320|:  366|vj  419|.
+y= 492.1  70|Q  76|U  81|E  85|R  89|Y  94|(  97|p  102|p  106|,  109|s  112|k  116|,  120|K  128|=  135|(K1,...,KQ))  405|j=1
+y= 497.1  312|1  316|1  320|:  326|r  330|e  333|t  336|u  340|r  344|n  350|r  353|e  357|s  360|p  364|.
+y= 501.5  94|an  100|c
+y= 502.9  57|1  61|:  68|(q  85|,st  104|)  109|←  118|F  123|u  127|s  131|e  134|P  140|I  142|R  148|-  150|C  156|.  158|Q  164|u  168|e  172|r  175|y(pp  196|,sk,K1).
+y= 505.6  75|a  78|nc  94|C  191|F  328|DECODE(sk,stC,resp)
+y= 512.4  57|2  61|:  68|b  83|←  92|B  98|F  103|.  105|G  111|en  119|(0  126|,  129|{  133|K  142|,  145|.  148|.  151|.,  157|K  167|}  171|)  174|.
+y= 515.0  72|q  75|ry  138|2  162|Q
+y= 518.7  315|1:  326|returnCAPE.Decode(sk,stC,resp).
+y= 548.4  54|D  75|SchemeProofs  318|LWEkey,theirhomomorphicsumsatisfies
+y= 570.3  419|2
+y= 580.4  54|D.1  83|CorrectnessProofofFusePIR  346|Dec  369|(ct  398|)=  415|∑D[h  447|(K)][b]  485|(mod  510|t).
+y= 582.3  362|sL  381|pay,b  443|a
+y= 591.1  414|a=0
+y= 607.2  318|BythecorrectnessofthearithmeticBFFencoding,
+y= 608.2  54|Proof.  84|Fix  101|a  110|database  149|DB  166|and  185|a  193|queried  227|keyword  266|K.  280|For
+y= 620.2  54|a∈{0,1,2},letu  131|=h  151|(K),r  180|=u  202|modR,c  243|=⌊u  266|/R⌋.
+y= 623.7  125|a  146|a  173|a  195|a  236|a  262|a
+y= 627.5  383|2
+y= 636.4  64|WefirstconsideranexecutioninwhichthearithmeticBFF  380|∑D[h  412|(K)]=y  463|(mod  487|t).
+y= 639.5  408|a  447|K
+y= 648.4  54|issuccessfullyconstructedandallhomomorphicoperations  379|a=0
+y= 660.1  54|arecorrect.Foreverypayloadblockb,theencryptedcolumn
+y= 664.4  318|Therefore,afterpackinganddecryption,theclientrecovers
+y= 672.3  54|selector  89|chooses  125|the  141|column  176|c  184|,  190|and  208|the  224|subsequent  273|blind
+y= 675.6  180|a  318|exactlythepayloady  408|.Thefingerprintverificationsucceeds,
+y= 679.7  402|K
+y= 684.2  54|rotation  89|and  107|sample  139|extraction  183|recover  216|the  232|entry  256|at  266|row  285|r  293|.
+y= 687.6  289|a  318|andremovingthepaddingyieldsV  462|.
+y= 691.6  456|K
+y= 696.0  54|Hence,Dec  108|(ct  129|)=D[h  165|(K)][b]foreverya∈{0,1,2}.
+y= 699.5  100|sL  120|a,b  160|a  328|It  338|remains  374|to  386|bound  415|the  431|probability  479|that  498|the  515|above  542|exe-
+y= 712.2  64|Since  90|the  105|three  129|extractedciphertexts  216|are  232|underthe  273|same  318|cutionfails.Letε  404|(λ)denotetheprobabilitythatavalid
+y= 715.9  390|BFF
+y= 742.1  301|18
+===== PAGE 19 =====
+y=  74.2  54|arithmeticBFFencodingisnotobtainedaftertheprescribed  318|byatmostε  381|(λ)=negl(λ).Therefore,
+y=  77.8  366|LWE
+y=  86.1  54|setup  79|procedure.  126|By  142|the  158|correctness  208|of  220|the  236|BFF  258|construc-
+y=  93.6  400|∆  420|≤3ℓε  460|(λ).
+y=  97.2  406|row  445|LWE
+y=  98.1  54|tion,ε  92|(λ)=negl(λ).Letε  183|(λ)upper-boundthecorrect-
+y= 101.7  79|BFF  173|HE
+y= 110.0  54|nesserrorofeachunderlyinghomomorphicoperation.The
+y= 112.8  328|Combiningthetwohybridsequences,
+y= 122.0  54|answering  99|procedure  144|performs  184|only  205|a  214|polynomial  263|number
+y= 131.8  356|∆≤3ℓε  408|(λ)+3ℓε  462|(λ)=negl(λ),
+y= 133.7  55|p(λ)=O(CB  120|)ofsuchoperations.Byaunionbound,  389|RLWE  447|LWE
+y= 137.6  109|pay
+y= 151.2  318|becauseℓispolynomialinλandapolynomialmultipleofa
+y= 154.1  102|Pr[Bad  140|]≤p(λ)ε  188|(λ)=negl(λ),
+y= 158.0  130|HE  178|HE
+y= 163.4  318|negligiblefunctionremainsnegligible.
+y= 174.7  54|sinceapolynomialmultipleofanegligiblefunctionremains  328|LetView  370|andView  412|denotethecompleteviewsofAwhen
+y= 178.9  363|0  406|1
+y= 186.7  54|negligible.  318|thechallengebitis0and1,respectively.Theabovehybrid
+y= 198.7  64|Consequently,  318|argumentimplies
+y= 218.4  102|Pr[R̸=V  143|]≤ε  176|(λ)+Pr[Bad  238|]  336||Pr[A(View  386|)=1]−Pr[A(View  469|)=1]|≤negl(λ).
+y= 222.0  137|K  162|BFF  228|HE  382|1  464|0
+y= 233.4  148|≤ε  176|(λ)+p(λ)ε  233|(λ)
+y= 237.3  162|BFF  223|HE  318|Consequently,
+y= 248.3  148|=negl(λ).
+y= 252.2  324|(cid:12)  369|(cid:12)
+y= 256.1  363|1(cid:12)  385|1
+y= 258.2  324|(cid:12)
+y= 260.2  333|sin  342|gle−
+y= 264.2  324|(cid:12)  327|P  369|(cid:12)  374|=  393||Pr[A(View  443|)=1]−Pr[A(View  526|)=1]|
+y= 268.2  332|Π  338|,A  439|1  521|0
+y= 268.8  54|Thus,Pr[R=V  120|]≥1−negl(λ),whichsatisfiesthecorrect-  324|(cid:12)  363|2  369|(cid:12)  385|2
+y= 272.4  114|K
+y= 280.8  54|nessrequirementofDefinition1forQ=1.
+y= 284.4  374|≤negl(λ).
+y= 303.4  318|Thus,FusePIRsatisfiestheIND-CKAsecurityrequirement
+y= 307.6  54|D.2  83|SecurityProofofFusePIR
+y= 315.3  318|ofDefinition2.
+y= 326.4  245|ℓ-QINDsingle
+y= 328.8  54|Proof.  84|Let  102|A  114|be  129|any  148|PPT  170|adversary  214|in  227|the
+y= 334.2  276|Π,A
+y= 342.2  54|experiment,  110|where  148|ℓ  160|=  176|poly(λ).  225|After  257|receiving  318|D.3  347|CorrectnessProofofCAPE
+y= 354.0  54|(pp,st  83|,DB),  115|A  135|chooses  180|two  207|keyword  253|sequences
+y= 357.6  79|S
+y= 361.8  318|Proof.  348|Fix  365|a  374|database  414|DB  432|and  451|a  460|conjunctive  512|query  539|K  550|=
+y= 365.1  65|(0)  101|(0)  150|(1)  187|(1)
+y= 368.3  54|(K  75|,...,K  111|)  125|and(K  160|,...,K  197|).Forr∈[ℓ],β∈{0,1},
+y= 373.6  64|1  100|ℓ  149|1  186|ℓ  317|(K  332|,...,K  363|).  374|By  390|Theorem  431|1,  441|except  471|with  493|negligible  538|prob-
+y= 377.5  328|1  358|Q
+y= 380.1  159|(  162|β  166|)  202|(β)  225|(  228|β  232|)  253|(  256|β  260|)
+y= 383.4  54|anda∈  88|{0,  102|1,2},defineu  171|=h  191|(K  212|),r  238|=u  266|modR,
+y= 386.8  159|r,  163|a  187|a  201|r  225|r  227|,  229|a  253|r,  257|a  318|abi  330|lity  347|ε  366|(λ),  385|the  401|anchor  432|retrieval  468|correctly  508|recovers  546|the
+y= 389.6  352|Fu  360|se
+y= 391.5  81|(cid:22)  101|(cid:23)
+y= 395.2  88|u(  94|β  97|)
+y= 398.3  58|(β)  318|encryptedextendedpayloadassociatedwithK  510|.Hence,the
+y= 401.5  54|c  71|=  92|r,  95|a  109|.Thecorrespondingquerycomponentsare  505|1
+y= 404.9  58|r,a
+y= 407.1  92|R
+y= 409.6  318|candidatesconsideredbyCAPEareexactlythem  523|valuesin
+y= 413.2  512|K1
+y= 421.6  317|V  332|.
+y= 427.3  148|(cid:0)  169|(cid:1)  266|(cid:0)  281|)(cid:1)  323|K1
+y= 428.4  56|qc  64|o  68|l,(β)  174|,qr  185|o  189|w,(β)  275|(  277|β
+y= 431.3  84|←RLWE.Enc  153|e  209|←LWE.Enc  270|r  289|.
+y= 434.7  61|r,  65|a  141|sR  157|c(  163|β  166|)  183|r,  187|a  259|sL  274|r  277|,  279|a  328|Considerananchorcandidatev  456|.Letb  488|=BF.Gen(0,{K:
+y= 437.1  453|j  483|j
+y= 440.8  161|r,  164|a
+y= 445.5  318|v  329|∈V  457|BF.Gen(0,{K  516|,...,K
+y= 445.5  350|})  363|and  381|recall  408|that  427|b  446|=  548|}),
+y= 449.1  323|j  344|K  432|qry  512|2  542|Q
+y= 455.2  64|Thepublicparametersandtheserverstatearegenerated  318|andτ=∥b  372|∥
+y= 457.7  381|.Conditionedoncorrecthomomorphicscore
+y= 461.4  362|qry  377|1
+y= 466.9  54|beforethechallengebitissampledandareindependentofb.
+y= 469.6  318|evaluation,thedecryptedscoreis
+y= 479.1  54|Hence,theonlychallenge-dependentpartoftheadversary’s
+y= 488.1  438|ℓBF−1
+y= 490.8  54|viewisthecollectionofthe3ℓRLWEciphertextsandthe3ℓ
+y= 496.4  443|∑
+y= 497.3  369|s  379|=⟨b  408|,b  422|⟩=  460|b  476|[ℓ]b  495|[ℓ].
+y= 500.9  374|j  398|qry  419|j  465|qry  492|j
+y= 503.0  54|LWEciphertextscontainedinthechallengequeries.
+y= 509.8  442|ℓ=0
+y= 514.9  64|Considerasequenceofhybridsthattransformsthequery
+y= 525.5  123|(0)  159|(0)  243|(1)  280|(1)  328|Sincebothvectorsarebinary,
+y= 529.0  54|transcript  96|for  112|(K  133|,...,K  169|)  177|into  197|that  216|for  232|(K  253|,...,K  289|).
+y= 534.0  122|1  159|ℓ  242|1  279|ℓ
+y= 540.9  54|We  72|first  92|replace,  128|one  148|at  160|a  170|time,  194|each  217|RLWE  251|encryption
+y= 542.6  423|ℓBF−1
+y= 548.6  106|(cid:0)  127|(cid:1)  208|(cid:0)  229|(cid:1)
+y= 552.7  54|RLWE.Enc  110|e  135|with  156|RLWE.Enc  213|e  234|,  239|for  255|all  268|r  275|∈[ℓ]  386|0≤s  413|≤  428|∑  445|b  461|[ℓ]=τ.
+y= 556.2  98|sR  201|sR  408|j  451|qry
+y= 556.9  115|c(  121|0  124|)  217|c(  223|1  226|)
+y= 562.1  118|r,  122|a  221|r,  224|a
+y= 564.4  427|ℓ  430|=0
+y= 568.5  54|anda∈{0,1,2}.Eachpairofadjacenthybridsdiffersinonly
+y= 578.5  318|Therefore,s  372|>τcannotoccurinacorrectexecution.
+y= 580.7  54|oneRLWEciphertext.ByIND-CPAsecurityofRLWE,the  367|j
+y= 592.3  403|v  414|∈(cid:84)Q  443|V
+y= 592.6  54|distinguishingadvantagebetweentwoadjacenthybridsisat  328|Suppose  366|first  385|that  456|.  462|Then  487|every  512|non-anchor
+y= 595.9  408|j  431|i=1  449|Ki
+y= 604.4  100|(λ),where  318|keywordK,i≥2,belongstothesetencodedbyb
+y= 604.6  54|mostε  526|.Bythe
+y= 608.3  80|RLWE  362|i  523|j
+y= 616.4  318|no-false-negativeBloomfilters,everypositionsetinb  551|is
+y= 620.1  538|qry
+y= 625.1  133|ε  157|(λ)=negl(λ).
+y= 628.4  318|also  337|set  352|in  363|b  372|.  378|Consequently,s  449|=τ,and  487|CAPE  516|accepts  549|v  557|.
+y= 628.7  137|RLWE
+y= 631.8  370|j  444|j  554|j
+y= 640.4  318|Hence,theBloom-scoretestintroducesnofalsenegatives.
+y= 645.2  54|Sincethereare3ℓsuchreplacements,ahybridargumentgives
+y= 652.3  328|Conversely,if  388|s  398|<τ,at  429|least  451|one  469|position  506|set  520|in  532|b  551|is
+y= 655.7  393|j  537|qry
+y= 664.2  318|zeroinb  357|.Suchacandidatecannotcontaineverynon-anchor
+y= 665.9  135|∆  153|≤3ℓε  197|(λ).
+y= 669.5  141|col  177|RLWE  354|j
+y= 676.2  318|querykeyword,andtherefore
+y= 686.2  63|We  81|then  103|replace,  139|one  158|at  169|a  178|time,  202|each  225|LWE  251|encryption
+y= 696.0  99|(cid:0)  108|(0)(cid:1)  190|(cid:0)  199|(1)(cid:1)  469|Q
+y= 700.0  54|LWE.Enc  104|r  125|withLWE.Enc  195|r  213|.ByIND-CPAsecu-  467|(cid:92)
+y= 703.4  108|r,  112|a  199|r,  203|a
+y= 703.6  92|sL  183|s  186|L  382|s  392|<τ  418|=⇒  447|v  457|∈/  478|V  491|.
+y= 708.2  387|j  452|j  484|Ki
+y= 712.2  54|rityofLW  96|E,e  111|a  116|chreplacementc  183|h  188|ang  202|e  207|stheadversary’sview
+y= 718.0  466|i=1
+y= 742.1  301|19
+===== PAGE 20 =====
+y=  74.2  54|Thus,everycandidatewithscorebelowτiscorrectlyrejected.  318|andaBloomquery
+y=  86.4  64|Itremainstoconsideranon-matchingcandidatesatisfying
+y=  91.1  469|(cid:16)  491|(cid:17)
+y=  95.2  375|qB  385|F,(β)  481|(  483|β)
+y=  98.1  54|s  64|=τ.Define  404|←RLWE.Enc  475|b  498|,
+y= 101.7  59|j  380|r  460|sR  481|r
+y= 116.2  127|(cid:12)  235|(cid:12)
+y= 120.6  106|d  117|=(cid:12){i∈{2,...,Q}:v  208|∈/V  230|}(cid:12).
+y= 124.2  112|j  203|j  222|Ki  318|where
+y= 136.9  419|(cid:18)  506|(cid:19)
+y= 143.4  54|For  71|a  79|non-matching  139|anchor  169|candidate,d  225|≥1.  247|Acceptance  364|(β)  447|(β)  484|(β)
+y= 146.7  220|j  358|b  376|=BF.Gen  426|0,{K  457|,...,K  501|}  515|.
+y= 150.3  364|r
+y= 152.1  446|r,2  483|r,Q(  495|β)
+y= 155.1  54|withs  84|=τrequireseveryoneofthesed  222|missingkeywords
+y= 158.7  79|j  217|j  493|r
+y= 167.3  54|topasstheBloom-filtermembershiptestfalsely.Underthe
+y= 174.6  378|(  381|β)  411|(  414|β)
+y= 178.0  318|Thethresholdτ  391|=∥b  421|∥  433|isretainedintheclientstateand
+y= 179.2  54|standardindependent-hashingapproximation,  378|r  411|r
+y= 181.6  426|1
+y= 190.0  318|isnotincludedinthequerymessage.
+y= 201.1  164|∈/(cid:84)Q  226|dj.  328|Thepublicparameters,serverstate,anddatabasearefixed
+y= 203.8  110|Pr[s  132|=τ|v  193|V  206|]≈ε
+y= 207.4  127|j  159|j  199|Ki
+y= 208.9  180|i=1  225|BF
+y= 213.9  318|beforethechallengebitissampled.Hence,itsufficestocon-
+y= 225.9  318|siderthechallenge-dependentquerymessages.Weproceed
+y= 226.5  54|Without  90|relying  122|on  136|independence  196|between  233|these  258|tests,  282|the
+y= 238.5  54|conservativebound  318|throughasequenceofhybridexperiments.
+y= 255.4  318|HybridH  362|.Thisistherealexperimentconditionedonb=0.
+y= 258.0  159|∈/(cid:84)Q  358|0
+y= 260.8  105|Pr[s  127|=τ|v  188|V  201|]≤ε  230|(λ)
+y= 264.3  122|j  154|j  193|Ki  220|BF
+y= 265.9  175|i=1  318|Thus,foreveryr∈[ℓ],theadversaryreceives
+y= 283.5  54|issufficient.
+y= 284.8  405|(cid:16)  461|(cid:17)
+y= 288.5  416|(0)  431|,qBF,(0)
+y= 291.8  411|q  468|.
+y= 295.2  416|r,anc  440|r
+y= 295.5  64|Sinceatmostmanchorcandidatesaretested,aunionbound
+y= 307.7  54|gives
+y= 320.3  107|Pr[Bad  145|]≤mε  182|(λ)=negl(λ),  480|(0)  516|(1)
+y= 324.2  136|BF  173|BF  318|HybridH  363|.Replaceallanchorqueriesq  498|byq
+y= 325.7  531|,while
+y= 329.2  358|1  480|r,anc  516|r,anc
+y= 337.2  318|leavingtheBloomqueriesqB  434|F,(0)
+y= 339.1  54|assumingm=poly(λ)andε  178|(λ)isnegligible.  452|unchanged.Bytheℓ-query
+y= 343.0  168|BF  429|r
+y= 351.3  64|ThescorecomputationperformsO(mℓ  231|)homomorphic  318|IND-CKAsecurityofFusePIR,thereexistsanegligiblefunc-
+y= 355.3  221|BF
+y= 363.5  54|operations.Ifε  126|(λ)upper-boundsthecorrectnesserrorof  318|tionε  355|(λ)suchthat
+y= 367.2  115|HE
+y= 367.9  340|Fuse
+y= 375.5  54|eachoperation,then
+y= 385.5  348||Pr[A(H  385|)=1]−Pr[A(H  454|)=1]|≤ε  512|(λ).
+y= 389.2  381|0  450|1  497|Fuse
+y= 397.8  90|Pr[Bad  134|]≤O(mℓ  181|)ε  200|(λ)=negl(λ).
+y= 401.7  118|score  172|BF  190|HE
+y= 407.0  327|WenextreplacetheBloomqueries.Forr=0,...,ℓ,letH
+y= 410.6  549|1,r
+y= 420.5  54|Combiningallfailureevents,  318|denotethehybridinwhichtheBloomqueriesforthefirstr
+y= 429.7  472|(1)  507|(1)
+y= 433.1  318|challengequeriesaregeneratedfromb  482|,...,b  517|,whilethe
+y= 436.4  507|r
+y= 439.0  75|(cid:34)  124|(cid:35)  472|1
+y= 442.0  102|Q
+y= 444.6  509|(0)  547|(0)
+y= 447.7  100|(cid:92)  318|remainingBloomqueriesaregenerate  474|dfromb  522|,...,b  557|.
+y= 452.2  65|Pr  81|R̸=  111|V  132|≤ε  161|(λ)+Pr[Bad  229|]+Pr[Bad  280|]  509|r+1  547|ℓ
+y= 455.6  117|Ki  147|Fuse  213|score  270|BF
+y= 459.8  318|Thus,H  362|=H  383|.
+y= 463.4  350|1,0
+y= 465.4  99|i=1  379|1
+y= 471.8  328|Foreveryr∈[ℓ],theadjacenthybridsH  509|andH  545|dif-
+y= 475.4  488|1,r−1  533|1,r
+y= 476.8  132|=negl(λ).
+y= 480.1  531|(cid:16)  552|(cid:17)
+y= 483.9  542|(0)
+y= 487.2  318|feronlyinthesingleRLWEciphertextRLWE.Enc  537|b
+y= 490.7  522|sR  542|r
+y= 498.9  54|Therefore,  387|(cid:16)  409|(cid:17)
+y= 502.8  399|(1)
+y= 506.1  318|andRLWE.Enc  393|b  415|.BytheIND-CPAsecurityoftheun-
+y= 509.6  379|sR  399|r
+y= 516.8  121|(cid:34)  170|(cid:35)
+y= 519.7  148|Q
+y= 520.5  318|derlyingRLWEencryptionscheme,thereexistsanegligible
+y= 525.4  146|(cid:92)
+y= 530.0  111|Pr  127|R=  157|V  178|≥1−negl(λ),  318|functionε  378|(λ)suchthat
+y= 533.3  163|Ki
+y= 536.1  358|RLWE
+y= 543.1  145|i=1
+y= 553.7  336||Pr[A(H  387|)=1]−Pr[A(H  461|)=1]|≤ε  524|(λ).
+y= 557.3  369|1,r−1  452|1,r  504|RLWE
+y= 560.7  54|whichsatisfiesDefinition1.
+y= 575.5  318|Applying  359|the  375|triangle  410|inequality  454|over  475|the  491|hybrid  521|sequence
+y= 589.2  54|D.4  83|SecurityProofofCAPE  318|gives
+y= 604.0  347|(cid:12)  483|(cid:12)
+y= 608.5  234|ℓ-QINDconj  347|(cid:12)Pr[A(H  385|)=1]−Pr[A(H  459|)=1](cid:12)
+y= 610.9  54|Proof.  84|Let  101|A  112|be  125|any  143|PPT  164|adversary  206|in  218|the  283|ex-  381|1  450|1,ℓ
+y= 616.3  266|Π,A
+y= 623.1  54|periment,  96|for  112|any  132|polynomially  191|bounded  230|ℓ.  242|After  268|receiv-  383|ℓ
+y= 632.7  368|≤  380|∑ε  416|(λ)=ℓε  471|(λ)=negl(λ),
+y= 635.1  54|ing  70|(pp,st  100|,DB),A  138|chooses  173|two  191|sequences  236|of  247|conjunctive  396|RLWE  451|RLWE
+y= 638.4  96|S
+y= 646.0  98|(0)  135|(0)  181|(1)  218|(1)  378|r=1
+y= 649.2  54|queries(K  108|,...,K  145|)and(K  190|,...,K  228|),where,forr∈
+y= 654.5  98|1  135|ℓ  181|1  218|ℓ
+y= 657.8  159|(cid:18)  228|(cid:19)
+y= 661.4  318|sincethesequencecontainsonlypolynomiallymanyhybrid
+y= 664.6  136|(β)  173|(β)  210|(β)
+y= 667.8  54|[ℓ]andβ∈{0,1},K  149|=  166|K  183|,...,K  235|.
+y= 671.2  136|r  172|r,1  318|transitionsandapolynomialsumofnegligiblefunctionsre-
+y= 673.6  209|r,Q(  221|β)
+y= 678.9  219|r
+y= 685.4  318|mainsnegligible.
+y= 685.5  64|Foreachchallengequery,CAPEgeneratesananchorquery
+y= 697.3  328|Let  345|H  360|=  370|H  387|.  394|In  407|H  418|,  424|both  446|the  462|anchor  494|queries  527|and  546|the
+y= 703.5  192|(cid:16)  248|(cid:17)  352|2  378|1,ℓ  414|2
+y= 707.2  99|(  102|β  106|)  238|(  241|β  245|)  474|(  477|1)  511|(  514|1)
+y= 710.5  94|q  117|←FusePIR.Query  198|pp  214|,sk,K  318|Bloom  349|queries  381|are  397|generated  439|from  462|(K  484|,...,K  521|).  531|Hence,
+y= 713.9  99|r,  103|a  107|nc  208|F
+y= 715.6  237|r  239|,  241|1  474|1  511|ℓ
+y= 742.1  301|20
+===== PAGE 21 =====
+y=  73.9  54|H  67|isdistributedidenticallytotherealexperimentconditioned
+y=  77.7  61|2
+y=  85.9  54|onb=1.
+y=  98.1  64|Combiningthetwohybridsteps,
+y= 119.3  94||Pr[A(H  131|)=1]−Pr[A(H  200|)=1]|
+y= 123.1  127|0  196|2
+y= 134.3  115|≤ε  144|(λ)+ℓε  197|(λ)=negl(λ).
+y= 138.2  129|Fuse  177|RLWE
+y= 156.4  253|(0)  283|(1)
+y= 159.9  64|Importantly,this  135|argument  176|does  198|not  214|require  246|Q  266|=Q  293|.
+y= 163.1  253|r  283|r
+y= 171.9  54|Foreveryconjunctivequery,CAPEalwayssendsoneanchor
+y= 183.8  54|queryandoneRLWEciphertextencryptingaBloomvector
+y= 195.8  54|of  65|the  81|fixed  104|public  133|length  161|ℓ  175|,regardless  225|of  236|the  252|numberof
+y= 199.4  165|BF
+y= 206.3  234|(β)
+y= 209.8  54|queriedkeywords.Moreover,thethresholdτ  247|remainspri-
+y= 212.9  234|r
+y= 220.3  248|(0)  284|(1)
+y= 223.6  54|vatetotheclient.Therefore,differentvaluesofQ  260|andQ
+y= 227.0  248|r  284|r
+y= 235.8  54|donotalterthequeryformatobservedbytheserver.
+y= 247.5  81|p
+y= 247.7  64|Let  94|denote  124|the  139|probabilitythatA  216|outputs  249|1  257|when  282|the
+y= 251.8  86|β
+y= 259.7  54|challengebitisβ.Fromtheabovehybrids,
+y= 281.4  134||p  148|−p  167||≤negl(λ).
+y= 285.1  142|1  163|0
+y= 303.5  54|Therefore,
+y= 309.8  124|(cid:12)  165|(cid:12)
+y= 315.7  124|(cid:12)  159|1  165|(cid:12)  182|1
+y= 317.7  134|co  141|nj−
+y= 321.7  124|(cid:12)  128|P  165|(cid:12)  171|=  188||p  202|−p  221||
+y= 323.9  196|1  217|0
+y= 327.7  124|(cid:12)  133|Π  138|,A  159|2  165|(cid:12)  182|2
+y= 342.0  171|≤negl(λ).
+y= 359.5  54|Thus,CAPEsatisfiestheIND-CCKAsecurityrequirementof
+y= 371.5  54|Definition3.
+y= 742.1  301|21

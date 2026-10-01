@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAPE · 合取关键词 PIR 演示</title>
+<style>
+/* ============================================================
+   主题 token —— 取自「个人主页」css/theme.css 的【浅色】一套
+   （深色覆盖段、theme-switch、theme.js 一律未采用）
+   配色：**黑色版整体换成深蓝** —— 结构、布局、交互全部保持黑色版原样，
+   只把黑换成蓝。映射关系：
+       #111111 -> #132a63   （强调色 / 正文 / 页头 / 硬边框与硬阴影）
+       #212121 -> #141f42   （卡片）
+       #2e2e2e -> #20305e   （卡片内斑马纹）
+       #383838 -> #2a3d70   （卡片内表头）
+       #050505/#101010 -> #0b1738
+       #000    -> #132a63   （搜索框硬边框与硬阴影）
+       #050505 等近黑 -> #0b1738
+   ============================================================ */
+:root{
+  --bg:#f5f5f5; --bg-grid:#e4e4e4;
+  --card:#141f42; --card-op:.92;
+  --card-text:#f5f5f5; --card-muted:#a8b4d4;
+  --card-stripe:#20305e; --card-head:#2a3d70;
+  --text:#132a63; --muted:#5b6b93; --border:#d8d8d8;
+  --accent:#132a63; --accent-contrast:#ffffff;
+  --header-bg:#0b1738; --header-text:#f5f5f5;
+  --link:#132a63; --link-hover:#5b6b93;
+  --table-stripe:#f1f1f1; --table-head:#e8e8e8;
+  --code-bg:#0b1738; --code-text:#f5f5f5;
+  --shadow:0 10px 24px rgba(11,23,56,.12);
+  --card-shadow:15px 15px 30px rgba(19,42,99,.35),-15px -15px 30px rgba(255,255,255,.85);
+  --focus:rgba(19,42,99,.22);
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background-color:var(--bg);color:var(--text);
+  background-image:linear-gradient(var(--bg-grid) 1px,transparent 1px),
+                   linear-gradient(90deg,var(--bg-grid) 1px,transparent 1px);
+  background-size:28px 28px;
+  font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  font-size:14px;line-height:1.6;
+}
+header{background:var(--header-bg);color:var(--header-text);padding:18px 0}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+header h1{margin:0;font-size:20px;letter-spacing:.5px}
+header .sub{color:#a3a3a3;font-size:12px;margin-top:4px}
+.banner{
+  display:flex;flex-wrap:wrap;gap:10px 22px;margin:20px 0 0;
+  background-color:color-mix(in srgb,var(--card) calc(var(--card-op)*100%),transparent);
+  color:var(--card-text);border-radius:30px;padding:14px 22px;
+  box-shadow:var(--card-shadow);border:1px solid var(--border);
+}
+.banner b{font-size:16px}
+.banner .k{color:var(--card-muted);font-size:11px;display:block}
+
+/* ---- 计时面板 ---- */
+.panel{
+  background:#fff;border:1px solid var(--border);border-radius:6px;
+  padding:16px 20px;margin:20px 0;box-shadow:var(--shadow);
+}
+.panel h2{margin:0 0 12px;font-size:15px}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:760px){.split{grid-template-columns:1fr}}
+.timing{width:100%;border-collapse:collapse}
+.timing td{padding:6px 8px;border-bottom:1px solid var(--table-stripe)}
+.timing td:last-child{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.timing tr.total td{border-bottom:none;border-top:3px double var(--accent);font-size:16px}
+.setup-box{background:var(--table-stripe);border-left:4px solid var(--accent);padding:10px 14px}
+.setup-box .val{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+.setup-box .note{color:var(--muted);font-size:12px;margin-top:4px}
+
+/* ============================================================
+   搜索栏 —— 样式取自「个人主页」index.html:266-324（新粗野主义）
+   ============================================================ */
+.search-bar{
+  background-color:color-mix(in srgb,var(--card) calc(var(--card-op)*100%),transparent);
+  border-radius:30px;box-shadow:var(--card-shadow);
+  padding:16px 20px;margin:28px 0 20px;border:1px solid var(--border);
+}
+.search-box{display:flex;gap:10px}
+.search-input{
+  flex:1;padding:10px 14px;border:4px solid var(--accent);border-radius:0;font-size:14px;
+  outline:none;transition:all .3s ease;background:#fff;color:var(--text);
+  box-shadow:8px 8px 0 var(--accent);
+}
+.search-input::placeholder{color:#888}
+.search-input:hover{transform:translate(-4px,-4px);box-shadow:12px 12px 0 var(--accent)}
+/* 聚焦只加深"按下去"的硬阴影，**不改底色和字色** ——
+   黑色版原来聚焦会把整个框反色成深底白字，太跳，已去掉。 */
+.search-input:focus{box-shadow:12px 12px 0 var(--accent)}
+.search-btn{
+  padding:10px 20px;background-color:var(--accent);color:var(--accent-contrast);
+  border:2px solid var(--accent);border-radius:2px;cursor:pointer;font-size:14px;
+  transform:skew(-18deg);box-shadow:4px 4px 0 var(--border);
+  transition:background-color .2s,color .2s,transform .2s,box-shadow .2s,border-color .2s;
+}
+.search-btn:hover{
+  background-color:var(--accent-contrast);color:var(--accent);
+  border-color:var(--accent-contrast);
+  transform:skew(-18deg) translate(-2px,-2px);box-shadow:6px 6px 0 var(--accent);
+}
+.search-btn:disabled{opacity:.45;cursor:not-allowed;transform:skew(-18deg)}
+.clear-btn{
+  padding:10px 16px;background-color:var(--card-stripe);color:var(--card-text);
+  border:2px solid var(--card-text);border-radius:2px;cursor:pointer;font-size:14px;
+  transform:skew(-18deg);
+}
+.clear-btn:hover{background-color:var(--card-text);color:var(--card-stripe)}
+
+/* ============================================================
+   关键词 chip —— 样式取自「个人主页」.tag-cloud/.tag-item/.tag-count
+   ============================================================ */
+.tag-cloud{display:flex;flex-wrap:wrap;gap:8px}
+.tag-item{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:5px 11px;border:1px solid var(--border);border-radius:2px;
+  background:#fff;cursor:pointer;font-size:13px;transition:all .15s ease;
+}
+.tag-item:hover{background:var(--accent);color:var(--accent-contrast);border-color:var(--accent)}
+.tag-item.on{background:var(--accent);color:var(--accent-contrast);border-color:var(--accent)}
+.tag-count{
+  background:var(--table-head);color:var(--muted);border-radius:10px;
+  padding:0 6px;font-size:11px;
+}
+.tag-item:hover .tag-count,.tag-item.on .tag-count{background:rgba(255,255,255,.25);color:#fff}
+
+/* ---- chips ---- */
+.chips{display:flex;flex-wrap:wrap;gap:8px;min-height:38px;padding:8px;
+  border:1px dashed var(--border);border-radius:4px;background:var(--table-stripe)}
+
+/* ---- 折叠面板 ---- */
+details.acc{padding:0}
+details.acc>summary{
+  list-style:none;cursor:pointer;padding:16px 20px;
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  user-select:none;
+}
+details.acc>summary::-webkit-details-marker{display:none}
+details.acc>summary::before{
+  content:"▸";font-size:13px;color:var(--muted);transition:transform .15s ease;
+}
+details.acc[open]>summary::before{transform:rotate(90deg)}
+details.acc>summary:hover{background:var(--table-stripe)}
+.acc-title{font-size:15px;font-weight:600}
+.acc-hint{color:var(--muted);font-size:12px;margin-left:auto}
+.acc-body{padding:0 20px 18px}
+.kw-filter{
+  width:100%;margin-bottom:12px;padding:8px 12px;border:3px solid var(--accent);
+  box-shadow:5px 5px 0 var(--accent);font-size:13px;
+}
+.kw-filter:hover{transform:translate(-2px,-2px);box-shadow:7px 7px 0 var(--accent)}
+.kw-filter:focus{box-shadow:7px 7px 0 var(--accent)}   /* 同上：不改色 */
+.chip{
+  display:inline-flex;align-items:center;gap:8px;padding:5px 10px;
+  background:var(--accent);color:var(--accent-contrast);border-radius:2px;font-size:13px;
+}
+.chip .x{cursor:pointer;font-weight:700;opacity:.75}
+.chip .x:hover{opacity:1}
+.chip .a{font-size:11px;opacity:.7}
+.hint{color:var(--muted);font-size:12px}
+
+/* ---- 结果 ---- */
+.res{padding:8px 0;border-bottom:1px solid var(--table-stripe)}
+.res:last-child{border-bottom:none}
+.res .t{font-weight:600}
+.res .m{color:var(--muted);font-size:12px}
+.hit-yes{color:#0a7a33;font-weight:700}
+.hit-no{color:#a33;font-weight:700}
+
+/* ---- 进度 ---- */
+.prog{height:6px;background:var(--table-head);border-radius:3px;overflow:hidden;margin-top:10px}
+.prog i{display:block;height:100%;background:var(--accent);width:0%;transition:width .3s linear}
+.mono{font-family:ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
+.badge{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;
+  background:var(--table-head);color:var(--muted);margin-left:6px}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>CAPE · 合取关键词 PIR 演示</h1>
+  <div class="sub">FusePIR + CAPE（USENIX Security）· 路线 A：真 SEAL 4.0.0 C++ native · N=8192</div>
+</div></header>
+
+<div class="wrap">
+
+  <div class="banner" id="banner">
+    <div><span class="k">关键词</span><b id="bKw">…</b></div>
+    <div><span class="k">值空间</span><b id="bVal">…</b></div>
+    <div><span class="k">关联</span><b id="bAssoc">…</b></div>
+    <div><span class="k">N / t</span><b id="bNt">…</b></div>
+    <div><span class="k">B_pay / 单元数</span><b id="bBp">…</b></div>
+    <div><span class="k">maxValues / maxSetSize</span><b id="bDeg">…</b></div>
+  </div>
+
+  <!-- ========== SETUP 并排单独显示，不并入总耗时 ========== -->
+  <div class="panel">
+    <h2>① SETUP <span class="badge">仅启动时跑一次，不计入查询总耗时</span></h2>
+    <div class="split">
+      <div class="setup-box">
+        <div class="k" style="color:var(--muted);font-size:12px">本次进程启动时的 SETUP 用时</div>
+        <div class="val" id="setupMs">…</div>
+        <div class="note" id="setupBreak">…</div>
+      </div>
+      <div>
+        <table class="timing">
+          <tr><td>明文表 P</td><td id="pInfo">…</td></tr>
+          <tr><td>工作素数 / q 位宽</td><td id="qInfo">…</td></tr>
+          <tr><td>Bloom ℓ_BF</td><td id="lbfInfo">…</td></tr>
+          <tr><td>服务状态</td><td id="srvInfo">…</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 搜索 ========== -->
+  <div class="search-bar">
+    <div class="search-box">
+      <input type="text" id="kwInput" class="search-input"
+             placeholder="输入关键词后按回车添加（例如 atmospheric）…" autocomplete="off">
+      <button id="addBtn" class="search-btn">添加</button>
+      <button id="searchBtn" class="search-btn">搜索</button>
+      <button id="clearBtn" class="clear-btn">清空</button>
+    </div>
+
+    <div style="margin-top:14px">
+      <div class="hint" style="margin-bottom:6px">
+        已添加的关键词（第一个是<b>锚</b>，其余进入 b_qry 做合取判定）：
+      </div>
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button id="randBtn" class="search-btn">随机添加一组可命中的组合</button>
+      <span class="hint" id="randHint">从数据集的「可用组合池」里抽 ⇒ 保证查到结果</span>
+    </div>
+  </div>
+
+  <!-- 可折叠；默认收起，点标题展开。不占版面，需要时再找 -->
+  <details class="panel acc" id="kwPanel">
+    <summary>
+      <span class="acc-title">② 可填入的关键词</span>
+      <span class="badge" id="kwCountBadge">…</span>
+      <span class="acc-hint">点这里展开 / 收起</span>
+    </summary>
+    <div class="acc-body">
+      <div class="hint" style="margin-bottom:8px">
+        点任意关键词即可加入上面的搜索框；也可以在框里输入过滤后再点。
+      </div>
+      <input type="text" id="kwFilter" class="search-input kw-filter"
+             placeholder="输入以过滤关键词…" autocomplete="off">
+      <div class="tag-cloud" id="kwCloud"></div>
+      <div class="hint" id="kwFilterHint" style="margin-top:8px"></div>
+    </div>
+  </details>
+
+  <!-- ========== 计时 ========== -->
+  <div class="panel">
+    <h2>③ 本次查询计时 <span class="badge">ANSWER 约需 2 分钟，请耐心等待</span></h2>
+    <div class="split">
+      <table class="timing" id="timingTable">
+        <tr><td>QUERY（客户端）</td><td id="tQ">—</td></tr>
+        <tr><td>ANSWER（服务端，native）</td><td id="tA">—</td></tr>
+        <tr><td>DECODE（客户端）</td><td id="tD">—</td></tr>
+        <tr class="total"><td>三步总耗时</td><td id="tT">—</td></tr>
+      </table>
+      <div>
+        <div class="hint">总耗时<b>不含</b> SETUP —— SETUP 在 ① 里单独显示。</div>
+        <div class="prog"><i id="progBar"></i></div>
+        <div class="hint mono" id="progText" style="margin-top:6px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 结果 ========== -->
+  <div class="panel">
+    <h2>④ 查询结果</h2>
+    <div id="resHead" class="hint">尚未查询。</div>
+    <div id="resList" style="margin-top:10px"></div>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+var state = { keywords: [], params: {}, db: {}, pool: [], selected: [], busy: false };
+
+function $(id){ return document.getElementById(id); }
+/* QUERY 与 DECODE 是纯 Java 侧运算，实测 < 1 ms，用整数会显示成 0，
+   看上去像坏了，所以这里保留两位小数。 */
+function fmt(ms){
+  if(ms == null) return "—";
+  if(ms > 0 && ms < 1) return ms.toFixed(2) + " ms";
+  return ms.toLocaleString() + " ms";
+}
+
+function addKw(k){
+  k = (k||"").trim();
+  if(!k) return;
+  if(state.selected.indexOf(k) >= 0) return;
+  if(state.keywords.indexOf(k) < 0){ flash("库里没有这个关键词：" + k); return; }
+  state.selected.push(k);
+  renderChips();
+}
+function flash(msg){
+  var h = $("randHint"); h.textContent = msg;
+  setTimeout(function(){ h.textContent = "从数据集的「可用组合池」里抽 ⇒ 保证查到结果"; }, 2600);
+}
+function renderChips(){
+  var box = $("chips"); box.innerHTML = "";
+  if(!state.selected.length){
+    box.innerHTML = '<span class="hint">还没有添加关键词。可以从下面点选，或按「随机添加」。</span>';
+    return;
+  }
+  state.selected.forEach(function(k, i){
+    var d = document.createElement("span");
+    d.className = "chip";
+    d.innerHTML = '<span>' + k + '</span>' + (i===0?'<span class="a">锚</span>':'') +
+                  '<span class="x" title="移除">×</span>';
+    d.querySelector(".x").onclick = function(){
+      state.selected.splice(i,1); renderChips();
+    };
+    box.appendChild(d);
+  });
+}
+
+function renderCloud(){
+  var c = $("kwCloud"); c.innerHTML = "";
+  var q = ($("kwFilter").value || "").trim().toLowerCase();
+  var shown = 0;
+  state.keywords.forEach(function(k){
+    if(q && k.toLowerCase().indexOf(q) < 0) return;
+    shown++;
+    var s = document.createElement("span");
+    s.className = "tag-item" + (state.selected.indexOf(k)>=0 ? " on" : "");
+    s.textContent = k;
+    s.title = "点一下加入搜索框";
+    s.onclick = function(){ addKw(k); renderCloud(); };
+    c.appendChild(s);
+  });
+  $("kwFilterHint").textContent = q
+    ? ("过滤「" + q + "」→ " + shown + " / " + state.keywords.length + " 个")
+    : ("共 " + state.keywords.length + " 个关键词，点任意一个加入搜索框");
+}
+
+function setBusy(b){
+  state.busy = b;
+  $("searchBtn").disabled = b;
+  $("randBtn").disabled = b;
+  $("addBtn").disabled = b;
+}
+
+/* ---------- 计时面板 ---------- */
+var progTimer = null;
+function startProgress(){
+  var t0 = Date.now();
+  $("progBar").style.width = "0%";
+  progTimer = setInterval(function(){
+    var el = (Date.now()-t0)/1000;
+    /* 经验值：N=8192 约 130~160 s。到 95% 就停住，不做假完成。 */
+    var pct = Math.min(95, el/150*100);
+    $("progBar").style.width = pct.toFixed(1) + "%";
+    $("progText").textContent = "已等待 " + el.toFixed(1) + " s";
+  }, 200);
+}
+function stopProgress(){ if(progTimer){ clearInterval(progTimer); progTimer=null; } }
+
+/* ---------- 查询 ---------- */
+function doSearch(){
+  if(state.busy) return;
+  if(state.selected.length < 1){ flash("至少添加一个关键词"); return; }
+  setBusy(true); stopProgress(); startProgress();
+  ["tQ","tA","tD","tT"].forEach(function(id){ $(id).textContent = "…"; });
+  $("resHead").textContent = "查询中…";
+  $("resList").innerHTML = "";
+
+  fetch("/api/query", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({keywords: state.selected})
+  }).then(function(r){ return r.json(); }).then(function(j){
+    stopProgress();
+    $("progBar").style.width = "100%";
+    setBusy(false);
+    if(!j.ok){ $("resHead").innerHTML = '<span class="hit-no">失败：</span>' + (j.error||"未知错误"); return; }
+    var t = j.timing;
+    $("tQ").textContent = fmt(t.queryMs);
+    $("tA").textContent = fmt(t.answerMs);
+    $("tD").textContent = fmt(t.decodeMs);
+    $("tT").textContent = fmt(t.totalMs);
+    $("progText").textContent = "完成，共 " + (t.totalMs/1000).toFixed(1) + " s";
+    renderResults(j);
+  }).catch(function(e){
+    stopProgress(); setBusy(false);
+    $("resHead").innerHTML = '<span class="hit-no">请求出错：</span>' + e;
+  });
+}
+
+function renderResults(j){
+  var hit = j.hit;
+  $("resHead").innerHTML =
+    '锚 = <b>' + j.anchor + '</b>　τ = ' + j.tau +
+    '　密文载荷自检 = ' + (j.integrity ? '<span class="hit-yes">逐位一致</span>'
+                                       : '<span class="hit-no">不一致(' + j.payloadMismatch + ')</span>') +
+    '　命中 = ' + (hit ? '<span class="hit-yes">是</span>' : '<span class="hit-no">否（0 条）</span>');
+  var box = $("resList"); box.innerHTML = "";
+  if(!j.results.length){
+    box.innerHTML = '<div class="hint">没有条目同时满足全部关键词。' +
+      '试试按「随机添加一组可命中的组合」——那会从已验证可命中的组合池里抽。</div>';
+    return;
+  }
+  j.results.forEach(function(r){
+    var d = document.createElement("div");
+    d.className = "res";
+    d.innerHTML = '<div class="t">' + r.title + '</div>' +
+                  '<div class="m">valueId = ' + r.valueId +
+                  '　movielens movieId = ' + r.rawMovieId + '</div>';
+    box.appendChild(d);
+  });
+}
+
+/* ---------- 启动 ---------- */
+function boot(){
+  fetch("/api/state").then(function(r){ return r.json(); }).then(function(s){
+    state.keywords = s.keywords || [];
+    state.params = s.params || {};
+    state.db = s.db || {};
+    var p = state.params, db = state.db;
+
+    $("bKw").textContent   = db.keywords;
+    $("bVal").textContent  = db.values;
+    $("bAssoc").textContent= db.assoc;
+    $("bNt").textContent   = p.N + " / " + p.t;
+    $("bBp").textContent   = p.bPay + " / " + p.unitCount;
+    $("bDeg").textContent  = p.maxValues + " / " + p.maxSetSize;
+
+    $("setupMs").textContent = fmt(s.setup.ms);
+    $("setupBreak").textContent =
+      "Java 侧 " + s.setup.javaMs + " ms（载荷 + P 表）+ native 侧 " +
+      s.setup.nativeMs + " ms（SEALContext " + " + RGSW 引导密钥）";
+    $("pInfo").textContent = p.C + " × " + p.bPay + " × " + p.N + " 系数";
+    $("qInfo").textContent = "4 素数 / 174 bit / levels " + 11;
+    $("lbfInfo").textContent = p.lBf + "（ε_BF = 2^" +
+      Math.round(Math.log(p.epsBf)/Math.log(2)) + "）";
+    $("srvInfo").textContent = "就绪";
+    $("kwCountBadge").textContent = state.keywords.length + " 个";
+
+    renderChips(); renderCloud();
+    return fetch("/api/pool").then(function(r){ return r.json(); });
+  }).then(function(pl){
+    state.pool = (pl && pl.pool) || [];
+  }).catch(function(e){
+    $("srvInfo").innerHTML = '<span class="hit-no">服务未就绪：' + e + '</span>';
+  });
+}
+
+/* ---------- 事件 ---------- */
+$("addBtn").onclick = function(){ addKw($("kwInput").value); $("kwInput").value=""; renderCloud(); };
+$("kwInput").addEventListener("keydown", function(e){
+  if(e.key === "Enter"){ addKw(this.value); this.value=""; renderCloud(); }
+});
+$("searchBtn").onclick = doSearch;
+$("clearBtn").onclick = function(){ state.selected = []; renderChips(); renderCloud(); };
+$("kwFilter").addEventListener("input", renderCloud);
+$("randBtn").onclick = function(){
+  if(!state.pool.length){ flash("组合池还没加载完，稍等一下"); return; }
+  var e = state.pool[Math.floor(Math.random()*state.pool.length)];
+  state.selected = e.kws.slice();
+  renderChips(); renderCloud();
+  flash("已载入组合：" + e.kws.join(" + ") + "（库内命中 " + e.count + " 条）");
+};
+
+boot();
+</script>
+</body>
+</html>

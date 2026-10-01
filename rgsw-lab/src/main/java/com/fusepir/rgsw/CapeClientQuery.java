@@ -107,27 +107,24 @@ public final class CapeClientQuery {
         // ---- 行选择子：LWE 形式（A1 L838 q^row_a = LWE.Enc_{s_L}(r_a)）----
         // β = ⟨a, s_L⟩ + r_a (mod 2N)。
         //
-        // ⚠️ 一个必须写清楚的密码学不变量（我在这里栽过一次）：
+        // ⚠️ 密码学不变量（我在这里栽过三次，每次都写下来避免重犯）：
         //   blind_rotate 要求 bsk = {RGSW(s_i)} 与**累加器所加密的那个秘密**是同一个。
-        //   累加器由服务器用 SEAL 上下文的秘密密钥加密（rgsw_blindrotate.cpp L532-533
-        //   建 encryptor/decryptor 用的都是 c->sk），所以 s_L 必须**就是那个秘密的比特**。
-        //   第一版我用「客户端自己采的 {0,1}^d」当 s_L，于是 bk 建在一个和累加器不同的
-        //   秘密上 ⇒ 旋转量全错 ⇒ 载荷恒为 0（而且因为大量 a_i·s_i 碰巧为 0，
-        //   恒等轮被跳过，耗时还从 103 s 掉到 53 s —— 那正是这个 bug 的指纹）。
+        //   累加器由服务器用 SEAL 上下文的秘密密钥加密（rgsw_blindrotate.cpp L532-533）。
         //
-        // 单进程回环里唯一自洽的选择就是「用与加密同一个秘密的比特」。
-        // 这在安全上不是倒退：bsk = {RGSW(s_i)} 的**定义**就是"加密后的秘密比特"，
-        // 它本来就作为公开评估材料发给服务器（论文 A1 的 sk=(s_L,s_R) 里 s_L 用于
-        // 生成 bsk）。真两方部署里应由客户端生成 sk 与 bsk、把 bsk 发出去；
-        // 那时我们的回环必须改成客户端持有 SEALContext（见缺陷总表 P0-4）。
+        //   错法 1：客户端新建自己的 SEALContext 取比特 ⇒ 拿到另一个随机秘密 ⇒ 载荷恒 0。
+        //   错法 2：把服务进程的 ctxHandle 跨进程传给测试 JVM ⇒ 句柄是裸指针 ⇒ 段错误。
+        //   错法 3（本版改掉的）：用 `nativeSecretBits` 的 {0,1} 约定。
+        //       它把「系数 == 1 或 0」映射成 1/0，其余（含 −1）**静默归零**，
+        //       而客户端无法从返回值区分「真 0」与「被归零的 −1」⇒ 双方可能用不同的 s。
+        //
+        //   现在改成：**客户端自己确定 s_L**（{0,1}^d，由种子派生），
+        //   β 与 bsk 都从这同一个 s_L 出发（bsk 比特随请求发给服务器）。
+        //   这样两侧用的是同一组比特，不再依赖任何「取比特」的约定。
+        //   密码学上这是对的：论文 A1 的 sk=(s_L,s_R) 里 s_L 本就用于生成 bsk，
+        //   而 bsk 是公开评估密钥。单进程回环下这仍是妥协 —— 真部署要客户端持有
+        //   上下文（缺陷总表 P0-4）。
         int d = Integer.getInteger("cape.d", 16);
-        int[] sL = new int[d];
-        {
-            Long[] bits = NativeBlindRotate.nativeSecretBits(ctxHandle, d);
-            for (int i = 0; i < d && i < bits.length; i++) {
-                sL[i] = bits[i].intValue();
-            }
-        }
+        int[] sL = sampleBinarySecret(d);
         q.sBits = sL;
         q.a = new long[k][d];
         q.beta = new long[k];

@@ -182,22 +182,6 @@ public final class CapeDemoService {
         long a0 = System.nanoTime();
         long[] rec;
         try {
-            if (Boolean.getBoolean("cape.diag")) {
-                System.out.println("[diag] d=" + d + " k=" + K + " C=" + tb.c + " bPay=" + tb.bPay
-                    + " rows=" + java.util.Arrays.toString(q.rowIdx)
-                    + " cols=" + java.util.Arrays.toString(q.colIdx));
-                System.out.println("[diag] beta=" + java.util.Arrays.toString(q.beta));
-                System.out.println("[diag] a[0][0..3]=" + q.a[0][0] + "," + q.a[0][1]
-                    + "," + q.a[0][2] + "," + q.a[0][3]
-                    + "  sBits[0..7]=" + java.util.Arrays.toString(
-                        java.util.Arrays.copyOfRange(q.sBits, 0, Math.min(8, q.sBits.length))));
-                // 表里 Africa（slot 5 → col 1, rows 0..2）的 share 是否非零
-                long s0 = 0;
-                for (int i = 0; i < 4; i++) {
-                    s0 += tableFlat[(1 * tb.bPay + i) * n];
-                }
-                System.out.println("[diag] tableFlat[col=1][b=0..3][r=0] 之和 = " + s0);
-            }
             rec = NativeBlindRotate.nativeCapeAnswerSealed(ctxHandle, d, tb.c, K, tb.bPay,
                 tableFlat, q.colIdx, q.rowIdx, q.a, q.beta, q.sBits);
         } catch (Throwable t) {
