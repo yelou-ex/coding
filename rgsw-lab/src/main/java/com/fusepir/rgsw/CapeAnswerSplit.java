@@ -37,7 +37,10 @@ public final class CapeAnswerSplit {
             args.length > 1 ? args[1] : "E:\\学习\\密码赛\\coding\\cape-demo\\db\\keywords.json");
 
         final int K = 3;
-        final long T = 65537L;
+        // t 与 gadget 基位宽可覆盖：扫「抬 t 换大 base」那条路线时要用
+        //   -Dcape.t=4294967296 -Dcape.b=32
+        final long T = Long.getLong("cape.t", 65537L);
+        final int B = Integer.getInteger("cape.b", 16);
         int rSingle = Integer.getInteger("cape.split.r", 0);
         int[] rList = rSingle > 0 ? new int[] {rSingle} : new int[] {16, 64};
 
@@ -47,12 +50,19 @@ public final class CapeAnswerSplit {
         int maxSet = db.intMeta("maxSetSize", 4);
         int bPay = 2 + maxValues * (1 + lBf);
 
-        long h = NativeBlindRotate.nativeCreateContext(n, T, 16);
+        long h = NativeBlindRotate.nativeCreateContext(n, T, B);
         try {
+            String desc = NativeBlindRotate.nativeDescribe(h);
+            int levels = extractInt(desc, "levels=");
+            // ⚠️ d 必须 >= levels，否则 blind_rotate 越界读 bk[i]。
+            //    实测 levels 由 base 决定，所以 d 不能写死 16。
+            int d = levels > 16 ? levels : 16;
             System.out.println("=== ANSWER 两段剖面（同一次执行内切分）===");
-            System.out.printf("[db] %s%n", dbPath.getFileName());
-            System.out.printf("     keywords=%d maxValues=%d maxSetSize=%d l_BF=%d B_pay=%d k=%d N=%d d=16%n%n",
-                db.keywords.size(), maxValues, maxSet, lBf, bPay, K, n);
+            System.out.printf("[ctx] %s%n", desc);
+            System.out.printf("[db]  %s%n", dbPath.getFileName());
+            System.out.printf("      keywords=%d maxValues=%d maxSetSize=%d l_BF=%d B_pay=%d "
+                    + "k=%d N=%d t=%d base=2^%d d=%d(levels=%d)%n%n",
+                db.keywords.size(), maxValues, maxSet, lBf, bPay, K, n, T, B, d, levels);
 
             System.out.printf("%5s %5s %12s %14s %14s %10s %10s %11s %11s%n",
                 "R", "C", "units", "列选择 ms", "盲旋转 ms", "列占比", "旋转/单元",
@@ -73,17 +83,29 @@ public final class CapeAnswerSplit {
                 }
 
                 long[] v = NativeBlindRotate.nativeCapeAnswerSplit(
-                    h, 16, c, K, bPay, flat, cIdx, rIdx);
+                    h, d, c, K, bPay, flat, cIdx, rIdx);
                 long colUs = v[0];
                 long rotUs = v[1];
                 long colCalls = v[2];       // CtPtMul calls = units * C   (counted in C++)
                 long rotBrCalls = v[3];     // blind_rotate calls = units  (NOT CMUX count!)
 
+                // ---- 正确性：拿答案密钥的第 0 个关键词逐位比对 ----
+                // capeAnswer 的 3 条路都用同一个 col/row（见上面的 cIdx/rIdx 赋值），
+                // 所以期望值就是 payload[0][*]。B_pay=83 远小于 t=2^32，不会截断。
+                long[] rec = NativeBlindRotate.nativeCapeAnswer(
+                    h, d, c, K, bPay, flat, cIdx, rIdx);
+                int bad = 0;
+                for (int b = 0; b < bPay; b++) {
+                    if (rec[b] != tb.payload[0][b]) {
+                        bad++;
+                    }
+                }
+
                 // v[3] counts blind_rotate invocations, NOT the CMUX operations inside
                 // it: one blind_rotate = d CMUX rounds.  Verified against the native
                 // self-test (nativeBlindRotateBench), which reports one CMUX at
                 // 29.8 ms @N=8192 d=16 - so the per-CMUX divisor must be units*d.
-                final int D = 16;
+                final int D = d;
                 long rotCalls = rotBrCalls * D;
 
                 double colMs = colUs / 1000.0;
@@ -102,11 +124,27 @@ public final class CapeAnswerSplit {
                         + "　+　d=%d 轮 CMUX × %.2f ms = %.1f ms　⇒ %.0f ms/单元%n",
                     c, msPerMul, c * msPerMul, D, msPerCmux, D * msPerCmux, totMs / units);
                 System.out.printf("         调用总次数：CtPtMul %d（=units×C），"
-                        + "CMUX %d（=units×d，由 %d 次 blind_rotate 展开）%n%n",
+                        + "CMUX %d（=units×d，由 %d 次 blind_rotate 展开）%n",
                     colCalls, rotCalls, rotBrCalls);
+                System.out.printf("         端到端校验：payload 错 %d/%d ⇒ %s%n%n",
+                    bad, bPay, bad == 0 ? "PASS" : "FAIL");
             }
         } finally {
             NativeBlindRotate.nativeDestroyContext(h);
         }
+    }
+
+    /** 从 {@code nativeDescribe} 的文本里取一个整数，例如 {@code "levels=11"}。 */
+    private static int extractInt(String desc, String key) {
+        int i = desc.indexOf(key);
+        if (i < 0) {
+            return -1;
+        }
+        i += key.length();
+        int j = i;
+        while (j < desc.length() && Character.isDigit(desc.charAt(j))) {
+            j++;
+        }
+        return j == i ? -1 : Integer.parseInt(desc.substring(i, j));
     }
 }

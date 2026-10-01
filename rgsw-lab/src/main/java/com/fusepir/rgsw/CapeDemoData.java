@@ -228,7 +228,10 @@ public final class CapeDemoData {
             long[] sum = new long[bPay];
             for (int a = 0; a < k - 1; a++) {
                 for (int b = 0; b < bPay; b++) {
-                    share[i][a][b] = (long) rnd.nextInt((int) t);
+                    // nextLong(bound) 而不是 nextInt((int) t)：t 可以大到 2^32，
+                    // 强转 int 会溢出成 0，Random.nextInt 直接抛
+                    // "bound must be positive"。t=65537 时两者等价。
+                    share[i][a][b] = rnd.nextLong(t);
                     sum[b] = (sum[b] + share[i][a][b]) % t;
                 }
             }
@@ -242,7 +245,7 @@ public final class CapeDemoData {
         for (int cc = 0; cc < c; cc++) {
             for (int b = 0; b < bPay; b++) {
                 for (int rr = 0; rr < r; rr++) {
-                    p[cc][b][rr] = 1 + rnd.nextInt((int) t - 1);
+                    p[cc][b][rr] = 1 + rnd.nextLong(t - 1);
                 }
             }
         }

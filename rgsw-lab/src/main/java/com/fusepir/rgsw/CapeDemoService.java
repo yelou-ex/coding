@@ -45,7 +45,10 @@ public final class CapeDemoService {
 
     private static final int R = 16;
     private static final int K = 3;
-    private static final long T = 65537L;
+    // t 与 gadget 基位宽可覆盖：验证「抬 t 换大 base」时用
+    //   -Dcape.t=4294967296 -Dcape.b=32
+    private static final long T = Long.getLong("cape.t", 65537L);
+    private static final int BASE_BITS = Integer.getInteger("cape.b", 16);
     private static final long SEED = 20261013L;
     private static final String ASCII = "ASCII";
 
@@ -83,7 +86,7 @@ public final class CapeDemoService {
         this.setupJavaMs = (System.nanoTime() - j0) / 1_000_000;
 
         long n0 = System.nanoTime();
-        this.ctxHandle = NativeBlindRotate.nativeCreateContext(n, T, 16);
+        this.ctxHandle = NativeBlindRotate.nativeCreateContext(n, T, BASE_BITS);
         long kh = NativeBlindRotate.nativeBuildBootstrapKey(ctxHandle, d);
         NativeBlindRotate.nativeDestroyKey(kh);   // nativeCapeAnswer rebuilds it per call
         this.setupNativeMs = (System.nanoTime() - n0) / 1_000_000;

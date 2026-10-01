@@ -171,11 +171,31 @@ inline void mwAddMulWord(uint64_t *dst, const uint64_t *src, int W, uint64_t m) 
     }
 }
 
-inline void mwShiftRight16(uint64_t *x, int W) {
-    for (int i = 0; i < W - 1; ++i) {
-        x[i] = (x[i] >> 16) | (x[i + 1] << 48);
+/**
+ * {@code x >>= bits} for a multi-word value, {@code bits < 64}.
+ *
+ * <p>This used to be a hardcoded 16 called {@code mwShiftRight16}.  That made the
+ * gadget base *inert*: {@link decomposeValueMw} extracted a digit as
+ * {@code x[0] & (base-1)} but then always shifted by 16, so with e.g.
+ * {@code base = 2^32} the loop consumed 16 bits per round while
+ * {@code levels = ceil(qBits / 32)}.  After `levels` rounds the remaining tail was
+ * still ~q/2^levels instead of 0, and the reconstruction was wrong.  The base only
+ * ever "worked" because the callers passed exactly 16.
+ */
+inline void mwShiftRightBits(uint64_t *x, int W, int bits) {
+    if (bits <= 0) return;
+    const int words = bits / 64;
+    const int rem = bits % 64;
+    if (words > 0) {
+        for (int i = 0; i + words < W; ++i) x[i] = x[i + words];
+        for (int i = W - words; i < W; ++i) x[i] = 0;
     }
-    x[W - 1] >>= 16;
+    if (rem > 0) {
+        for (int i = 0; i < W - 1; ++i) {
+            x[i] = (x[i] >> rem) | (x[i + 1] << (64 - rem));
+        }
+        x[W - 1] >>= rem;
+    }
 }
 
 inline void mwAddOne(uint64_t *x, int W) {
@@ -218,15 +238,20 @@ inline void crtComposeMw(const NativeCtx *c, const uint64_t *res, uint64_t *x, u
 }
 
 // Balanced base-B digits as Z_t coefficients (negative stored as t + r).
+//
+// The digit width MUST be c->base_bits: the digit is x mod B and the next round
+// consumes x/B, so the shift has to match the mask.  Digits are returned as
+// residues mod t (a negative digit -r becomes t - r), which is what the plaintext
+// can carry; correctness only needs the CRT sum to come out right mod q, and q is
+// built from the same primes the evaluator uses.
 inline void decomposeValueMw(const NativeCtx *c, const uint64_t *xin, uint64_t *out) {
     const int W = c->words;
     uint64_t x[MAX_WORDS];
     for (int i = 0; i < W; ++i) x[i] = xin[i];
     for (int k = 0; k < c->levels; ++k) {
         const uint64_t r = x[0] & (c->base - 1);
-        uint64_t carry = 0;
-        if (r > (c->base >> 1)) carry = 1;
-        mwShiftRight16(x, W);
+        const std::uint64_t carry = (r > (c->base >> 1)) ? 1u : 0u;
+        mwShiftRightBits(x, W, c->base_bits);
         if (carry) mwAddOne(x, W);
         out[k] = carry ? (r - c->base + c->t) : r;
     }
