@@ -8,21 +8,30 @@
 /* ============================================================
    主题 token —— 取自「个人主页」css/theme.css 的【浅色】一套
    （深色覆盖段、theme-switch、theme.js 一律未采用）
+   配色：**黑色版整体换成深蓝** —— 结构、布局、交互全部保持黑色版原样，
+   只把黑换成蓝。映射关系：
+       #111111 -> #132a63   （强调色 / 正文 / 页头 / 硬边框与硬阴影）
+       #212121 -> #141f42   （卡片）
+       #2e2e2e -> #20305e   （卡片内斑马纹）
+       #383838 -> #2a3d70   （卡片内表头）
+       #050505/#101010 -> #0b1738
+       #000    -> #132a63   （搜索框硬边框与硬阴影）
+       #050505 等近黑 -> #0b1738
    ============================================================ */
 :root{
   --bg:#f5f5f5; --bg-grid:#e4e4e4;
-  --card:#212121; --card-op:.92;
-  --card-text:#f5f5f5; --card-muted:#a3a3a3;
-  --card-stripe:#2e2e2e; --card-head:#383838;
-  --text:#111111; --muted:#666666; --border:#d8d8d8;
-  --accent:#111111; --accent-contrast:#ffffff;
-  --header-bg:#111111; --header-text:#f5f5f5;
-  --link:#111111; --link-hover:#555555;
+  --card:#141f42; --card-op:.92;
+  --card-text:#f5f5f5; --card-muted:#a8b4d4;
+  --card-stripe:#20305e; --card-head:#2a3d70;
+  --text:#132a63; --muted:#5b6b93; --border:#d8d8d8;
+  --accent:#132a63; --accent-contrast:#ffffff;
+  --header-bg:#0b1738; --header-text:#f5f5f5;
+  --link:#132a63; --link-hover:#5b6b93;
   --table-stripe:#f1f1f1; --table-head:#e8e8e8;
-  --code-bg:#111111; --code-text:#f5f5f5;
-  --shadow:0 10px 24px rgba(0,0,0,.12);
-  --card-shadow:15px 15px 30px rgba(33,33,33,.35),-15px -15px 30px rgba(255,255,255,.85);
-  --focus:rgba(0,0,0,.22);
+  --code-bg:#0b1738; --code-text:#f5f5f5;
+  --shadow:0 10px 24px rgba(11,23,56,.12);
+  --card-shadow:15px 15px 30px rgba(19,42,99,.35),-15px -15px 30px rgba(255,255,255,.85);
+  --focus:rgba(19,42,99,.22);
 }
 *{box-sizing:border-box}
 body{
@@ -72,14 +81,15 @@ header .sub{color:#a3a3a3;font-size:12px;margin-top:4px}
 }
 .search-box{display:flex;gap:10px}
 .search-input{
-  flex:1;padding:10px 14px;border:4px solid #000;border-radius:0;font-size:14px;
-  outline:none;transition:all .3s ease;background:#fff;color:#000;
-  box-shadow:8px 8px 0 #000;
+  flex:1;padding:10px 14px;border:4px solid var(--accent);border-radius:0;font-size:14px;
+  outline:none;transition:all .3s ease;background:#fff;color:var(--text);
+  box-shadow:8px 8px 0 var(--accent);
 }
 .search-input::placeholder{color:#888}
-.search-input:hover{transform:translate(-4px,-4px);box-shadow:12px 12px 0 #000}
-.search-input:focus{background:#000;color:#fff;border-color:#fff}
-.search-input:focus::placeholder{color:#fff}
+.search-input:hover{transform:translate(-4px,-4px);box-shadow:12px 12px 0 var(--accent)}
+/* 聚焦只加深"按下去"的硬阴影，**不改底色和字色** ——
+   黑色版原来聚焦会把整个框反色成深底白字，太跳，已去掉。 */
+.search-input:focus{box-shadow:12px 12px 0 var(--accent)}
 .search-btn{
   padding:10px 20px;background-color:var(--accent);color:var(--accent-contrast);
   border:2px solid var(--accent);border-radius:2px;cursor:pointer;font-size:14px;
@@ -118,7 +128,7 @@ header .sub{color:#a3a3a3;font-size:12px;margin-top:4px}
 
 /* ---- chips ---- */
 .chips{display:flex;flex-wrap:wrap;gap:8px;min-height:38px;padding:8px;
-  border:1px dashed var(--border);border-radius:4px;background:#fafafa}
+  border:1px dashed var(--border);border-radius:4px;background:var(--table-stripe)}
 
 /* ---- 折叠面板 ---- */
 details.acc{padding:0}
@@ -137,11 +147,11 @@ details.acc>summary:hover{background:var(--table-stripe)}
 .acc-hint{color:var(--muted);font-size:12px;margin-left:auto}
 .acc-body{padding:0 20px 18px}
 .kw-filter{
-  width:100%;margin-bottom:12px;padding:8px 12px;border:3px solid #000;
-  box-shadow:5px 5px 0 #000;font-size:13px;
+  width:100%;margin-bottom:12px;padding:8px 12px;border:3px solid var(--accent);
+  box-shadow:5px 5px 0 var(--accent);font-size:13px;
 }
-.kw-filter:hover{transform:translate(-2px,-2px);box-shadow:7px 7px 0 #000}
-.kw-filter:focus{background:#000;color:#fff;border-color:#fff}
+.kw-filter:hover{transform:translate(-2px,-2px);box-shadow:7px 7px 0 var(--accent)}
+.kw-filter:focus{box-shadow:7px 7px 0 var(--accent)}   /* 同上：不改色 */
 .chip{
   display:inline-flex;align-items:center;gap:8px;padding:5px 10px;
   background:var(--accent);color:var(--accent-contrast);border-radius:2px;font-size:13px;
