@@ -78,5 +78,9 @@ Write-Host "[run] $Class $progArgs"
 #     探针同时打印：file.encoding=UTF-8 但 native.encoding=GBK、stdout.encoding=GBK
 #
 #   对照：`git log` 的中文一直是正常的 —— 因为 git 自己按 UTF-8 输出，与本行无关。
-& $javaPath '-Xmx4g' '-Dfile.encoding=UTF-8' '-Dstdout.encoding=UTF-8' '-Dstderr.encoding=UTF-8' "-Djava.library.path=$nativeDir" "--enable-native-access=ALL-UNNAMED" -cp "$out;$cp;$nativeDir/classes" $Class @progArgs
+$javaOpts = @('-Xmx4g', '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8')
+# Extra -D... switches for probes, via an env var (a plain ASCII string, e.g.
+#   $env:DSH_JVM_OPTS='-Dcape.grid.rs=16,64'  ).
+if ($env:DSH_JVM_OPTS) { $javaOpts += ($env:DSH_JVM_OPTS -split '\s+') }
+& $javaPath @javaOpts "-Djava.library.path=$nativeDir" "--enable-native-access=ALL-UNNAMED" -cp "$out;$cp;$nativeDir/classes" $Class @progArgs
 exit $LASTEXITCODE
