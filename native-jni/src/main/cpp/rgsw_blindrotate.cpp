@@ -32,6 +32,31 @@
 #include <string>
 #include <vector>
 
+// Monotonic nanosecond clock for the ANSWER stage split.  Windows' QPC is used
+// instead of std::chrono::steady_clock because this DLL is built two ways on this
+// machine (MinGW-w64 and MSVC, see docs/reports) and QPC is exact under both.
+#ifdef _WIN32
+#include <windows.h>
+static std::uint64_t now_ns() {
+    static const std::uint64_t freq = [] {
+        LARGE_INTEGER f;
+        QueryPerformanceFrequency(&f);
+        return static_cast<std::uint64_t>(f.QuadPart);
+    }();
+    LARGE_INTEGER t;
+    QueryPerformanceCounter(&t);
+    return static_cast<std::uint64_t>(
+        static_cast<double>(t.QuadPart) * 1e9 / static_cast<double>(freq));
+}
+#else
+#include <chrono>
+static std::uint64_t now_ns() {
+    return static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+}
+#endif
+
 using namespace seal;
 
 namespace {
@@ -1289,6 +1314,129 @@ JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_native
     }
     jlongArray arr = env->NewLongArray(bPay);
     env->SetLongArrayRegion(arr, 0, bPay, out.data());
+    return arr;
+    JNI_END(env, nullptr)
+}
+
+// ---------------------------------------------------------------------------
+//  Profiling-only variant of nativeCapeAnswer: identical loop structure, identical
+//  CtPtMul and CMUX counts, but column select and blind rotation are timed
+//  separately and the decode step is skipped.
+//
+//  Why this is a valid split: both stages write the SAME `accCol` variable in the
+//  SAME control flow, so the two timers partition one continuous execution.  There
+//  is no "run A, then run B" drift - colUs and rotUs are directly comparable.
+//
+//  Returns [colUs, rotUs, colRounds, rotRounds, checksum].
+// ---------------------------------------------------------------------------
+JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeCapeAnswerSplit(
+    JNIEnv *env, jclass, jlong h, jint d, jint C, jint k, jint bPay,
+    jlongArray tableFlat, jlongArray cIdx, jlongArray rIdx) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    const std::size_t n = c->n;
+    const std::uint64_t two_n = 2 * static_cast<std::uint64_t>(n);
+
+    auto bits = secret_bits(c, d);
+    std::vector<RgswKey> bk;
+    bk.reserve(static_cast<std::size_t>(d));
+    for (int i = 0; i < d; ++i) {
+        bk.push_back(build_rgsw_constant(c, static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])));
+    }
+
+    jlong *tab = env->GetLongArrayElements(tableFlat, nullptr);
+    auto parms_id = c->context->first_parms_id();
+    std::vector<std::vector<Plaintext>> tabNtt(
+        static_cast<std::size_t>(C), std::vector<Plaintext>(static_cast<std::size_t>(bPay)));
+    for (int cc = 0; cc < C; ++cc) {
+        for (int b = 0; b < bPay; ++b) {
+            Plaintext p;
+            p.resize(n);
+            const std::size_t base = (static_cast<std::size_t>(cc) * bPay + b) * n;
+            for (std::size_t i = 0; i < n; ++i) {
+                p[i] = static_cast<std::uint64_t>(tab[base + i]);
+            }
+            c->evaluator->transform_to_ntt_inplace(p, parms_id);
+            tabNtt[static_cast<std::size_t>(cc)][static_cast<std::size_t>(b)] = std::move(p);
+        }
+    }
+    env->ReleaseLongArrayElements(tableFlat, tab, JNI_ABORT);
+
+    jlong *cidx = env->GetLongArrayElements(cIdx, nullptr);
+    jlong *ridx = env->GetLongArrayElements(rIdx, nullptr);
+    std::vector<int> colIdx(static_cast<std::size_t>(k));
+    for (int a = 0; a < k; ++a) colIdx[static_cast<std::size_t>(a)] = static_cast<int>(cidx[a]);
+
+    std::vector<std::vector<std::uint64_t>> av(static_cast<std::size_t>(k),
+                                               std::vector<std::uint64_t>(static_cast<std::size_t>(d), 0));
+    std::vector<std::uint64_t> betav(static_cast<std::size_t>(k), 0);
+    std::uint64_t rngState = 20260930ULL;
+    for (int a = 0; a < k; ++a) {
+        std::uint64_t sum = 0;
+        for (int i = 0; i < d; ++i) {
+            rngState ^= rngState << 13;
+            rngState ^= rngState >> 7;
+            rngState ^= rngState << 17;
+            const std::uint64_t ai = rngState % two_n;
+            av[static_cast<std::size_t>(a)][static_cast<std::size_t>(i)] = ai;
+            sum = (sum + ai * static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])) % two_n;
+        }
+        betav[static_cast<std::size_t>(a)] =
+            (sum + static_cast<std::uint64_t>(ridx[a])) % two_n;
+    }
+    env->ReleaseLongArrayElements(cIdx, cidx, JNI_ABORT);
+    env->ReleaseLongArrayElements(rIdx, ridx, JNI_ABORT);
+
+    std::vector<Ciphertext> sel(static_cast<std::size_t>(C));
+    Ciphertext accCol, rot;
+    std::uint64_t checksum = 0;
+    std::uint64_t colNs = 0;
+    std::uint64_t rotNs = 0;
+    long colRounds = 0;
+    long rotRounds = 0;
+
+    for (int a = 0; a < k; ++a) {
+        for (int cc = 0; cc < C; ++cc) {
+            Plaintext p;
+            p.resize(n);
+            p[0] = (cc == colIdx[static_cast<std::size_t>(a)]) ? 1 : 0;
+            c->encryptor->encrypt_symmetric(p, sel[static_cast<std::size_t>(cc)]);
+            c->evaluator->transform_to_ntt_inplace(sel[static_cast<std::size_t>(cc)]);
+        }
+        for (int b = 0; b < bPay; ++b) {
+            // ---- column select ----
+            std::uint64_t t0 = now_ns();
+            bool first = true;
+            for (int cc = 0; cc < C; ++cc) {
+                Ciphertext prod;
+                c->evaluator->multiply_plain(sel[static_cast<std::size_t>(cc)],
+                                             tabNtt[static_cast<std::size_t>(cc)][static_cast<std::size_t>(b)],
+                                             prod);
+                if (first) {
+                    accCol = std::move(prod);
+                    first = false;
+                } else {
+                    c->evaluator->add_inplace(accCol, prod);
+                }
+                ++colRounds;
+            }
+            std::uint64_t t1 = now_ns();
+            // ---- blind rotation ----
+            blind_rotate(c, bk, accCol, av[static_cast<std::size_t>(a)],
+                         betav[static_cast<std::size_t>(a)], rot);
+            std::uint64_t t2 = now_ns();
+            colNs += (t1 - t0);
+            rotNs += (t2 - t1);
+            ++rotRounds;
+            checksum += rot.data(0)[0];
+        }
+    }
+
+    jlong vals[5] = {
+        static_cast<jlong>(colNs / 1000ULL), static_cast<jlong>(rotNs / 1000ULL),
+        colRounds, rotRounds, static_cast<jlong>(checksum & 0x7fffffff) };
+    jlongArray arr = env->NewLongArray(5);
+    env->SetLongArrayRegion(arr, 0, 5, vals);
     return arr;
     JNI_END(env, nullptr)
 }

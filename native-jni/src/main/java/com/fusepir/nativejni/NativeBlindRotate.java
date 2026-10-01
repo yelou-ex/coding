@@ -125,6 +125,20 @@ public final class NativeBlindRotate {
     public static native long[] nativeCapeAnswer(long h, int d, int C, int k, int bPay,
                                                   long[] tableFlat, long[] cIdx, long[] rIdx);
 
+    /**
+     * <b>只用于剖面：把 ANSWER 拆成「列选择」与「盲旋转」两段分别计时。</b>
+     *
+     * <p>与 {@link #nativeCapeAnswer} 的循环结构、CtPtMul 次数、CMUX 次数<b>完全一致</b>，
+     * 只是：(a) 关掉解码（避免对零值密文解密冒出无意义的噪声），(b) 分两段计时。
+     * 因为两段共用同一个 {@code accCol} 变量、同一条控制流，所以
+     * {@code colUs} 是列选择的独占时间，{@code rotUs} 是盲旋转的独占时间，
+     * 两者直接可比，不存在“两次独立运行漂移”的问题。
+     *
+     * @return {@code [colUs, rotUs, colRounds, rotRounds, checksum]}
+     */
+    public static native long[] nativeCapeAnswerSplit(long h, int d, int C, int k, int bPay,
+                                                       long[] tableFlat, long[] cIdx, long[] rIdx);
+
     private static int passed = 0;
     private static int failed = 0;
 
