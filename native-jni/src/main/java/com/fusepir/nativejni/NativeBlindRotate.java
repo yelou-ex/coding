@@ -139,6 +139,18 @@ public final class NativeBlindRotate {
     public static native long[] nativeCapeAnswerSplit(long h, int d, int C, int k, int bPay,
                                                        long[] tableFlat, long[] cIdx, long[] rIdx);
 
+    /**
+     * <b>CMUX 成本拆解</b>：跑 {@code rounds} 轮真实盲旋转，报告时间花在哪。
+     *
+     * <p>存在的理由：仓库里「`decompose` 占 CMUX 的 24%」这个数出自数月前另一个参数集
+     * （levels=11, t=65537）的独立剖面，拿它去推算「改掉多字 CRT 往返能省多少」
+     * 是**没有依据的外推**。这个入口让那个问题由实测回答。
+     *
+     * @return {@code [总us, 分解里的正向NTT us, 多字CRT算术 us, 明文NTT us,
+     *          multiply_plain us, decompose 次数, multiply_plain 次数, rounds]}
+     */
+    public static native long[] nativeCmuxProfile(long h, int d, int rounds);
+
     private static int passed = 0;
     private static int failed = 0;
 

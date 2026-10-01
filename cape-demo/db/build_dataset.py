@@ -125,6 +125,10 @@ def main() -> int:
     ap.add_argument("--max-set-size", type=int, default=4)
     ap.add_argument("--keywords", type=int, default=128)
     ap.add_argument("--n", type=int, default=8192, help="ring dimension N")
+    ap.add_argument("--plain-modulus", type=int, default=2 ** 32,
+                    help="BFV plaintext modulus t; gadget base is capped by t (base < 2t)")
+    ap.add_argument("--base-bits", type=int, default=32,
+                    help="RGSW gadget decomposition base = 2^base_bits (<= 32)")
     ap.add_argument("--eps-bf", type=float, default=2.0 ** -6)
     ap.add_argument("--value-space", type=int, default=8192)
     ap.add_argument("--pool-only", action="store_true",
@@ -263,7 +267,13 @@ def main() -> int:
             "bPay": b_pay,
             "unitCount": units,
             "n": args.n,
-            "plainModulus": 65537,
+            # t 与 gadget 基位宽写进库里，服务直接读 —— 这样「库」和「服务参数」
+            # 只有一个来源，不会再出现两边不一致的静默截断。
+            # 为什么 t 要 2^32：平衡分解的位必须落在 [0, t) 内 => base < 2t，
+            # 所以 base 的天花板由 t 决定。t=65537 时 base 只能到 2^16 => levels=11；
+            # t=2^32 时 base 可到 2^32 => levels=6，一次 CMUX 41.4 -> 26.3 ms。
+            "plainModulus": args.plain_modulus,
+            "baseBits": args.base_bits,
             "valuesAreCompactIds": True,
             "pool_size": n_pairs,
             "pool_total_pairs": total_pairs,

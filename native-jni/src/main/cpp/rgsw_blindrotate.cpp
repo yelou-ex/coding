@@ -237,6 +237,23 @@ inline void crtComposeMw(const NativeCtx *c, const uint64_t *res, uint64_t *x, u
     }
 }
 
+// ---------------------------------------------------------------------------
+//  Profiling counters for the CMUX cost breakdown.
+//
+//  Only ever read by nativeCapeAnswerProfile; the hot path just does two
+//  now_ns() calls and some integer adds, so this costs well under 1% and does
+//  not change any result.  Reset it before a measured run.
+// ---------------------------------------------------------------------------
+struct CmuxProfile {
+    std::uint64_t decomFwdNttNs = 0;   // transform_from_ntt inside decompose()
+    std::uint64_t decomArithNs = 0;    // crtComposeMw + decomposeValueMw (the multi-word part)
+    std::uint64_t ptNttNs = 0;         // transform_to_ntt of the digit plaintext
+    std::uint64_t mulPlainNs = 0;      // multiply_plain + add
+    std::uint64_t decomCalls = 0;      // decompose() invocations
+    std::uint64_t mulPlainCalls = 0;
+};
+static CmuxProfile g_prof;
+
 // Balanced base-B digits as Z_t coefficients (negative stored as t + r).
 //
 // The digit width MUST be c->base_bits: the digit is x mod B and the next round
@@ -265,7 +282,12 @@ std::vector<std::vector<std::uint64_t>> decompose(const NativeCtx *c, const Ciph
     // A coefficient domain view is required: the digits are a decomposition of the
     // Z_q coefficient values, not of their NTT images.
     Ciphertext copy = ct;
-    if (copy.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(copy);
+    if (copy.is_ntt_form()) {
+        const std::uint64_t t0 = now_ns();
+        c->evaluator->transform_from_ntt_inplace(copy);
+        g_prof.decomFwdNttNs += (now_ns() - t0);
+    }
+    const std::uint64_t ta = now_ns();
     const std::uint64_t *data = copy.data(comp);
     std::vector<std::uint64_t> res(L), x(W), mv(W), tmp(c->levels);
     for (std::size_t i = 0; i < n; ++i) {
@@ -274,6 +296,8 @@ std::vector<std::vector<std::uint64_t>> decompose(const NativeCtx *c, const Ciph
         decomposeValueMw(c, x.data(), tmp.data());
         for (int k = 0; k < c->levels; ++k) digits[k][i] = tmp[k];
     }
+    g_prof.decomArithNs += (now_ns() - ta);
+    ++g_prof.decomCalls;
     return digits;
 }
 
@@ -374,12 +398,16 @@ void external_product(const NativeCtx *c, const RgswKey &key, const Ciphertext &
             const Ciphertext &g = (row == 0) ? key.g0[k] : key.g1[k];
             Plaintext pt(c->n);
             for (std::size_t i = 0; i < c->n; ++i) pt[i] = digits[i];
+            const std::uint64_t tp0 = now_ns();
             try {
                 c->evaluator->transform_to_ntt_inplace(pt, parms_id);
             } catch (const std::exception &e) {
                 throw std::runtime_error(std::string("pt to_ntt k=") + std::to_string(k)
                     + " row=" + std::to_string(row) + ": " + e.what());
             }
+            g_prof.ptNttNs += (now_ns() - tp0);
+            const std::uint64_t tm0 = now_ns();
+            ++g_prof.mulPlainCalls;
             try {
                 if (first) {
                     c->evaluator->multiply_plain(g, pt, acc);
@@ -399,6 +427,7 @@ void external_product(const NativeCtx *c, const RgswKey &key, const Ciphertext &
                     + " acc_ntt=" + (first ? std::string("-") : (acc.is_ntt_form() ? "1" : "0"))
                     + ": " + e.what());
             }
+            g_prof.mulPlainNs += (now_ns() - tm0);
         }
     }
     out = std::move(acc);
@@ -1462,6 +1491,66 @@ JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_native
         colRounds, rotRounds, static_cast<jlong>(checksum & 0x7fffffff) };
     jlongArray arr = env->NewLongArray(5);
     env->SetLongArrayRegion(arr, 0, 5, vals);
+    return arr;
+    JNI_END(env, nullptr)
+}
+
+// ---------------------------------------------------------------------------
+//  CMUX cost breakdown.  Runs `rounds` real blind-rotation rounds through the
+//  profiled path and returns where the time went, so the question "can decompose
+//  be optimised?" is answered by measurement instead of by arithmetic on
+//  0.30 us/coefficient written down months ago.
+//
+//  Returns [totalUs, decomFwdNttUs, decomArithUs, ptNttUs, mulPlainUs,
+//           decomCalls, mulPlainCalls, rounds].
+// ---------------------------------------------------------------------------
+JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeCmuxProfile(
+    JNIEnv *env, jclass, jlong h, jint d, jint rounds) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    auto bits = secret_bits(c, d);
+
+    // A real bootstrap key (d rows), exactly like the production query.
+    std::vector<RgswKey> bk;
+    bk.reserve(static_cast<std::size_t>(d));
+    for (int i = 0; i < d; ++i) {
+        bk.push_back(build_rgsw_constant(c, static_cast<std::uint64_t>(bits[static_cast<std::size_t>(i)])));
+    }
+
+    Ciphertext acc;
+    Plaintext zero(c->n);
+    c->encryptor->encrypt_symmetric(zero, acc);
+    c->evaluator->transform_to_ntt_inplace(acc);
+
+    const std::uint64_t two_n = 2 * static_cast<std::uint64_t>(c->n);
+    std::vector<std::uint64_t> a(static_cast<std::size_t>(d), 1);   // every round really CMUXes
+    const std::uint64_t beta = 0;
+
+    // warm-up (also keeps the first round's cold caches out of the counters)
+    {
+        Ciphertext warm;
+        blind_rotate(c, bk, acc, a, beta, warm);
+    }
+
+    g_prof = CmuxProfile();
+    const std::uint64_t t0 = now_ns();
+    Ciphertext out;
+    for (int r = 0; r < rounds; ++r) {
+        blind_rotate(c, bk, acc, a, beta, out);
+    }
+    const std::uint64_t t1 = now_ns();
+
+    jlong vals[8] = {
+        static_cast<jlong>((t1 - t0) / 1000ULL),
+        static_cast<jlong>(g_prof.decomFwdNttNs / 1000ULL),
+        static_cast<jlong>(g_prof.decomArithNs / 1000ULL),
+        static_cast<jlong>(g_prof.ptNttNs / 1000ULL),
+        static_cast<jlong>(g_prof.mulPlainNs / 1000ULL),
+        static_cast<jlong>(g_prof.decomCalls),
+        static_cast<jlong>(g_prof.mulPlainCalls),
+        static_cast<jlong>(rounds) };
+    jlongArray arr = env->NewLongArray(8);
+    env->SetLongArrayRegion(arr, 0, 8, vals);
     return arr;
     JNI_END(env, nullptr)
 }

@@ -3,304 +3,472 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="description" content="CAPE + FusePIR 合取关键词 PIR 演示：SETUP 与 QUERY / ANSWER / DECODE 分步计时。">
 <title>CAPE · 合取关键词 PIR 演示</title>
 <style>
 /* ============================================================
-   主题 token —— 取自「个人主页」css/theme.css 的【浅色】一套
-   （深色覆盖段、theme-switch、theme.js 一律未采用）
-   配色：**黑色版整体换成深蓝** —— 结构、布局、交互全部保持黑色版原样，
-   只把黑换成蓝。映射关系：
-       #111111 -> #132a63   （强调色 / 正文 / 页头 / 硬边框与硬阴影）
-       #212121 -> #141f42   （卡片）
-       #2e2e2e -> #20305e   （卡片内斑马纹）
-       #383838 -> #2a3d70   （卡片内表头）
-       #050505/#101010 -> #0b1738
-       #000    -> #132a63   （搜索框硬边框与硬阴影）
-       #050505 等近黑 -> #0b1738
+   设计语言：测量仪器面板（instrument panel）
+   ------------------------------------------------------------
+   出发点：这个页面的内容是「一次测量的分步读数」，所以视觉按
+   实验室仪表的规矩来 —— 数字用等宽、相位靠颜色区分、结构线只
+   出现在真正分隔数据的地方。
+
+   令牌来源（设计决策，不是默认值）：
+   · 纸面用冷灰工程纸，不用 AI 常见的奶油色 #F4F1EA
+   · 强调色不是"近黑 + 荧光绿"，而是给三个阶段各一个可读的深色
+     （青 / 琥珀 / 紫罗兰），并且**同一个颜色在三处复用**：签名
+     时间尺、③ 计时表、④ 结果徽标 —— 颜色在这里是分类信息，
+     不是装饰。
+   · 全站固定浅色（README：固定浅色主题），零依赖、不引任何
+     webfont CDN，字体只用系统栈，保证断网现场也能正常显示。
    ============================================================ */
 :root{
-  --bg:#f5f5f5; --bg-grid:#e4e4e4;
-  --card:#141f42; --card-op:.92;
-  --card-text:#f5f5f5; --card-muted:#a8b4d4;
-  --card-stripe:#20305e; --card-head:#2a3d70;
-  --text:#132a63; --muted:#5b6b93; --border:#d8d8d8;
-  --accent:#132a63; --accent-contrast:#ffffff;
-  --header-bg:#0b1738; --header-text:#f5f5f5;
-  --link:#132a63; --link-hover:#5b6b93;
-  --table-stripe:#f1f1f1; --table-head:#e8e8e8;
-  --code-bg:#0b1738; --code-text:#f5f5f5;
-  --shadow:0 10px 24px rgba(11,23,56,.12);
-  --card-shadow:15px 15px 30px rgba(19,42,99,.35),-15px -15px 30px rgba(255,255,255,.85);
-  --focus:rgba(19,42,99,.22);
+  /* 纸面与结构 */
+  --paper:#EEF1F5; --panel:#FFFFFF;
+  --rule:#D3DAE3; --rule-strong:#AFBACA;
+  --ink:#151C2C;  --ink-2:#3B465C; --muted:#5C6880;
+
+  /* 三个阶段各一色（全站复用，构成信息编码） */
+  --q:#0E5A63;   /* QUERY  */
+  --a:#9A5B06;   /* ANSWER —— 页面上唯一"大声"的颜色 */
+  --d:#4A3E92;   /* DECODE */
+
+  /* 状态 */
+  --ok:#0B6B33; --bad:#A32222;
+  --focus:#0E5A63;
+
+  --sh:0 1px 2px rgba(21,28,44,.05);
+  --r:3px;
+  --lab:78px;   /* 时间尺：相位名列宽 */
+  --val:112px;  /* 时间尺：读数列宽 */
+
+  --sans:"Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Hiragino Sans GB",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"Cascadia Mono","Consolas",ui-monospace,"SF Mono",Menlo,monospace;
+  --disp:Bahnschrift,"DIN Alternate","Segoe UI Variable Display","Microsoft YaHei UI",system-ui,sans-serif;
 }
 *{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
 body{
-  margin:0;background-color:var(--bg);color:var(--text);
-  background-image:linear-gradient(var(--bg-grid) 1px,transparent 1px),
-                   linear-gradient(90deg,var(--bg-grid) 1px,transparent 1px);
-  background-size:28px 28px;
-  font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
-  font-size:14px;line-height:1.6;
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:var(--sans);font-size:15px;line-height:1.65;
 }
-header{background:var(--header-bg);color:var(--header-text);padding:18px 0}
-.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
-header h1{margin:0;font-size:20px;letter-spacing:.5px}
-header .sub{color:#a3a3a3;font-size:12px;margin-top:4px}
-.banner{
-  display:flex;flex-wrap:wrap;gap:10px 22px;margin:20px 0 0;
-  background-color:color-mix(in srgb,var(--card) calc(var(--card-op)*100%),transparent);
-  color:var(--card-text);border-radius:30px;padding:14px 22px;
-  box-shadow:var(--card-shadow);border:1px solid var(--border);
-}
-.banner b{font-size:16px}
-.banner .k{color:var(--card-muted);font-size:11px;display:block}
+h1,h2,h3{font-family:var(--disp);font-weight:600;letter-spacing:.01em}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+  clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:2px}
 
-/* ---- 计时面板 ---- */
-.panel{
-  background:#fff;border:1px solid var(--border);border-radius:6px;
-  padding:16px 20px;margin:20px 0;box-shadow:var(--shadow);
+/* ---------- 页头：一条细的深色带，只承担"这是什么" ---------- */
+.masthead{background:var(--ink);color:#fff;padding:20px 0 18px}
+.wrap{max-width:900px;margin:0 auto;padding:0 22px}
+.masthead h1{margin:0;font-size:clamp(19px,2.4vw,23px);letter-spacing:.02em}
+/* ---------- 骨架：单列，读数优先 ---------- */
+.shell{max-width:900px;margin:0 auto;padding:22px}
+.main{display:flex;flex-direction:column;gap:20px;min-width:0}
+
+/* ---------- 面板 ---------- */
+.panel{background:var(--panel);border:1px solid var(--rule);border-radius:var(--r);box-shadow:var(--sh)}
+.phead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:13px 20px;border-bottom:1px solid var(--rule)}
+.phead h2{margin:0;font-size:16px}
+.pnum{
+  font-family:var(--mono);font-size:13px;font-weight:600;line-height:1;
+  width:22px;height:22px;display:inline-grid;place-items:center;
+  border:1px solid var(--ink);border-radius:2px;color:var(--ink);flex:none;
 }
-.panel h2{margin:0 0 12px;font-size:15px}
-.split{display:grid;grid-template-columns:1fr 1fr;gap:20px}
-@media(max-width:760px){.split{grid-template-columns:1fr}}
+.pbody{padding:18px 20px}
+
+/* ---------- 正文与提示 ---------- */
+.hint{color:var(--muted);font-size:13px}
+
+/* ---------- 签名元素：对数时间尺 ---------- */
+.claim{background:var(--panel);border:1px solid var(--rule);border-radius:var(--r);
+  padding:18px 20px;box-shadow:var(--sh)}
+.sec-title{margin:0 0 14px;font-size:14px;font-weight:600;color:var(--ink-2)}
+.ruler{margin:0}
+.ruler-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.ruler-head .ax{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted)}
+.tag{font-size:11.5px;font-family:var(--mono);border:1px solid var(--rule-strong);
+  border-radius:2px;padding:1px 7px;color:var(--muted);white-space:nowrap}
+.tag-live{border-color:var(--a);color:var(--a)}
+.plot{position:relative}
+.gl{position:absolute;left:var(--lab);right:var(--val);top:0;bottom:19px;
+  border-left:1px solid var(--rule-strong);border-right:1px solid var(--rule-strong);
+  background-image:repeating-linear-gradient(to right,var(--rule) 0 1px,transparent 1px 12.5%);
+  border-radius:2px}
+.rows{display:grid;grid-template-columns:var(--lab) minmax(0,1fr) var(--val);
+  align-items:center;row-gap:9px;position:relative;z-index:1}
+.nm{font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--ink-2)}
+.bar-slot{min-width:0}
+.bar{height:15px;border-radius:2px;width:0}
+.bar.q{background:var(--q)} .bar.a{background:var(--a)} .bar.d{background:var(--d)}
+.ruler.measured .bar{transition:width .6s cubic-bezier(.16,1,.3,1)}
+.val{display:flex;flex-direction:column;line-height:1.25;text-align:right}
+.val b{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink)}
+.val i{font-style:normal;font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.axis{position:relative;height:19px;margin-left:var(--lab);margin-right:var(--val)}
+.axis span{position:absolute;top:3px;transform:translateX(-50%);
+  font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
+.axis span.first{transform:none} .axis span.last{transform:translateX(-100%)}
+@media(max-width:620px){
+  :root{--lab:62px;--val:96px}
+  .axis span.half{display:none}
+  .val b{font-size:12px}
+}
+.claim-foot{margin:12px 0 0;font-size:13px;color:var(--muted)}
+.claim-foot b{font-family:var(--mono);color:var(--ink)}
+/* 预期值的口径说明：比正文小一号、更淡，不抢读数本身 */
+.claim-foot .note{display:block;margin-top:4px;font-size:11.5px;opacity:.75;line-height:1.5}
+
+/* ---------- 读数块（SETUP） ---------- */
+.readout{border-left:4px solid var(--q);padding:2px 0 2px 14px}
+.readout .k{display:block;font-size:13px;color:var(--muted)}
+.readout .big{display:block;font-family:var(--mono);font-size:clamp(26px,4vw,34px);
+  font-weight:700;line-height:1.2;letter-spacing:-.01em}
+
+/* ---------- 输入区 ---------- */
+.search-box{display:flex;gap:10px;flex-wrap:wrap}
+.input{
+  min-height:44px;padding:0 13px;font:inherit;font-size:15px;width:100%;
+  color:var(--ink);background:#fff;border:1px solid var(--rule-strong);border-radius:var(--r);
+}
+.search-box .input{flex:1 1 260px;width:auto}   /* 只在搜索行里按弹性宽度排 */
+.input::placeholder{color:#6B7688}              /* 4.59:1 on white，达到正文对比度门槛 */
+.input:hover{border-color:var(--ink-2)}
+.btn{
+  min-height:44px;padding:0 18px;font:inherit;font-size:14px;font-weight:600;
+  border:1px solid var(--ink);border-radius:var(--r);background:#fff;color:var(--ink);
+  cursor:pointer;
+  transition:background-color .15s ease,color .15s ease,border-color .15s ease,transform .15s ease;
+}
+.btn:hover{background:var(--ink);color:#fff}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--q);border-color:var(--q);color:#fff}
+.btn-primary:hover{background:var(--ink);border-color:var(--ink)}
+.btn-secondary{border-color:var(--rule-strong);color:var(--ink-2);font-weight:500}
+.btn-secondary:hover{background:var(--paper);color:var(--ink);border-color:var(--ink-2)}
+.btn-quiet{border-color:transparent;background:transparent;color:var(--muted);font-weight:500}
+.btn-quiet:hover{background:#fff;color:var(--ink);border-color:var(--rule)}
+.btn:disabled{opacity:.45;pointer-events:none}
+@media(pointer:coarse){.btn{min-height:48px}}
+.status{min-height:20px;margin:8px 0 0;font-size:13px;color:var(--muted)}
+.status.bad{color:var(--bad);font-weight:600}
+.field{margin-top:16px}
+.lab{display:block;font-size:13px;font-weight:600;color:var(--ink-2);margin-bottom:7px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;min-height:40px;padding:9px;
+  border:1px dashed var(--rule-strong);border-radius:var(--r);background:#FAFBFC}
+.chip{display:inline-flex;align-items:center;gap:8px;min-height:34px;
+  padding:0 6px 0 12px;border-radius:2px;background:var(--ink);color:#fff;font-size:14px}
+.chip.is-anchor{background:var(--q)}
+.chip .a{font-size:10.5px;letter-spacing:.08em;border:1px solid rgba(255,255,255,.5);
+  border-radius:2px;padding:0 4px}
+.chip .x{display:inline-grid;place-items:center;width:28px;height:28px;
+  border:0;border-radius:2px;background:transparent;color:#fff;
+  font:inherit;font-size:16px;line-height:1;cursor:pointer}
+.chip .x:hover{background:rgba(255,255,255,.2)}
+@media(pointer:coarse){.chip{min-height:40px}.chip .x{width:36px;height:36px}}
+.row-between{display:flex;align-items:center;gap:12px 16px;flex-wrap:wrap;margin-top:16px}
+
+/* ---------- 候选关键词（渐进披露） ---------- */
+.disc{margin-top:18px;border-top:1px solid var(--rule)}
+.disc>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;
+  flex-wrap:wrap;padding:14px 0 2px;user-select:none}
+.disc>summary::-webkit-details-marker{display:none}
+.disc>summary::before{content:"";width:7px;height:7px;flex:none;
+  border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);
+  transform:rotate(-45deg);transition:transform .15s ease}
+.disc[open]>summary::before{transform:rotate(45deg)}
+.disc>summary:hover .acc-title{color:var(--q)}
+.acc-title{font-weight:600;font-size:14px}
+.acc-hint{color:var(--muted);font-size:12.5px;margin-left:auto}
+.acc-body{padding:14px 0 2px}
+.tag-cloud{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}
+.tag-item{display:inline-flex;align-items:center;min-height:34px;padding:0 12px;
+  font:inherit;font-size:13px;color:var(--ink-2);background:#fff;
+  border:1px solid var(--rule);border-radius:2px;cursor:pointer;
+  transition:background-color .12s ease,color .12s ease,border-color .12s ease}
+.tag-item:hover{border-color:var(--ink);color:var(--ink);background:var(--paper)}
+.tag-item.on{background:var(--q);border-color:var(--q);color:#fff}
+@media(pointer:coarse){.tag-item{min-height:40px}}
+
+/* ---------- 计时（③） ---------- */
 .timing{width:100%;border-collapse:collapse}
-.timing td{padding:6px 8px;border-bottom:1px solid var(--table-stripe)}
-.timing td:last-child{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
-.timing tr.total td{border-bottom:none;border-top:3px double var(--accent);font-size:16px}
-.setup-box{background:var(--table-stripe);border-left:4px solid var(--accent);padding:10px 14px}
-.setup-box .val{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
-.setup-box .note{color:var(--muted);font-size:12px;margin-top:4px}
+.timing td{padding:9px 4px;border-bottom:1px solid var(--rule);vertical-align:baseline}
+.timing tr:last-child td{border-bottom:0}
+.timing .ph{font-family:var(--mono);font-size:13px;color:var(--ink-2)}
+.timing .num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;
+  font-size:15px;font-weight:600}
+.timing tr.total td{border-top:2px solid var(--ink);padding-top:12px;font-weight:700}
+.timing tr.total .num{font-size:18px}
+.sw{display:inline-block;width:9px;height:9px;border-radius:1px;margin-right:8px;
+  vertical-align:baseline}
+.sw.q{background:var(--q)} .sw.a{background:var(--a)} .sw.d{background:var(--d)}
+.prog{height:8px;background:#E4E8EE;border-radius:4px;overflow:hidden;margin-top:12px}
+.prog i{display:block;height:100%;width:0;background:var(--a);transition:width .3s linear}
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:22px}
+@media(max-width:720px){.split{grid-template-columns:1fr}}
 
-/* ============================================================
-   搜索栏 —— 样式取自「个人主页」index.html:266-324（新粗野主义）
-   ============================================================ */
-.search-bar{
-  background-color:color-mix(in srgb,var(--card) calc(var(--card-op)*100%),transparent);
-  border-radius:30px;box-shadow:var(--card-shadow);
-  padding:16px 20px;margin:28px 0 20px;border:1px solid var(--border);
-}
-.search-box{display:flex;gap:10px}
-.search-input{
-  flex:1;padding:10px 14px;border:4px solid var(--accent);border-radius:0;font-size:14px;
-  outline:none;transition:all .3s ease;background:#fff;color:var(--text);
-  box-shadow:8px 8px 0 var(--accent);
-}
-.search-input::placeholder{color:#888}
-.search-input:hover{transform:translate(-4px,-4px);box-shadow:12px 12px 0 var(--accent)}
-/* 聚焦只加深"按下去"的硬阴影，**不改底色和字色** ——
-   黑色版原来聚焦会把整个框反色成深底白字，太跳，已去掉。 */
-.search-input:focus{box-shadow:12px 12px 0 var(--accent)}
-.search-btn{
-  padding:10px 20px;background-color:var(--accent);color:var(--accent-contrast);
-  border:2px solid var(--accent);border-radius:2px;cursor:pointer;font-size:14px;
-  transform:skew(-18deg);box-shadow:4px 4px 0 var(--border);
-  transition:background-color .2s,color .2s,transform .2s,box-shadow .2s,border-color .2s;
-}
-.search-btn:hover{
-  background-color:var(--accent-contrast);color:var(--accent);
-  border-color:var(--accent-contrast);
-  transform:skew(-18deg) translate(-2px,-2px);box-shadow:6px 6px 0 var(--accent);
-}
-.search-btn:disabled{opacity:.45;cursor:not-allowed;transform:skew(-18deg)}
-.clear-btn{
-  padding:10px 16px;background-color:var(--card-stripe);color:var(--card-text);
-  border:2px solid var(--card-text);border-radius:2px;cursor:pointer;font-size:14px;
-  transform:skew(-18deg);
-}
-.clear-btn:hover{background-color:var(--card-text);color:var(--card-stripe)}
-
-/* ============================================================
-   关键词 chip —— 样式取自「个人主页」.tag-cloud/.tag-item/.tag-count
-   ============================================================ */
-.tag-cloud{display:flex;flex-wrap:wrap;gap:8px}
-.tag-item{
-  display:inline-flex;align-items:center;gap:6px;
-  padding:5px 11px;border:1px solid var(--border);border-radius:2px;
-  background:#fff;cursor:pointer;font-size:13px;transition:all .15s ease;
-}
-.tag-item:hover{background:var(--accent);color:var(--accent-contrast);border-color:var(--accent)}
-.tag-item.on{background:var(--accent);color:var(--accent-contrast);border-color:var(--accent)}
-.tag-count{
-  background:var(--table-head);color:var(--muted);border-radius:10px;
-  padding:0 6px;font-size:11px;
-}
-.tag-item:hover .tag-count,.tag-item.on .tag-count{background:rgba(255,255,255,.25);color:#fff}
-
-/* ---- chips ---- */
-.chips{display:flex;flex-wrap:wrap;gap:8px;min-height:38px;padding:8px;
-  border:1px dashed var(--border);border-radius:4px;background:var(--table-stripe)}
-
-/* ---- 折叠面板 ---- */
-details.acc{padding:0}
-details.acc>summary{
-  list-style:none;cursor:pointer;padding:16px 20px;
-  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-  user-select:none;
-}
-details.acc>summary::-webkit-details-marker{display:none}
-details.acc>summary::before{
-  content:"▸";font-size:13px;color:var(--muted);transition:transform .15s ease;
-}
-details.acc[open]>summary::before{transform:rotate(90deg)}
-details.acc>summary:hover{background:var(--table-stripe)}
-.acc-title{font-size:15px;font-weight:600}
-.acc-hint{color:var(--muted);font-size:12px;margin-left:auto}
-.acc-body{padding:0 20px 18px}
-.kw-filter{
-  width:100%;margin-bottom:12px;padding:8px 12px;border:3px solid var(--accent);
-  box-shadow:5px 5px 0 var(--accent);font-size:13px;
-}
-.kw-filter:hover{transform:translate(-2px,-2px);box-shadow:7px 7px 0 var(--accent)}
-.kw-filter:focus{box-shadow:7px 7px 0 var(--accent)}   /* 同上：不改色 */
-.chip{
-  display:inline-flex;align-items:center;gap:8px;padding:5px 10px;
-  background:var(--accent);color:var(--accent-contrast);border-radius:2px;font-size:13px;
-}
-.chip .x{cursor:pointer;font-weight:700;opacity:.75}
-.chip .x:hover{opacity:1}
-.chip .a{font-size:11px;opacity:.7}
-.hint{color:var(--muted);font-size:12px}
-
-/* ---- 结果 ---- */
-.res{padding:8px 0;border-bottom:1px solid var(--table-stripe)}
-.res:last-child{border-bottom:none}
+/* ---------- 结果（④） ---------- */
+.res{padding:11px 0;border-bottom:1px solid var(--rule)}
+.res:last-child{border-bottom:0}
 .res .t{font-weight:600}
-.res .m{color:var(--muted);font-size:12px}
-.hit-yes{color:#0a7a33;font-weight:700}
-.hit-no{color:#a33;font-weight:700}
+.res .m{color:var(--muted);font-size:13px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+.hit-yes{color:var(--ok);font-weight:700}
+.hit-no{color:var(--bad);font-weight:700}
+.badge{display:inline-block;padding:1px 7px;border-radius:2px;font-size:12px;
+  background:var(--paper);border:1px solid var(--rule);color:var(--muted)}
 
-/* ---- 进度 ---- */
-.prog{height:6px;background:var(--table-head);border-radius:3px;overflow:hidden;margin-top:10px}
-.prog i{display:block;height:100%;background:var(--accent);width:0%;transition:width .3s linear}
-.mono{font-family:ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
-.badge{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;
-  background:var(--table-head);color:var(--muted);margin-left:6px}
+/* ---------- 服务状态：能不能跑，就写在测量的位置 ---------- */
+.statusline{margin:10px 0 0;font-size:13px;color:var(--ink-2)}
+
+/* ---------- 动效：只保留一处编排过的时刻 ---------- */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
+    transition-duration:.001ms!important}
+}
 </style>
 </head>
 <body>
-<header><div class="wrap">
-  <h1>CAPE · 合取关键词 PIR 演示</h1>
-  <div class="sub">FusePIR + CAPE（USENIX Security）· 路线 A：真 SEAL 4.0.0 C++ native · N=8192</div>
-</div></header>
 
-<div class="wrap">
-
-  <div class="banner" id="banner">
-    <div><span class="k">关键词</span><b id="bKw">…</b></div>
-    <div><span class="k">值空间</span><b id="bVal">…</b></div>
-    <div><span class="k">关联</span><b id="bAssoc">…</b></div>
-    <div><span class="k">N / t</span><b id="bNt">…</b></div>
-    <div><span class="k">B_pay / 单元数</span><b id="bBp">…</b></div>
-    <div><span class="k">maxValues / maxSetSize</span><b id="bDeg">…</b></div>
+<header class="masthead">
+  <div class="wrap">
+    <h1>CAPE · 合取关键词 PIR 演示</h1>
   </div>
+</header>
 
-  <!-- ========== SETUP 并排单独显示，不并入总耗时 ========== -->
-  <div class="panel">
-    <h2>① SETUP <span class="badge">仅启动时跑一次，不计入查询总耗时</span></h2>
-    <div class="split">
-      <div class="setup-box">
-        <div class="k" style="color:var(--muted);font-size:12px">本次进程启动时的 SETUP 用时</div>
-        <div class="val" id="setupMs">…</div>
-        <div class="note" id="setupBreak">…</div>
+<div class="shell">
+<div class="main">
+
+  <!-- ===================== 签名元素：对数时间尺 ===================== -->
+  <section class="claim" aria-labelledby="claimH">
+    <h2 class="sec-title" id="claimH">一次查询的三段耗时</h2>
+
+    <div class="ruler" id="ruler">
+      <div class="ruler-head">
+        <span class="ax">时间尺 · 毫秒（log）</span>
+        <span class="tag" id="rulerTag">基线 · 等待服务</span>
       </div>
-      <div>
-        <table class="timing">
-          <tr><td>明文表 P</td><td id="pInfo">…</td></tr>
-          <tr><td>工作素数 / q 位宽</td><td id="qInfo">…</td></tr>
-          <tr><td>Bloom ℓ_BF</td><td id="lbfInfo">…</td></tr>
-          <tr><td>服务状态</td><td id="srvInfo">…</td></tr>
+      <div class="plot">
+        <div class="gl" aria-hidden="true"></div>
+        <div class="rows">
+          <span class="nm">QUERY</span>
+          <div class="bar-slot"><div class="bar q" id="rqBar" aria-hidden="true"></div></div>
+          <span class="val" id="rqVal"><b>—</b><i>—</i></span>
+
+          <span class="nm">ANSWER</span>
+          <div class="bar-slot"><div class="bar a" id="raBar" aria-hidden="true"></div></div>
+          <span class="val" id="raVal"><b>—</b><i>—</i></span>
+
+          <span class="nm">DECODE</span>
+          <div class="bar-slot"><div class="bar d" id="rdBar" aria-hidden="true"></div></div>
+          <span class="val" id="rdVal"><b>—</b><i>—</i></span>
+        </div>
+        <div class="axis" aria-hidden="true">
+          <span class="first" style="left:0">0.01</span>
+          <span class="half" style="left:12.5%">0.1</span>
+          <span style="left:25%">1</span>
+          <span class="half" style="left:37.5%">10</span>
+          <span style="left:50%">100</span>
+          <span class="half" style="left:62.5%">1 s</span>
+          <span class="half" style="left:75%">10 s</span>
+          <span class="half" style="left:87.5%">100 s</span>
+          <span class="last" style="left:100%">1000 s</span>
+        </div>
+      </div>
+      <p class="claim-foot" id="rulerSum">
+        三段合计 <b>—</b>。
+      </p>
+    </div>
+  </section>
+
+  <!-- ===================== ① SETUP ===================== -->
+  <section class="panel">
+    <div class="phead">
+      <span class="pnum">①</span>
+      <h2>SETUP</h2>
+      <span class="badge">启动时跑一次，不计入查询总耗时</span>
+    </div>
+    <div class="pbody">
+      <div class="readout">
+        <span class="k">本次进程启动时的 SETUP 用时</span>
+        <span class="big" id="setupMs">…</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ② 构造查询 ===================== -->
+  <section class="panel">
+    <div class="phead">
+      <span class="pnum">②</span>
+      <h2>构造合取查询</h2>
+      <span class="badge">第一个关键词是锚</span>
+    </div>
+    <div class="pbody">
+      <div class="search-box">
+        <label class="vh" for="kwInput">关键词</label>
+        <input type="text" id="kwInput" class="input"
+               placeholder="输入关键词（例如 atmospheric），回车加入" autocomplete="off"
+               spellcheck="false" enterkeyhint="done">
+        <button id="addBtn" class="btn btn-secondary">添加</button>
+        <button id="searchBtn" class="btn btn-primary">开始查询</button>
+        <button id="clearBtn" class="btn btn-quiet">清空</button>
+      </div>
+      <p class="status" id="inputStatus" role="status" aria-live="polite"></p>
+
+      <div class="field">
+        <span class="lab">已添加的关键词</span>
+        <div class="chips" id="chips"></div>
+      </div>
+
+      <div class="row-between">
+        <button id="randBtn" class="btn btn-secondary">随机添加一组可命中的组合</button>
+        <span class="hint" id="randHint">从数据集的「可用组合池」里抽 ⇒ 保证查到结果</span>
+      </div>
+
+      <details class="disc" id="kwPanel">
+        <summary>
+          <span class="acc-title">可填入的关键词</span>
+          <span class="badge" id="kwCountBadge">…</span>
+          <span class="acc-hint">展开 / 收起</span>
+        </summary>
+        <div class="acc-body">
+          <p class="hint" style="margin:0">
+            点任意关键词即可加入上面的输入框；也可以先在框里过滤再点。
+          </p>
+          <label class="vh" for="kwFilter">过滤关键词</label>
+          <input type="text" id="kwFilter" class="input" style="margin-top:10px"
+                 placeholder="输入以过滤关键词…" autocomplete="off" spellcheck="false">
+          <div class="tag-cloud" id="kwCloud"></div>
+          <p class="hint" id="kwFilterHint" style="margin:8px 0 0"></p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ===================== ③ 计时 ===================== -->
+  <section class="panel">
+    <div class="phead">
+      <span class="pnum">③</span>
+      <h2>本次查询计时</h2>
+      <span class="badge">ANSWER 约需 2~3 分钟</span>
+    </div>
+    <div class="pbody">
+      <div class="split">
+        <table class="timing" id="timingTable">
+          <tr><td class="ph"><i class="sw q"></i>QUERY（客户端）</td><td class="num" id="tQ">—</td></tr>
+          <tr><td class="ph"><i class="sw a"></i>ANSWER（服务端 native）</td><td class="num" id="tA">—</td></tr>
+          <tr><td class="ph"><i class="sw d"></i>DECODE（客户端）</td><td class="num" id="tD">—</td></tr>
+          <tr class="total"><td class="ph">三段合计</td><td class="num" id="tT">—</td></tr>
         </table>
+        <div>
+          <p class="hint" style="margin:0">
+            合计<b>不含</b> SETUP —— SETUP 在 ① 里单独显示。查询完成后，上面对数时间尺会换成本次实测值。
+          </p>
+          <div class="prog" aria-hidden="true"><i id="progBar"></i></div>
+          <p class="hint mono" id="progText" style="margin:8px 0 0">尚未开始</p>
+          <p class="statusline" id="srvInfo">连接中…</p>
+        </div>
       </div>
     </div>
-  </div>
+  </section>
 
-  <!-- ========== 搜索 ========== -->
-  <div class="search-bar">
-    <div class="search-box">
-      <input type="text" id="kwInput" class="search-input"
-             placeholder="输入关键词后按回车添加（例如 atmospheric）…" autocomplete="off">
-      <button id="addBtn" class="search-btn">添加</button>
-      <button id="searchBtn" class="search-btn">搜索</button>
-      <button id="clearBtn" class="clear-btn">清空</button>
+  <!-- ===================== ④ 结果 ===================== -->
+  <section class="panel">
+    <div class="phead">
+      <span class="pnum">④</span>
+      <h2>查询结果</h2>
     </div>
-
-    <div style="margin-top:14px">
-      <div class="hint" style="margin-bottom:6px">
-        已添加的关键词（第一个是<b>锚</b>，其余进入 b_qry 做合取判定）：
-      </div>
-      <div class="chips" id="chips"></div>
+    <div class="pbody">
+      <p class="hint" id="resHead" style="margin:0">还没有查询。添加关键词后按「开始查询」。</p>
+      <div id="resList" style="margin-top:4px"></div>
     </div>
-
-    <div style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <button id="randBtn" class="search-btn">随机添加一组可命中的组合</button>
-      <span class="hint" id="randHint">从数据集的「可用组合池」里抽 ⇒ 保证查到结果</span>
-    </div>
-  </div>
-
-  <!-- 可折叠；默认收起，点标题展开。不占版面，需要时再找 -->
-  <details class="panel acc" id="kwPanel">
-    <summary>
-      <span class="acc-title">② 可填入的关键词</span>
-      <span class="badge" id="kwCountBadge">…</span>
-      <span class="acc-hint">点这里展开 / 收起</span>
-    </summary>
-    <div class="acc-body">
-      <div class="hint" style="margin-bottom:8px">
-        点任意关键词即可加入上面的搜索框；也可以在框里输入过滤后再点。
-      </div>
-      <input type="text" id="kwFilter" class="search-input kw-filter"
-             placeholder="输入以过滤关键词…" autocomplete="off">
-      <div class="tag-cloud" id="kwCloud"></div>
-      <div class="hint" id="kwFilterHint" style="margin-top:8px"></div>
-    </div>
-  </details>
-
-  <!-- ========== 计时 ========== -->
-  <div class="panel">
-    <h2>③ 本次查询计时 <span class="badge">ANSWER 约需 2 分钟，请耐心等待</span></h2>
-    <div class="split">
-      <table class="timing" id="timingTable">
-        <tr><td>QUERY（客户端）</td><td id="tQ">—</td></tr>
-        <tr><td>ANSWER（服务端，native）</td><td id="tA">—</td></tr>
-        <tr><td>DECODE（客户端）</td><td id="tD">—</td></tr>
-        <tr class="total"><td>三步总耗时</td><td id="tT">—</td></tr>
-      </table>
-      <div>
-        <div class="hint">总耗时<b>不含</b> SETUP —— SETUP 在 ① 里单独显示。</div>
-        <div class="prog"><i id="progBar"></i></div>
-        <div class="hint mono" id="progText" style="margin-top:6px"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ========== 结果 ========== -->
-  <div class="panel">
-    <h2>④ 查询结果</h2>
-    <div id="resHead" class="hint">尚未查询。</div>
-    <div id="resList" style="margin-top:10px"></div>
-  </div>
+  </section>
 
 </div>
+</div>
+
+<p class="vh" id="liveStatus" role="status" aria-live="polite"></p>
 
 <script>
 "use strict";
 var state = { keywords: [], params: {}, db: {}, pool: [], selected: [], busy: false };
 
 function $(id){ return document.getElementById(id); }
+
 /* QUERY 与 DECODE 是纯 Java 侧运算，实测 < 1 ms，用整数会显示成 0，
-   看上去像坏了，所以这里保留两位小数。 */
+   看上去像坏了，所以保留小数位。注意用「去尾零」而不是 toFixed(2)：
+   原先的 toFixed(2) 会把 DECODE 的 0.035 ms 四舍五入成 0.04 ms。 */
 function fmt(ms){
   if(ms == null) return "—";
-  if(ms > 0 && ms < 1) return ms.toFixed(2) + " ms";
+  if(ms > 0 && ms < 1) return (Math.round(ms*1000)/1000) + " ms";
   return ms.toLocaleString() + " ms";
+}
+
+/* ============================================================
+   对数时间尺 —— 本页的签名元素
+   恒定：0.01 ms → 1000 s（8 个数量级）铺满整条尺。
+   条形长度 = 对数位置；真实占比以百分比写在读数里，两者不混。
+   ============================================================ */
+/* 时间尺的「基线」不再写死。
+   写死的那个是 154 000 ms，而 README 同期写 176 000、实际最快配置是 102 000 ——
+   三份数互相矛盾，就是因为没人在跑之前知道真值。
+   现在改为读 /api/state 的 expected（服务在 SETUP 时按当前 t/base/levels 实测标定），
+   服务没起时留空，并明确标注「等待服务」而不是假装有个基线。
+   查询成功后仍然换成该次的实测值。 */
+var BASELINE = null;
+var EXPECTED_NOTE = '';
+
+function logPos(ms){
+  var lo = -2, hi = 6;
+  var v = Math.log10(Math.max(ms || 0.01, Math.pow(10, lo)));
+  return Math.min(1, Math.max(0, (v - lo) / (hi - lo)));
+}
+function share(v, total){
+  if(!total) return "0";
+  var p = v / total * 100;
+  if(p === 0) return "0";
+  if(p < 0.01) return p.toFixed(5);
+  if(p < 99.99) return p.toFixed(2);
+  return p.toFixed(5);
+}
+function setBar(barId, valId, ms, total){
+  var bar = $(barId), val = $(valId);
+  if(!bar || !val) return;
+  bar.style.width = (logPos(ms) * 100).toFixed(2) + "%";
+  val.innerHTML = "<b>" + fmt(ms) + "</b><i>" + share(ms, total) + "%</i>";
+}
+function renderRuler(t, measured){
+  if(!t){ return; }
+  var total = (t.totalMs > 0) ? t.totalMs : (t.queryMs + t.answerMs + t.decodeMs);
+  setBar("rqBar","rqVal", t.queryMs,  total);
+  setBar("raBar","raVal", t.answerMs, total);
+  setBar("rdBar","rdVal", t.decodeMs, total);
+  $("rulerSum").innerHTML = "三段合计 <b>" +
+    total.toLocaleString(undefined,{maximumFractionDigits:1}) + " ms</b>。" +
+    (measured || !EXPECTED_NOTE ? "" : '<span class="note">' + EXPECTED_NOTE + "</span>");
+  var tag = $("rulerTag");
+  tag.textContent = measured ? "本次实测" : "基线 · 本配置预期";
+  tag.className = "tag" + (measured ? " tag-live" : "");
+  $("ruler").classList.toggle("measured", !!measured);
+}
+
+function live(msg){ $("liveStatus").textContent = msg; }
+/* 输入类错误就近显示（不占用「随机组合」那一行的提示位） */
+function setInputStatus(msg, bad){
+  var el = $("inputStatus");
+  el.textContent = msg || "";
+  el.className = "status" + (bad ? " bad" : "");
 }
 
 function addKw(k){
   k = (k||"").trim();
   if(!k) return;
-  if(state.selected.indexOf(k) >= 0) return;
-  if(state.keywords.indexOf(k) < 0){ flash("库里没有这个关键词：" + k); return; }
+  if(state.selected.indexOf(k) >= 0){ setInputStatus("已经加过「" + k + "」了。"); return; }
+  if(state.keywords.indexOf(k) < 0){ setInputStatus("库里没有这个关键词：" + k, true); return; }
   state.selected.push(k);
+  setInputStatus(k === state.selected[0] ? "「" + k + "」作为锚。" : "已加入「" + k + "」。");
   renderChips();
 }
 function flash(msg){
@@ -310,17 +478,27 @@ function flash(msg){
 function renderChips(){
   var box = $("chips"); box.innerHTML = "";
   if(!state.selected.length){
-    box.innerHTML = '<span class="hint">还没有添加关键词。可以从下面点选，或按「随机添加」。</span>';
+    box.innerHTML = '<span class="hint">还没有添加关键词。可以从下面点选，或按「随机添加一组可命中的组合」。</span>';
     return;
   }
   state.selected.forEach(function(k, i){
     var d = document.createElement("span");
-    d.className = "chip";
-    d.innerHTML = '<span>' + k + '</span>' + (i===0?'<span class="a">锚</span>':'') +
-                  '<span class="x" title="移除">×</span>';
-    d.querySelector(".x").onclick = function(){
-      state.selected.splice(i,1); renderChips();
-    };
+    d.className = "chip" + (i === 0 ? " is-anchor" : "");
+    var txt = document.createElement("span");
+    txt.textContent = k;
+    d.appendChild(txt);
+    if(i === 0){
+      var a = document.createElement("span");
+      a.className = "a"; a.textContent = "锚";
+      d.appendChild(a);
+    }
+    var x = document.createElement("button");
+    x.type = "button";
+    x.className = "x";
+    x.textContent = "×";
+    x.setAttribute("aria-label", "移除关键词 " + k);
+    x.onclick = function(){ state.selected.splice(i,1); setInputStatus("已移除「" + k + "」。"); renderChips(); };
+    d.appendChild(x);
     box.appendChild(d);
   });
 }
@@ -332,16 +510,17 @@ function renderCloud(){
   state.keywords.forEach(function(k){
     if(q && k.toLowerCase().indexOf(q) < 0) return;
     shown++;
-    var s = document.createElement("span");
-    s.className = "tag-item" + (state.selected.indexOf(k)>=0 ? " on" : "");
+    var s = document.createElement("button");
+    s.type = "button";
+    s.className = "tag-item" + (state.selected.indexOf(k) >= 0 ? " on" : "");
     s.textContent = k;
-    s.title = "点一下加入搜索框";
+    s.title = "点一下加入查询";
     s.onclick = function(){ addKw(k); renderCloud(); };
     c.appendChild(s);
   });
   $("kwFilterHint").textContent = q
     ? ("过滤「" + q + "」→ " + shown + " / " + state.keywords.length + " 个")
-    : ("共 " + state.keywords.length + " 个关键词，点任意一个加入搜索框");
+    : ("共 " + state.keywords.length + " 个关键词，点任意一个加入查询");
 }
 
 function setBusy(b){
@@ -349,6 +528,7 @@ function setBusy(b){
   $("searchBtn").disabled = b;
   $("randBtn").disabled = b;
   $("addBtn").disabled = b;
+  $("searchBtn").textContent = b ? "查询中…" : "开始查询";
 }
 
 /* ---------- 计时面板 ---------- */
@@ -358,10 +538,10 @@ function startProgress(){
   $("progBar").style.width = "0%";
   progTimer = setInterval(function(){
     var el = (Date.now()-t0)/1000;
-    /* 经验值：N=8192 约 130~160 s。到 95% 就停住，不做假完成。 */
+    /* 经验值：N=8192 约 130~160 s，取 150 s 作刻度。到 95% 就停住，不做假完成。 */
     var pct = Math.min(95, el/150*100);
     $("progBar").style.width = pct.toFixed(1) + "%";
-    $("progText").textContent = "已等待 " + el.toFixed(1) + " s";
+    $("progText").textContent = "已等待 " + el.toFixed(1) + " s / 预计约 150 s";
   }, 200);
 }
 function stopProgress(){ if(progTimer){ clearInterval(progTimer); progTimer=null; } }
@@ -369,11 +549,13 @@ function stopProgress(){ if(progTimer){ clearInterval(progTimer); progTimer=null
 /* ---------- 查询 ---------- */
 function doSearch(){
   if(state.busy) return;
-  if(state.selected.length < 1){ flash("至少添加一个关键词"); return; }
+  if(state.selected.length < 1){ setInputStatus("至少添加一个关键词再查询。", true); return; }
+  setInputStatus("");
   setBusy(true); stopProgress(); startProgress();
   ["tQ","tA","tD","tT"].forEach(function(id){ $(id).textContent = "…"; });
   $("resHead").textContent = "查询中…";
   $("resList").innerHTML = "";
+  live("查询已开始，预计约 2 到 3 分钟。");
 
   fetch("/api/query", {
     method:"POST",
@@ -383,7 +565,12 @@ function doSearch(){
     stopProgress();
     $("progBar").style.width = "100%";
     setBusy(false);
-    if(!j.ok){ $("resHead").innerHTML = '<span class="hit-no">失败：</span>' + (j.error||"未知错误"); return; }
+    if(!j.ok){
+      $("resHead").innerHTML = '<span class="hit-no">失败：</span>' + (j.error||"未知错误");
+      $("progText").textContent = "已中止";
+      live("查询失败。");
+      return;
+    }
     var t = j.timing;
     $("tQ").textContent = fmt(t.queryMs);
     $("tA").textContent = fmt(t.answerMs);
@@ -391,9 +578,13 @@ function doSearch(){
     $("tT").textContent = fmt(t.totalMs);
     $("progText").textContent = "完成，共 " + (t.totalMs/1000).toFixed(1) + " s";
     renderResults(j);
+    renderRuler({queryMs:t.queryMs, answerMs:t.answerMs, decodeMs:t.decodeMs, totalMs:t.totalMs}, true);
+    live("查询完成，共 " + (t.totalMs/1000).toFixed(1) + " 秒。");
   }).catch(function(e){
     stopProgress(); setBusy(false);
     $("resHead").innerHTML = '<span class="hit-no">请求出错：</span>' + e;
+    $("progText").textContent = "已中止";
+    live("请求出错。");
   });
 }
 
@@ -406,16 +597,19 @@ function renderResults(j){
     '　命中 = ' + (hit ? '<span class="hit-yes">是</span>' : '<span class="hit-no">否（0 条）</span>');
   var box = $("resList"); box.innerHTML = "";
   if(!j.results.length){
-    box.innerHTML = '<div class="hint">没有条目同时满足全部关键词。' +
-      '试试按「随机添加一组可命中的组合」——那会从已验证可命中的组合池里抽。</div>';
+    box.innerHTML = '<p class="hint" style="margin:12px 0 0">没有条目同时满足全部关键词。' +
+      '试试按「随机添加一组可命中的组合」——那会从已验证可命中的组合池里抽。</p>';
     return;
   }
   j.results.forEach(function(r){
     var d = document.createElement("div");
     d.className = "res";
-    d.innerHTML = '<div class="t">' + r.title + '</div>' +
-                  '<div class="m">valueId = ' + r.valueId +
-                  '　movielens movieId = ' + r.rawMovieId + '</div>';
+    var t = document.createElement("div");
+    t.className = "t"; t.textContent = r.title;
+    var m = document.createElement("div");
+    m.className = "m";
+    m.textContent = "valueId = " + r.valueId + "　movielens movieId = " + r.rawMovieId;
+    d.appendChild(t); d.appendChild(m);
     box.appendChild(d);
   });
 }
@@ -424,26 +618,25 @@ function renderResults(j){
 function boot(){
   fetch("/api/state").then(function(r){ return r.json(); }).then(function(s){
     state.keywords = s.keywords || [];
+    /* payload 里还有 params / db，页面不再展示参数，但先留着备用，方便以后想加回来 */
     state.params = s.params || {};
     state.db = s.db || {};
-    var p = state.params, db = state.db;
 
-    $("bKw").textContent   = db.keywords;
-    $("bVal").textContent  = db.values;
-    $("bAssoc").textContent= db.assoc;
-    $("bNt").textContent   = p.N + " / " + p.t;
-    $("bBp").textContent   = p.bPay + " / " + p.unitCount;
-    $("bDeg").textContent  = p.maxValues + " / " + p.maxSetSize;
+    /* 首屏基线：用服务按【当前真实配置】标定出来的 expected，不再用写死的数 */
+    if (s.expected && s.expected.answerMs > 0) {
+      BASELINE = {
+        queryMs:  (s.expected.queryUs  || 0) / 1000,
+        answerMs: s.expected.answerMs,
+        decodeMs: (s.expected.decodeUs || 0) / 1000,
+        totalMs:  null
+      };
+      EXPECTED_NOTE = "（预期值：SETUP 标定 × " + s.expected.unitCount + " 单元；"
+        + "非端到端实测，跑一次查询即换成实测）";
+      renderRuler(BASELINE, false);
+    }
 
     $("setupMs").textContent = fmt(s.setup.ms);
-    $("setupBreak").textContent =
-      "Java 侧 " + s.setup.javaMs + " ms（载荷 + P 表）+ native 侧 " +
-      s.setup.nativeMs + " ms（SEALContext " + " + RGSW 引导密钥）";
-    $("pInfo").textContent = p.C + " × " + p.bPay + " × " + p.N + " 系数";
-    $("qInfo").textContent = "4 素数 / 174 bit / levels " + 11;
-    $("lbfInfo").textContent = p.lBf + "（ε_BF = 2^" +
-      Math.round(Math.log(p.epsBf)/Math.log(2)) + "）";
-    $("srvInfo").textContent = "就绪";
+    $("srvInfo").textContent = "就绪 · 常驻 native 上下文";
     $("kwCountBadge").textContent = state.keywords.length + " 个";
 
     renderChips(); renderCloud();
@@ -451,7 +644,7 @@ function boot(){
   }).then(function(pl){
     state.pool = (pl && pl.pool) || [];
   }).catch(function(e){
-    $("srvInfo").innerHTML = '<span class="hit-no">服务未就绪：' + e + '</span>';
+    $("srvInfo").innerHTML = '<span class="hit-no">服务未就绪：</span>' + e;
   });
 }
 
@@ -461,7 +654,9 @@ $("kwInput").addEventListener("keydown", function(e){
   if(e.key === "Enter"){ addKw(this.value); this.value=""; renderCloud(); }
 });
 $("searchBtn").onclick = doSearch;
-$("clearBtn").onclick = function(){ state.selected = []; renderChips(); renderCloud(); };
+$("clearBtn").onclick = function(){
+  state.selected = []; setInputStatus("已清空关键词。"); renderChips(); renderCloud();
+};
 $("kwFilter").addEventListener("input", renderCloud);
 $("randBtn").onclick = function(){
   if(!state.pool.length){ flash("组合池还没加载完，稍等一下"); return; }
@@ -471,6 +666,8 @@ $("randBtn").onclick = function(){
   flash("已载入组合：" + e.kws.join(" + ") + "（库内命中 " + e.count + " 条）");
 };
 
+/* 时间尺等 /api/state 回来再画（基线值由服务给出，见 boot()）。
+   若服务没起，标签显示「等待服务」、读数为「—」，不假装有基线。 */
 boot();
 </script>
 </body>

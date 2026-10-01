@@ -67,6 +67,15 @@ public final class CapeDemoData {
         return v instanceof Number ? ((Number) v).intValue() : dflt;
     }
 
+    /**
+     * 长整数版：{@code plainModulus} 可以是 2^32，超出 int。
+     * 之前只有 {@code intMeta}，所以库里的 {@code plainModulus} 一直没人读得动。
+     */
+    public long longMeta(String key, long dflt) {
+        Object v = meta.get(key);
+        return v instanceof Number ? ((Number) v).longValue() : dflt;
+    }
+
     public String title(int movieId) {
         String t = titles.get(movieId);
         return t == null ? ("value#" + movieId) : t;
