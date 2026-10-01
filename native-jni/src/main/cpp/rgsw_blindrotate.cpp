@@ -274,31 +274,59 @@ inline void decomposeValueMw(const NativeCtx *c, const uint64_t *xin, uint64_t *
     }
 }
 
-std::vector<std::vector<std::uint64_t>> decompose(const NativeCtx *c, const Ciphertext &ct, std::size_t comp) {
+/**
+ * <b>C6：把两个分量的分解合并成「一次正向 NTT + 两遍分解」。</b>
+ *
+ * <p>原来 {@code external_product} 对同一个 {@code src} 调两次 {@code decompose}：
+ * <pre>
+ *   auto d0 = decompose(c, src, 0);   // 内部 copy = src; transform_from_ntt(copy)
+ *   auto d1 = decompose(c, src, 1);   // 内部 copy = src; transform_from_ntt(copy)  <- 重复
+ * </pre>
+ * 两次转换的是同一组系数（只是取不同分量），所以正向 NTT 只该做一次。
+ *
+ * <p><b>一个必须写下来的教训：输出布局决定这个改动是赚还是亏。</b>
+ * 第一版把输出做成 3D 数组 out[2][levels][n]，写 out[comp][k][i] 时相邻 i 的地址
+ * 相差 levels*n，变成跨步写 => 缓存不友好。同批 A/B（同一台机器交替跑）实测：
+ * <pre>
+ *   pre  : 正向NTT 6.5%  其他  6.6%  总 12.13 ms
+ *   post : 正向NTT 3.3%  其他 10.5%  总 12.38 ms   <- NTT 省下的被其他吃光
+ * </pre>
+ * 所以这里改回与原来 decompose 完全相同的「向量套向量」布局（d[level] 连续 n 个），
+ * 保持行主序访问。
+ */
+void decomposeBoth(const NativeCtx *c, const Ciphertext &ct,
+                   std::vector<std::vector<std::uint64_t>> &d0,
+                   std::vector<std::vector<std::uint64_t>> &d1) {
     const std::size_t n = c->n;
     const int L = c->working_prime_count;
     const int W = c->words;
-    std::vector<std::vector<std::uint64_t>> digits(c->levels, std::vector<std::uint64_t>(n, 0));
-    // A coefficient domain view is required: the digits are a decomposition of the
-    // Z_q coefficient values, not of their NTT images.
+    d0.assign(static_cast<std::size_t>(c->levels), std::vector<std::uint64_t>(n, 0));
+    d1.assign(static_cast<std::size_t>(c->levels), std::vector<std::uint64_t>(n, 0));
+
     Ciphertext copy = ct;
     if (copy.is_ntt_form()) {
         const std::uint64_t t0 = now_ns();
         c->evaluator->transform_from_ntt_inplace(copy);
         g_prof.decomFwdNttNs += (now_ns() - t0);
     }
+
     const std::uint64_t ta = now_ns();
-    const std::uint64_t *data = copy.data(comp);
+    const std::uint64_t *data0 = copy.data(0);
+    const std::uint64_t *data1 = copy.data(1);
     std::vector<std::uint64_t> res(L), x(W), mv(W), tmp(c->levels);
     for (std::size_t i = 0; i < n; ++i) {
-        for (int j = 0; j < L; ++j) res[j] = data[static_cast<std::size_t>(j) * n + i];
+        for (int j = 0; j < L; ++j) res[j] = data0[static_cast<std::size_t>(j) * n + i];
         crtComposeMw(c, res.data(), x.data(), mv.data());
         decomposeValueMw(c, x.data(), tmp.data());
-        for (int k = 0; k < c->levels; ++k) digits[k][i] = tmp[k];
+        for (int k = 0; k < c->levels; ++k) d0[static_cast<std::size_t>(k)][i] = tmp[k];
+
+        for (int j = 0; j < L; ++j) res[j] = data1[static_cast<std::size_t>(j) * n + i];
+        crtComposeMw(c, res.data(), x.data(), mv.data());
+        decomposeValueMw(c, x.data(), tmp.data());
+        for (int k = 0; k < c->levels; ++k) d1[static_cast<std::size_t>(k)][i] = tmp[k];
     }
     g_prof.decomArithNs += (now_ns() - ta);
-    ++g_prof.decomCalls;
-    return digits;
+    g_prof.decomCalls += 2;      // 与逐次调用保持计数口径一致（CmuxBreakdown 会校验）
 }
 
 // ---------------------------------------------------------------- RGSW
@@ -387,8 +415,11 @@ std::vector<int> secret_bits(const NativeCtx *c, int d) {
 // ---------------------------------------------------------------- external product
 
 void external_product(const NativeCtx *c, const RgswKey &key, const Ciphertext &src, Ciphertext &out) {
-    auto d0 = decompose(c, src, 0);
-    auto d1 = decompose(c, src, 1);
+    // C6：两次 decompose 合并为「一次正向 NTT + 两遍分解」。
+    // 原来这里是对同一个 src 调两次 decompose(c, src, 0/1)，各自做一次全多项式
+    // transform_from_ntt —— 而两次转换的是同一组系数，纯属重复。
+    std::vector<std::vector<std::uint64_t>> d0, d1;
+    decomposeBoth(c, src, d0, d1);
     auto parms_id = src.parms_id();
     Ciphertext acc;
     bool first = true;
