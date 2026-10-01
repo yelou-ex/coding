@@ -52,3 +52,5 @@ _vs/
 
 
 cape-demo/web/*.bak
+pdf-extract/alg*.txt
+pdf-extract/coords_*.txt
