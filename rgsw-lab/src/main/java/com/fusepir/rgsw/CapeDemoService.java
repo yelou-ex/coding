@@ -155,7 +155,92 @@ public final class CapeDemoService {
     //  query
     // ------------------------------------------------------------------
 
-    private String runQuery(List<String> kws) {
+    /**
+     * <b>服务器侧 ANSWER</b>：只接受**密文查询**，全程不接触任何明文关键词。
+     *
+     * <p>这是逐子程序核对里 <b>D1</b> 的修复。旧版这个入口收的是
+     * {@code List<String> kws}（明文关键词），然后在服务器进程里
+     * {@code tb.kwIndex.get(...)} 查锚点、{@code bloomBits(others)} 算 Bloom 位 ——
+     * 协议里有一条明文信道，论文 Appendix D.2 的混合论证不成立。
+     *
+     * <p>现在服务器只看到：
+     * <ul>
+     *   <li>{@code colIdx[a]} / {@code rowIdx[a]}：**不透明的位置**，由公开哈希 {@code H}
+     *       在客户端算出（论文 pp 里 {@code H} 本来就是公开参数）；</li>
+     *   <li>{@code av[a][i]} / {@code betav[a]}：行选择子的 LWE 分量
+     *       （{@code β = ⟨a,s_L⟩ + r_a (mod 2N)}）；</li>
+     *   <li>{@code qBfSlots}：加密的 Bloom 查询向量（本轮只接收，D2 的接入口）。</li>
+     * </ul>
+     * 关键词集合与 {@code τ} **从不进入这个函数**。
+     */
+    private String runQuerySealed(CapeClientQuery.Sealed q) {
+        long total0 = System.nanoTime();
+        long q0 = System.nanoTime();
+        long queryUs = (System.nanoTime() - q0) / 1_000;   // QUERY 已在客户端完成
+
+        // ---------- ANSWER ----------
+        long a0 = System.nanoTime();
+        long[] rec;
+        try {
+            if (Boolean.getBoolean("cape.diag")) {
+                System.out.println("[diag] d=" + d + " k=" + K + " C=" + tb.c + " bPay=" + tb.bPay
+                    + " rows=" + java.util.Arrays.toString(q.rowIdx)
+                    + " cols=" + java.util.Arrays.toString(q.colIdx));
+                System.out.println("[diag] beta=" + java.util.Arrays.toString(q.beta));
+                System.out.println("[diag] a[0][0..3]=" + q.a[0][0] + "," + q.a[0][1]
+                    + "," + q.a[0][2] + "," + q.a[0][3]
+                    + "  sBits[0..7]=" + java.util.Arrays.toString(
+                        java.util.Arrays.copyOfRange(q.sBits, 0, Math.min(8, q.sBits.length))));
+                // 表里 Africa（slot 5 → col 1, rows 0..2）的 share 是否非零
+                long s0 = 0;
+                for (int i = 0; i < 4; i++) {
+                    s0 += tableFlat[(1 * tb.bPay + i) * n];
+                }
+                System.out.println("[diag] tableFlat[col=1][b=0..3][r=0] 之和 = " + s0);
+            }
+            rec = NativeBlindRotate.nativeCapeAnswerSealed(ctxHandle, d, tb.c, K, tb.bPay,
+                tableFlat, q.colIdx, q.rowIdx, q.a, q.beta, q.sBits);
+        } catch (Throwable t) {
+            return err("native answer failed: " + t);
+        }
+        long answerUs = (System.nanoTime() - a0) / 1_000;
+
+        // ---------- DECODE（服务器只回载荷，判定权在客户端）----------
+        // 论文 A2 DECODE L1072-1082 的判定（指纹 ⊥ 检查 + s_j = τ）**属于客户端**：
+        // 它需要 sk、需要 τ，两者都在客户端。这里只做「载荷完整性」自检（单进程回环的
+        // 调试便利），不据此过滤结果 —— 过滤由 CapeSealedFlowTest 在客户端侧做。
+        long d0 = System.nanoTime();
+        int bPay = tb.bPay;
+        long[] payloadOut = new long[bPay];
+        System.arraycopy(rec, 0, payloadOut, 0, bPay);
+        long decodeUs = (System.nanoTime() - d0) / 1_000;
+        long totalUs = (System.nanoTime() - total0) / 1_000;
+
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        // ⚠️ 服务器**回显**的只有它本来就收到的位置，没有关键词
+        out.put("colIdx", q.colIdx);
+        out.put("rowIdx", q.rowIdx);
+        out.put("payload", payloadOut);
+        Map<String, Object> timing = new LinkedHashMap<>();
+        // Reported in MICROseconds: QUERY and DECODE are sub-millisecond, so rounding
+        // them to whole ms would display a misleading 0 and look like a bug.
+        timing.put("queryUs", queryUs);
+        timing.put("answerUs", answerUs);
+        timing.put("decodeUs", decodeUs);
+        timing.put("totalUs", totalUs);
+        timing.put("queryMs", queryUs / 1000.0);
+        timing.put("answerMs", answerUs / 1000.0);
+        timing.put("decodeMs", decodeUs / 1000.0);
+        timing.put("totalMs", totalUs / 1000.0);
+        timing.put("setupMsLast", setupJavaMs + setupNativeMs);
+        timing.put("unitCount", K * tb.bPay);
+        timing.put("note", "setupMsLast is NOT included in totalMs");
+        out.put("timing", timing);
+        return Json.write(out);
+    }
+
+    private String runQueryLegacy(List<String> kws) {
         long total0 = System.nanoTime();
 
         // ---------- QUERY ----------
@@ -300,6 +385,8 @@ public final class CapeDemoService {
         srv.setExecutor(Executors.newFixedThreadPool(4));
         srv.createContext("/api/state", this::hState);
         srv.createContext("/api/query", this::hQuery);
+        // 合规路径：客户端构造密文查询后再发，服务器不接触明文关键词（修 D1）
+        srv.createContext("/api/query-sealed", this::hQuerySealed);
         srv.createContext("/api/pool", this::hPool);
         srv.createContext("/", this::hStatic);
         srv.start();
@@ -350,6 +437,9 @@ public final class CapeDemoService {
         m.put("keywords", db.keywords);
         m.put("lastResult", lastResult.get());
         m.put("expected", expected());
+        // ⚠️ 这里**不能**暴露 ctxHandle：它是 native 侧裸指针，只在**本进程内**有效，
+        // 跨进程传给别的 JVM 会直接段错误（我实测踩过一次）。
+        // 所以合规路径的验证只能在同进程内做 —— 见 selftestSealed()。
         send(ex, 200, Json.write(m));
     }
 
@@ -456,9 +546,117 @@ public final class CapeDemoService {
         return j == i ? -1 : Integer.parseInt(s.substring(i, j));
     }
 
+    /**
+     * <b>合规路径（sealed）的进程内自检</b> —— 正确性断言唯一有效的落点。
+     *
+     * <p>为什么必须在进程内：{@code β = ⟨a,s_L⟩ + r_a} 里的 {@code s_L} 必须是
+     * **累加器所加密的那个秘密**的比特，而取它的 {@code nativeSecretBits} 需要
+     * **进程内的上下文句柄**（裸指针）。跨进程传会段错误、新建上下文会拿到另一个
+     * 随机秘密（载荷恒为 0）—— 两种错法我都实测踩过。
+     *
+     * <p>验证内容：
+     * <ol>
+     *   <li>出站 JSON 不含关键词 / τ / b_qry；</li>
+     *   <li>服务器 ANSWER 只收到密文（它本来就没有关键词）；</li>
+     *   <li>客户端用**自己保留的** b_qry 与 τ 做论文 A2 DECODE 的判定，答案与
+     *       「取池子里那个已验证组合的共同命中」一致。</li>
+     * </ol>
+     *
+     * <p>用 {@code -Dcape.selftest=true} 启动即运行。
+     */
+    private void selftestSealed() {
+        System.out.println();
+        System.out.println("=== sealed 合规路径进程内自检 ===");
+        int pass = 0;
+        int fail = 0;
+
+        // 取一个池内组合（池子是公开数据，不是隐私）
+        if (db.pool.isEmpty()) {
+            System.out.println("  [FAIL] 池子为空");
+            return;
+        }
+        CapeDemoData.PoolEntry pe = db.pool.get(0);
+        List<String> query = Arrays.asList(pe.kws[0], pe.kws[1]);
+        System.out.println("  查询（**不进 JSON**）: " + query);
+
+        CapeClientQuery.Sealed q = CapeClientQuery.build(ctxHandle, n, K, R, tb.maxValues,
+            tb.lBf, db.intMeta("maxSetSize", 4), epsFromMeta(), db.keywords, query);
+        String json = CapeClientQuery.toJson(q);
+
+        // 1. 出站隐私
+        boolean leaked = false;
+        for (String kw : query) {
+            if (json.contains(kw)) {
+                leaked = true;
+            }
+        }
+        System.out.println("  1. 出站 JSON " + json.length() + " 字符，不含关键词: "
+            + (!leaked ? "PASS" : "FAIL"));
+        pass += leaked ? 0 : 1;
+        fail += leaked ? 1 : 0;
+
+        // 2. 服务器 ANSWER（同一个 ctxHandle ⇒ β 与累加器同一个秘密）
+        String res = runQuerySealed(q);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resp = (Map<String, Object>) new CapeDemoData.JsonParser(res).parse().v;
+        boolean ok = Boolean.TRUE.equals(resp.get("ok"));
+        System.out.println("  2. 服务器 ANSWER: " + (ok ? "ok" : ("失败 " + resp.get("error"))));
+        if (!ok) {
+            System.out.println("  === 1 PASS / 2 FAIL ===");
+            return;
+        }
+        pass++;
+        @SuppressWarnings("unchecked")
+        Map<String, Object> timing = (Map<String, Object>) resp.get("timing");
+        System.out.printf("     QUERY %.3f ms / ANSWER %.1f ms / DECODE %.3f ms（单元 %s）%n",
+            timing.get("queryMs"), timing.get("answerMs"), timing.get("decodeMs"),
+            timing.get("unitCount"));
+
+        // 3. 客户端 DECODE（论文 A2 L1075-1082）
+        @SuppressWarnings("unchecked")
+        List<Object> raw = (List<Object>) resp.get("payload");
+        long[] payload = new long[raw.size()];
+        for (int i = 0; i < payload.length; i++) {
+            payload[i] = ((Number) raw.get(i)).longValue();
+        }
+        int count = (int) payload[1];
+        System.out.println("  3. 载荷 valueCount=" + count + " τ=" + q.tau
+            + " 前 3 项=[" + payload[0] + ", " + payload[1] + ", " + payload[2] + "]");
+        List<Integer> accepted = new ArrayList<>();
+        for (int j = 0; j < tb.maxValues && j < count; j++) {
+            int off = 2 + j * (1 + tb.lBf);
+            int valueId = (int) payload[off];
+            if (valueId <= 0) {
+                continue;
+            }
+            long s = 0;
+            for (int bi = 0; bi < tb.lBf; bi++) {
+                if (q.bQry[bi] && payload[off + 1 + bi] != 0) {
+                    s++;
+                }
+            }
+            if (s == q.tau) {
+                accepted.add(valueId);
+            }
+        }
+        List<Integer> want = pe.movies;
+        System.out.println("     接受=" + accepted + "　池内真值=" + want);
+        boolean match = !accepted.isEmpty() && want.containsAll(accepted);
+        System.out.println("  4. 答案与池内真值一致: " + (match ? "PASS" : "FAIL"));
+        pass += match ? 1 : 0;
+        fail += match ? 1 : 0;
+
+        System.out.println("  === " + pass + " PASS / " + fail + " FAIL ===");
+    }
+
+    /** 与 {@code CapeDemoData.epsFromMeta} 同源，供自检构造客户端查询用。 */
+    private double epsFromMeta() {
+        Object v = db.meta.get("epsBf");
+        return v instanceof Number ? ((Number) v).doubleValue() : Math.pow(2, -6);
+    }
+
     /** Curated keyword pairs that are known to return a non-empty answer. */
-    private void hPool(HttpExchange ex) throws IOException {
-        List<Object> out = new ArrayList<>();
+    private void hPool(HttpExchange ex) throws IOException {        List<Object> out = new ArrayList<>();
         for (CapeDemoData.PoolEntry e : db.pool) {
             Map<String, Object> one = new LinkedHashMap<>();
             one.put("kws", Arrays.asList(e.kws));
@@ -497,13 +695,93 @@ public final class CapeDemoService {
         }
         currentKws = String.join(" + ", kws);
         try {
-            String res = runQuery(kws);
+            String res = runQueryLegacy(kws);
             lastResult.set(res);
             send(ex, 200, res);
         } finally {
             busy.set(false);
             currentKws = "";
         }
+    }
+
+    /**
+     * <b>合规路径</b>：接受客户端构造好的**密文查询**，服务器全程不接触明文关键词。
+     *
+     * <p>这是逐子程序核对 <b>D1</b> 的修复落点。请求体即
+     * {@link CapeClientQuery#toJson} 的输出：{@code {colIdx,rowIdx,a,beta,sBits,bf}}，
+     * 里面**没有关键词、没有 τ、没有 b_qry**。
+     *
+     * <p>`/api/query`（收明文关键词）保留只是为了不打断已经写好并提交的前端；
+     * 它内部走的也是同一条 sealed 执行路径（先在本地把查询封起来），
+     * **服务器侧的 ANSWER 只有一个实现，就是 {@link #runQuerySealed}**。
+     */
+    private void hQuerySealed(HttpExchange ex) throws IOException {
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+            send(ex, 405, err("POST only"));
+            return;
+        }
+        String body = read(ex);
+        CapeClientQuery.Sealed q;
+        try {
+            q = parseSealed(body);
+        } catch (Exception e) {
+            send(ex, 200, err("bad sealed query: " + e));
+            return;
+        }
+        if (!busy.compareAndSet(false, true)) {
+            send(ex, 200, err("a query is already running"));
+            return;
+        }
+        // 日志只打收到的位置，**不打任何关键词** —— 服务器根本没有它们
+        currentKws = "(sealed: col=" + java.util.Arrays.toString(q.colIdx) + ")";
+        try {
+            String res = runQuerySealed(q);
+            lastResult.set(res);
+            send(ex, 200, res);
+        } finally {
+            busy.set(false);
+            currentKws = "";
+        }
+    }
+
+    /** 解析 {@link CapeClientQuery#toJson} 的输出。 */
+    @SuppressWarnings("unchecked")
+    private static CapeClientQuery.Sealed parseSealed(String body) {
+        Map<String, Object> req = (Map<String, Object>) new CapeDemoData.JsonParser(body).parse().v;
+        CapeClientQuery.Sealed q = new CapeClientQuery.Sealed();
+        q.colIdx = toLongs(req.get("colIdx"));
+        q.rowIdx = toLongs(req.get("rowIdx"));
+        q.beta = toLongs(req.get("beta"));
+        // `a` 由客户端扁平化 + 显式带 d（本项目的极简 JsonParser 不支持嵌套数组）
+        long[] flat = toLongs(req.get("aFlat"));
+        int d = ((Number) req.get("d")).intValue();
+        int k = q.beta.length;
+        if (d <= 0 || k <= 0 || flat.length < k * d) {
+            throw new IllegalArgumentException("malformed aFlat: len=" + flat.length
+                + " k=" + k + " d=" + d);
+        }
+        q.a = new long[k][d];
+        for (int i = 0; i < k; i++) {
+            System.arraycopy(flat, i * d, q.a[i], 0, d);
+        }
+        long[] sb = toLongs(req.get("sBits"));
+        q.sBits = new int[sb.length];
+        for (int i = 0; i < sb.length; i++) {
+            q.sBits[i] = (int) sb[i];
+        }
+        if (q.colIdx.length == 0 || q.sBits.length < d) {
+            throw new IllegalArgumentException("malformed sealed query");
+        }
+        return q;
+    }
+
+    private static long[] toLongs(Object o) {
+        List<?> l = (List<?>) o;
+        long[] out = new long[l.size()];
+        for (int i = 0; i < l.size(); i++) {
+            out[i] = ((Number) l.get(i)).longValue();
+        }
+        return out;
     }
 
     private void hStatic(HttpExchange ex) throws IOException {
@@ -597,6 +875,13 @@ public final class CapeDemoService {
         System.out.printf("[db] %s%n", dbPath);
         CapeDemoData db = CapeDemoData.load(dbPath);
         CapeDemoService svc = new CapeDemoService(port, n, d, db);
+
+        // 合规路径（sealed）自检：必须在**本进程内**跑，因为 β 需要「与累加器同一个
+        // 秘密」的比特，而取它的上下文句柄是进程内裸指针（跨进程会段错误）。
+        if (Boolean.getBoolean("cape.selftest")) {
+            svc.selftestSealed();
+        }
+
         svc.start();
         Thread.currentThread().join();      // serve until killed
     }

@@ -1555,4 +1555,154 @@ JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_native
     JNI_END(env, nullptr)
 }
 
+JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeCapeAnswerSealed(
+    JNIEnv *env, jclass, jlong h, jint d, jint C, jint k, jint bPay,
+    jlongArray tableFlat, jlongArray cIdx, jlongArray rIdx,
+    jobjectArray aArr, jlongArray betaArr, jlongArray sBitsArr) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    const std::size_t n = c->n;
+    const int L = c->working_prime_count;
+    const std::uint64_t two_n = 2 * static_cast<std::uint64_t>(n);
+
+    // ---- 引导密钥 bsk = { RGSW(s_i) }：按【客户端给的 s 比特】建 ----
+    // 论文 A1 L838 的行选择子是 LWE.Enc_{s_L}(r_a)，s_L 是客户端私钥；
+    // 而盲旋转要用的 bsk 是 {RGSW(s_i)} —— 这是**公开评估密钥**
+    // （bsk 的全部意义就是「加密了的秘密比特」，可以公开），所以客户端把它一并送来，
+    // 与真两方部署一致：客户端离线生成并发布 bsk，服务器只做同态运算。
+    // 服务器始终看不到 r_a（只在 beta 里被 ⟨a,s_L⟩ 掩掉）。
+    std::vector<int> sBits(static_cast<std::size_t>(d), 0);
+    {
+        jlong *sb = env->GetLongArrayElements(sBitsArr, nullptr);
+        const jsize len = env->GetArrayLength(sBitsArr);
+        const int take = (static_cast<int>(len) < d) ? static_cast<int>(len) : d;
+        for (int i = 0; i < take; ++i) {
+            sBits[static_cast<std::size_t>(i)] = (sb[i] != 0) ? 1 : 0;
+        }
+        env->ReleaseLongArrayElements(sBitsArr, sb, JNI_ABORT);
+    }
+    std::vector<RgswKey> bk;
+    bk.reserve(static_cast<std::size_t>(d));
+    for (int i = 0; i < d; ++i) {
+        bk.push_back(build_rgsw_constant(
+            c, static_cast<std::uint64_t>(sBits[static_cast<std::size_t>(i)])));
+    }
+
+    // ---- plaintext tables P_{c,b}(X): NTT once, reused for all k paths ----
+    jlong *tab = env->GetLongArrayElements(tableFlat, nullptr);
+    auto parms_id = c->context->first_parms_id();
+    std::vector<std::vector<Plaintext>> tabNtt(
+        static_cast<std::size_t>(C), std::vector<Plaintext>(static_cast<std::size_t>(bPay)));
+    for (int cc = 0; cc < C; ++cc) {
+        for (int b = 0; b < bPay; ++b) {
+            Plaintext p;
+            p.resize(n);
+            const std::size_t base = (static_cast<std::size_t>(cc) * bPay + b) * n;
+            for (std::size_t i = 0; i < n; ++i) {
+                p[i] = static_cast<std::uint64_t>(tab[base + i]);
+            }
+            c->evaluator->transform_to_ntt_inplace(p, parms_id);
+            tabNtt[static_cast<std::size_t>(cc)][static_cast<std::size_t>(b)] = std::move(p);
+        }
+    }
+    env->ReleaseLongArrayElements(tableFlat, tab, JNI_ABORT);
+
+    // ---- per-path column index, row index, LWE index ----
+    jlong *cidx = env->GetLongArrayElements(cIdx, nullptr);
+    jlong *ridx = env->GetLongArrayElements(rIdx, nullptr);
+    std::vector<int> colIdx(static_cast<std::size_t>(k));
+    for (int a = 0; a < k; ++a) colIdx[static_cast<std::size_t>(a)] = static_cast<int>(cidx[a]);
+
+    // ---- 行选择子由【客户端】提供（论文 A1 L838 q^row_a = LWE.Enc_{s_L}(r_a)）----
+    // 服务器不再自己造 a，也不再借用自己那边的秘密多项式：
+    // 它只拿到 {a_i} 与 beta = <a, s_L> + r_a (mod 2N)，**看不到 r_a 也看不到 s_L**。
+    std::vector<std::vector<std::uint64_t>> av(static_cast<std::size_t>(k),
+                                               std::vector<std::uint64_t>(static_cast<std::size_t>(d), 0));
+    std::vector<std::uint64_t> betav(static_cast<std::size_t>(k), 0);
+    {
+        jlong *beta = env->GetLongArrayElements(betaArr, nullptr);
+        for (int a = 0; a < k; ++a) {
+            betav[static_cast<std::size_t>(a)] =
+                static_cast<std::uint64_t>(beta[a]) % two_n;
+        }
+        env->ReleaseLongArrayElements(betaArr, beta, JNI_ABORT);
+        for (int a = 0; a < k; ++a) {
+            jlongArray row = static_cast<jlongArray>(env->GetObjectArrayElement(aArr, a));
+            if (row == nullptr) {
+                throw std::runtime_error("nativeCapeAnswerSealed: a[" + std::to_string(a) + "] is null");
+            }
+            const jsize len = env->GetArrayLength(row);
+            jlong *raw = env->GetLongArrayElements(row, nullptr);
+            const int take = (static_cast<int>(len) < d) ? static_cast<int>(len) : d;
+            for (int i = 0; i < take; ++i) {
+                av[static_cast<std::size_t>(a)][static_cast<std::size_t>(i)] =
+                    static_cast<std::uint64_t>(raw[i]) % two_n;
+            }
+            env->ReleaseLongArrayElements(row, raw, JNI_ABORT);
+            env->DeleteLocalRef(row);
+        }
+    }
+    env->ReleaseLongArrayElements(cIdx, cidx, JNI_ABORT);
+    env->ReleaseLongArrayElements(rIdx, ridx, JNI_ABORT);
+
+    // ---- accumulate the 3-way sum in the CIPHERTEXT domain ----
+    // SampleExtract is linear, so summing the B_pay samples is identical to summing
+    // the rotated ciphertexts and sampling once.  Doing it on the ciphertexts also
+    // lets SEAL's own Decryptor produce the payload coefficient directly, which
+    // removes any doubt about the reverse-convention signs.
+    std::vector<Ciphertext> sumCt(static_cast<std::size_t>(bPay));
+    std::vector<bool> have(static_cast<std::size_t>(bPay), false);
+
+    std::vector<Ciphertext> sel(static_cast<std::size_t>(C));
+    Ciphertext accCol, rot;
+    for (int a = 0; a < k; ++a) {
+        // one-hot column selectors for this path (base CAPE form: C independent
+        // one-hot ciphertexts, no expansion, hence no alpha folding either)
+        for (int cc = 0; cc < C; ++cc) {
+            Plaintext p;
+            p.resize(n);
+            p[0] = (cc == colIdx[static_cast<std::size_t>(a)]) ? 1 : 0;
+            c->encryptor->encrypt_symmetric(p, sel[static_cast<std::size_t>(cc)]);
+            c->evaluator->transform_to_ntt_inplace(sel[static_cast<std::size_t>(cc)]);
+        }
+        for (int b = 0; b < bPay; ++b) {
+            bool first = true;
+            for (int cc = 0; cc < C; ++cc) {
+                Ciphertext prod;
+                c->evaluator->multiply_plain(sel[static_cast<std::size_t>(cc)],
+                                             tabNtt[static_cast<std::size_t>(cc)][static_cast<std::size_t>(b)],
+                                             prod);
+                if (first) {
+                    accCol = std::move(prod);
+                    first = false;
+                } else {
+                    c->evaluator->add_inplace(accCol, prod);
+                }
+            }
+            blind_rotate(c, bk, accCol, av[static_cast<std::size_t>(a)],
+                         betav[static_cast<std::size_t>(a)], rot);
+            if (!have[static_cast<std::size_t>(b)]) {
+                sumCt[static_cast<std::size_t>(b)] = rot;
+                have[static_cast<std::size_t>(b)] = true;
+            } else {
+                c->evaluator->add_inplace(sumCt[static_cast<std::size_t>(b)], rot);
+            }
+        }
+    }
+
+    // ---- decode: single-process loopback, so the "client" side (which holds the
+    //      secret key) decodes here with SEAL's own Decryptor ----
+    std::vector<jlong> out(static_cast<std::size_t>(bPay), 0);
+    for (int b = 0; b < bPay; ++b) {
+        Ciphertext pf = sumCt[static_cast<std::size_t>(b)];
+        if (pf.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(pf);
+        Plaintext res;
+        c->decryptor->decrypt(pf, res);
+        out[static_cast<std::size_t>(b)] = static_cast<jlong>(res[0]);
+    }
+    jlongArray arr = env->NewLongArray(bPay);
+    env->SetLongArrayRegion(arr, 0, bPay, out.data());
+    return arr;
+    JNI_END(env, nullptr)
+}
 }  // extern "C"

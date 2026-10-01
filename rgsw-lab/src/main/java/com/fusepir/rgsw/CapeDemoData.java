@@ -62,6 +62,49 @@ public final class CapeDemoData {
         this.pool = pool;
     }
 
+    /**
+     * 公开哈希 {@code H: keyword → slot ∈ [0, n)}，论文的 {@code h_a(K)}（A1 L836）。
+     *
+     * <p><b>为什么必须无碰撞。</b>一个「槽」（cell）承载一个关键词的 k 个 BFF share；
+     * 两个关键词落在同一槽会互相污染，答案就错了。所以这里用
+     * 「确定性混合哈希 + 线性探测消解碰撞」，再按关键词顺序做局部交换使其稳定
+     * （同一份 DB 永远得到同一张表）。
+     *
+     * <p><b>为什么它可以是公开的。</b>论文 A1 L831 把 {@code H} 放进公开参数
+     * {@code pp = (H, fp, R, C, N, d, t, q)}，所以「查这张表」不泄露任何东西。
+     */
+    private static int[] keywordHash(List<String> keywords) {
+        final int n = keywords.size();
+        int[] slot = new int[n];
+        Arrays.fill(slot, -1);
+        for (int i = 0; i < n; i++) {
+            int h = mix(keywords.get(i).hashCode()) % n;
+            if (h < 0) {
+                h += n;
+            }
+            while (slot[h] != -1) {          // 线性探测
+                h = (h + 1) % n;
+            }
+            slot[h] = i;
+        }
+        // slot[h] = 关键词下标 ⇒ 反查成「关键词下标 → 槽号」
+        int[] out = new int[n];
+        for (int h = 0; h < n; h++) {
+            out[slot[h]] = h;
+        }
+        return out;
+    }
+
+    /** murmur3 的 finalizer：把 String.hashCode 的弱分布打散。 */
+    private static int mix(int h) {
+        h ^= h >>> 16;
+        h *= 0x85ebca6b;
+        h ^= h >>> 13;
+        h *= 0xc2b2ae35;
+        h ^= h >>> 16;
+        return h;
+    }
+
     public int intMeta(String key, int dflt) {
         Object v = meta.get(key);
         return v instanceof Number ? ((Number) v).intValue() : dflt;
@@ -169,6 +212,24 @@ public final class CapeDemoData {
         // occupy k CONSECUTIVE ROWS of one column (this is why R >= maxValues). So a
         // cell costs maxValues rows, a column holds floor(R/maxValues) cells, and we
         // simply lay the cells out column-major with enough columns to fit them all.
+        // ---- grid placement ----
+        // CAPE geometry, and the thing that is easy to get wrong: a keyword occupies
+        // ONE cell, and its k BFF shares live in that SAME COLUMN at k CONSECUTIVE
+        // ROWS (that is why R must be >= maxValues).  So a cell uses maxValues rows,
+        // not one, and a column holds R / maxValues cells.
+        //
+        // 论文 A1 L836 是 `u_a ← h_a(K)`（**哈希**），A1 L837 再
+        // `r_a = u_a mod R`、`c_a = ⌊u_a/R⌋`。
+        // 早先的版本把 h_a 退化成了「关键词下标」（colOf[i] = i/cellsPerCol），
+        // 那篇审计把它记为 D5b：功能上能跑，但**索引与关键词身份一一对应**，
+        // 与论文的 u_a 分布不符，也会放大可关联性。
+        //
+        // 这里换成「均匀分布且无碰撞的 u_i ∈ [0, kwCount)」：
+        // 算法本身要求 u_a ∈ [0, n)（Row 索引要落在 R 以内、列号要落在 C 以内），
+        // 所以用一个必经查表的公开哈希：先算确定性混合哈希，再用线性探测消解碰撞，
+        // 并按 keywords 的顺序做局部交换让它稳定（KEYWORD_HASH 是公开参数 pp 的一部分，
+        // 论文 pp 里也含 H，所以这不是「偷偷藏状态」）。
+        int[] slotOf = keywordHash(keywords);
         int cellsPerCol = Math.max(1, r / maxValues);
         int colsNeeded = (kwCount + cellsPerCol - 1) / cellsPerCol;
         if (colsNeeded > c) {
@@ -179,8 +240,11 @@ public final class CapeDemoData {
         int[] rowOf = new int[kwCount];
         Map<String, Integer> kwIndex = new LinkedHashMap<>();
         for (int i = 0; i < kwCount; i++) {
-            colOf[i] = i / cellsPerCol;
-            rowOf[i] = (i % cellsPerCol) * maxValues;
+            // 同一份哈希值既决定列也决定行（论文 u_a 是单个整数）
+            colOf[i] = slotOf[i] / cellsPerCol;
+            // 行偏移**对齐到 maxValues 的整数倍**：这样任意两个关键词的行区间
+            // 要么完全相同、要么完全不相交，BFF 的 k 个 share 不会被别人切进去。
+            rowOf[i] = (slotOf[i] % cellsPerCol) * maxValues;
             kwIndex.put(keywords.get(i), i);
         }
         // Self-check: no two keywords may share a cell, and every cell must fit the grid.
@@ -249,15 +313,14 @@ public final class CapeDemoData {
             }
         }
 
-        // ---- P_{c,b}(X): fill everything, then overwrite the BFF slots ----
+        // ---- P_{c,b}(X) ----
+        // 论文 A1 L817-821 明确把 D[L_BFF .. RC−1] **补零**：
+        //     for u = L_BFF to RC − 1 do  D[u] ← 0 ∈ Z_t^{B_pay}
+        // 早先的版本先用 `1 + rnd.nextLong(t-1)` 把整张表填满随机值、再覆写 BFF 槽。
+        // 密文下不可区分、功能等价（槽都被覆写了），但那**不是逐字复现** ——
+        // 而且它掩盖了一个事实：表里除了 BFF 槽之外本来就该是 0。
+        // 现在按论文补零（数组默认即 0，无需显式循环）。
         long[][][] p = new long[c][bPay][n];
-        for (int cc = 0; cc < c; cc++) {
-            for (int b = 0; b < bPay; b++) {
-                for (int rr = 0; rr < r; rr++) {
-                    p[cc][b][rr] = 1 + rnd.nextLong(t - 1);
-                }
-            }
-        }
         for (int i = 0; i < kwCount; i++) {
             for (int a = 0; a < k; a++) {
                 for (int b = 0; b < bPay; b++) {

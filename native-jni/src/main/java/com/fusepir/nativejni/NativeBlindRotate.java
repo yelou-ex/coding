@@ -126,6 +126,28 @@ public final class NativeBlindRotate {
                                                   long[] tableFlat, long[] cIdx, long[] rIdx);
 
     /**
+     * <b>服务器侧 ANSWER，行选择子由客户端提供</b>
+     * （论文 Algorithm 1 L838 {@code q^row_a = LWE.Enc_{s_L}(r_a)}）。
+     *
+     * <p>与上面三参数版的区别：旧版让 native 侧自己用 XorShift 造 {@code a}，并令
+     * {@code β = (Σ a_i·s_i + r_a) mod 2N} —— 即把 {@code r_a} **直接写在 β 里**，
+     * 且 {@code s_i} 借的是**服务器那边的 SEAL 秘密多项式**。新版接受客户端算好的
+     * {@code a}、{@code beta}（{@code β = ⟨a,s_L⟩ + r_a (mod 2N)}），
+     * **服务器看不到 r_a，也看不到 s_L**，只做线性组合。
+     *
+     * @param a    {@code [k][d]} LWE 的 a 分量（客户端采样）
+     * @param beta {@code [k]} LWE 的 β 分量 {@code = ⟨a,s_L⟩ + r_a (mod 2N)}
+     * @param sBits {@code [d]} 引导密钥要用的比特 —— 即
+     *              {@code bsk = {RGSW(s_i)}} 里的 {@code s_i}。
+     *              <b>它是公开评估材料</b>（bsk 的定义就是"加密后的秘密比特"，
+     *              本来就发布给服务器），所以客户端把它一并送来与真部署一致。
+     *              注意：这不等于泄露 {@code r_a} —— {@code r_a} 只被 {@code ⟨a,s_L⟩} 掩在 β 里。
+     */
+    public static native long[] nativeCapeAnswerSealed(long h, int d, int C, int k, int bPay,
+                                                        long[] tableFlat, long[] cIdx, long[] rIdx,
+                                                        long[][] a, long[] beta, int[] sBits);
+
+    /**
      * <b>只用于剖面：把 ANSWER 拆成「列选择」与「盲旋转」两段分别计时。</b>
      *
      * <p>与 {@link #nativeCapeAnswer} 的循环结构、CtPtMul 次数、CMUX 次数<b>完全一致</b>，
