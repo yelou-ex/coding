@@ -183,7 +183,7 @@ New-Item -ItemType Directory -Force -Path out | Out-Null
 & "$jdk\javac.exe" -encoding UTF-8 -d out $src
 
 # 原有自检（应全绿）
-& "$jdk\java.exe" -Xmx2g -cp out com.fusepir.rgsw.RgswLabMain test
+& "$jdk\java.exe" -Xmx2g -cp out com.fusepir.legacy.RgswLabMain test
 
 # 盲旋转分级自检（A 通过，B/D 待修）
 & "$jdk\java.exe" -Xmx2g -cp out com.fusepir.rgsw.BlindRotateTest

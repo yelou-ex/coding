@@ -55,7 +55,7 @@ cd E:\学习\密码赛\coding\rgsw-lab
 $jdk = 'D:\Java\jdk\bin'
 $src = Get-ChildItem -Path .\src -Recurse -Filter *.java | ForEach-Object { $_.FullName }
 & "$jdk\javac.exe" -encoding UTF-8 -d out $src
-& "$jdk\java.exe" -Xmx2g -cp out com.fusepir.rgsw.RgswLabMain
+& "$jdk\java.exe" -Xmx2g -cp out com.fusepir.prim（分层后见 MAP.md）.RgswLabMain
 ```
 
 ### 参数一律通过 `params.env` 改，不用改代码

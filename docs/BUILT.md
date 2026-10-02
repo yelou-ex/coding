@@ -42,8 +42,8 @@ $cp = "$root\lib\mpc4j-crypto-fhe-seal.jar;" +
       ((Get-ChildItem "$root\lib\deps" -Filter *.jar | ForEach-Object { $_.FullName }) -join ';')
 $out = "$root\rgsw-lab\mpc4j-out"
 
-& "$jdk\java.exe" -Xmx6g -cp "$out;$cp" com.fusepir.rgsw.CapeColumnPacked 2048 32   # 3/3
-& "$jdk\java.exe" -Xmx8g -cp "$out;$cp" com.fusepir.rgsw.CapeBkCompressed 8192 1    # 2/2
+& "$jdk\java.exe" -Xmx6g -cp "$out;$cp" com.fusepir.probe.CapeColumnPacked 2048 32   # 3/3
+& "$jdk\java.exe" -Xmx8g -cp "$out;$cp" com.fusepir.probe.CapeBkCompressed 8192 1    # 2/2
 ```
 
 ### 列打包 ✅
@@ -97,7 +97,7 @@ $out = "$root\rgsw-lab\mpc4j-out"
 $root = "D:\DFY-ws\cape"; $jdk = "D:\Java\jdk-25\bin"
 $cp = "$root\lib\mpc4j-crypto-fhe-seal.jar;" +
       ((Get-ChildItem "$root\lib\deps" -Filter *.jar | ForEach-Object { $_.FullName }) -join ';')
-& "$jdk\java.exe" -Xmx8g -cp "$root\rgsw-lab\mpc4j-out;$cp" com.fusepir.rgsw.CapeQueryDecode 2048 64
+& "$jdk\java.exe" -Xmx8g -cp "$root\rgsw-lab\mpc4j-out;$cp" com.fusepir.cape.CapeQueryDecode 2048 64
 ```
 
 **参数扫描（每轮 24 次盲旋转，d=16）—— 最快能实现的参数**
@@ -202,9 +202,9 @@ $src += (Get-ChildItem "$root\lwe-java\src\main\java" -Recurse -Filter *.java |
 跑法：
 
 ```powershell
-& "$jdk\java.exe" -Xmx8g -cp "$out;$cp" com.fusepir.rgsw.BloomScoring
-& "$jdk\java.exe" -Xmx8g -cp "$out;$cp" com.fusepir.rgsw.RingPack 8192 32
-& "$jdk\java.exe" -Xmx8g -cp "$out;$cp" com.fusepir.rgsw.BlindRotateOps
+& "$jdk\java.exe" -Xmx8g -cp "$out;$cp" com.fusepir.bloom.BloomScoring
+& "$jdk\java.exe" -Xmx8g -cp "$out;$cp" com.fusepir.prim.RingPack 8192 32
+& "$jdk\java.exe" -Xmx8g -cp "$out;$cp" com.fusepir.prim.BlindRotateOps
 ```
 
 ### ⚠️ 两个已知的默认参数坑

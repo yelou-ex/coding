@@ -100,7 +100,7 @@ python .\tools\patch_seal_hexl_fetch.py <SEAL-4.0.0>
 .\tools\build_dll_msvc.ps1 -Src <rgsw_blindrotate.cpp> ...
 
 # 6. A/B
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.BlindRotateBench 8192 20
+.\run-mpc4j.ps1 -Class com.fusepir.probe.BlindRotateBench 8192 20
 ```
 
 ## 6. 结论与后续

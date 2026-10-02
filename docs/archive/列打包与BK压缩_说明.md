@@ -189,10 +189,10 @@ $cp = "$root\lib\mpc4j-crypto-fhe-seal.jar;" +
 $out = "$root\rgsw-lab\mpc4j-out"
 
 # 列打包
-& "$jdk\java.exe" -Xmx6g -cp "$out;$cp" com.fusepir.rgsw.CapeColumnPacked 2048 32
+& "$jdk\java.exe" -Xmx6g -cp "$out;$cp" com.fusepir.probe.CapeColumnPacked 2048 32
 
 # BK 压缩（第二参数 1 = 顺便打印秘密位轮的单体体积）
-& "$jdk\java.exe" -Xmx8g -cp "$out;$cp" com.fusepir.rgsw.CapeBkCompressed 8192 1
+& "$jdk\java.exe" -Xmx8g -cp "$out;$cp" com.fusepir.probe.CapeBkCompressed 8192 1
 ```
 
 ---

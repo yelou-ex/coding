@@ -4,8 +4,8 @@
 #  self-built, deprecated) and runs RgswLabMain. This is NOT the default path.
 #
 #  DEFAULT PATH:  .\run-mpc4j.ps1        (RGSW / CMUX / blind rotation)
-#                 .\run-mpc4j.ps1 -Class com.fusepir.rgsw.Mpc4jCapability
-#                 .\run-mpc4j.ps1 -Class com.fusepir.rgsw.BlindRotateOps
+#                 .\run-mpc4j.ps1 -Class com.fusepir.probe.Mpc4jCapability
+#                 .\run-mpc4j.ps1 -Class com.fusepir.prim.BlindRotateOps
 #  It runs on coding/lib/mpc4j-crypto-fhe-seal.jar (MPC4J's SEAL Java port).
 #  Kept only as a cross-check tool. See coding/docs/RLWE路线审计.md
 # ============================================================================
@@ -113,10 +113,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # ---- 4. run (cwd = script dir so that params.env is found) ----
-Write-Host "[run] com.fusepir.rgsw.RgswLabMain $mode"
+Write-Host "[run] com.fusepir.legacy.RgswLabMain $mode"
 Push-Location $here
 try {
-    & $javaPath "-Xmx$xmx" '-Dfile.encoding=UTF-8' '-Dstdout.encoding=UTF-8' '-Dstderr.encoding=UTF-8' -cp $out com.fusepir.rgsw.RgswLabMain $mode
+    & $javaPath "-Xmx$xmx" '-Dfile.encoding=UTF-8' '-Dstdout.encoding=UTF-8' '-Dstderr.encoding=UTF-8' -cp $out com.fusepir.legacy.RgswLabMain $mode
     $code = $LASTEXITCODE
 } finally {
     Pop-Location

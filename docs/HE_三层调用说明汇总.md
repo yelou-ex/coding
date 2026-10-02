@@ -53,7 +53,7 @@ cd ..\rgsw-lab
 .\run.ps1 -Reload     # 改了 params.env 后强制重读
 
 # 3) 公开单项式旋转 + 自举密钥（本轮新增）
-& "$jdk\java.exe" -Xmx2g -cp out com.fusepir.rgsw.MonomialKeyTest
+& "$jdk\java.exe" -Xmx2g -cp out com.fusepir.legacy.MonomialKeyTest
 ```
 
 ---

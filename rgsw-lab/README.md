@@ -26,7 +26,7 @@ cd coding\native-jni
 
 ```powershell
 cd coding\rgsw-lab
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.<类名> [参数...]
+.\run-mpc4j.ps1 -Class com.fusepir.prim（分层后见 MAP.md）.<类名> [参数...]
 ```
 
 - `run-mpc4j.ps1` 用**扁平 glob** 编译 `src\main\java\com\fusepir\rgsw\` 下的**全部** `.java`，
@@ -66,7 +66,7 @@ cd coding\rgsw-lab
 ## 三、按用途分类的实验/诊断入口
 
 > 全部是「一次性但可复跑」的。名字里的 `Probe`/`Diag`/`Bench` 基本自解释。
-> 跑法都是 `.\run-mpc4j.ps1 -Class com.fusepir.rgsw.<类名>`。
+> 跑法都是 `.\run-mpc4j.ps1 -Class com.fusepir.prim（分层后见 MAP.md）.<类名>`。
 
 ### 3.1 盲旋转（BlindRotate）—— 本项目的性能主战场
 

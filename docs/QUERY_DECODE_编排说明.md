@@ -23,7 +23,7 @@ DECODE  ★ 本次：解密 → 读字段 → Bloom 合取判定 → 输出结�
 $root = "D:\DFY-ws\cape"; $jdk = "D:\Java\jdk-25\bin"
 $cp = "$root\lib\mpc4j-crypto-fhe-seal.jar;" +
       ((Get-ChildItem "$root\lib\deps" -Filter *.jar | ForEach-Object { $_.FullName }) -join ';')
-& "$jdk\java.exe" -Xmx8g -cp "$root\rgsw-lab\mpc4j-out;$cp" com.fusepir.rgsw.CapeQueryDecode 2048 64
+& "$jdk\java.exe" -Xmx8g -cp "$root\rgsw-lab\mpc4j-out;$cp" com.fusepir.cape.CapeQueryDecode 2048 64
 ```
 
 ---

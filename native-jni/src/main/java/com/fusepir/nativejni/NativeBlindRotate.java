@@ -7,8 +7,8 @@ import java.util.Arrays;
  * <b>路线 A（真 SEAL 4.0.0 C++ 本体）上的 RGSW / CMUX / 盲旋转。</b>
  *
  * <p>对应路线 B（MPC4J 纯 Java 移植）的
- * {@code com.fusepir.rgsw.Mpc4jRgsw.externalProduct/cmux} 与
- * {@code com.fusepir.rgsw.BlindRotateOps.blindRotate}，参数与语义逐项对齐，
+ * {@code com.fusepir.prim.Mpc4jRgsw.externalProduct/cmux} 与
+ * {@code com.fusepir.prim.BlindRotateOps.blindRotate}，参数与语义逐项对齐，
  * 目的是**同参同输入下做速度对照**。
  *
  * <h3>为什么需要 C++ 侧实现</h3>

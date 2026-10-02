@@ -73,7 +73,7 @@ if ($alive) {
     $baseOpts = if ($Jvm -ne '') { $Jvm } else { '' }
     $env:DSH_JVM_OPTS = ("$baseOpts -Dcape.web=$webDir").Trim()
     # run-mpc4j.ps1 compiles everything and sets java.library.path for the native DLL.
-    $argList = @('-Class', 'com.fusepir.rgsw.CapeDemoService',
+    $argList = @('-Class', 'com.fusepir.demo.CapeDemoService',
                  "$Port", "$N", "$D", $db)
     $p = Start-Process -FilePath 'powershell.exe' -PassThru -WindowStyle Minimized `
         -ArgumentList (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $runner) + $argList)
@@ -85,7 +85,7 @@ if ($alive) {
         if ($p.HasExited) {
             Write-Host "[FAIL] service exited early (code $($p.ExitCode))."
             Write-Host "       run manually to see the error:"
-            Write-Host "       cd `"$lab`" ; .\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeDemoService $Port $N $D `"$db`""
+            Write-Host "       cd `"$lab`" ; .\run-mpc4j.ps1 -Class com.fusepir.demo.CapeDemoService $Port $N $D `"$db`""
             exit 1
         }
         try {

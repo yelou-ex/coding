@@ -110,7 +110,7 @@ robocopy <old>\SEAL-4.0.0 <new>\SEAL-4.0.0 /E
 # 4. 用同一组选项重建 DLL（脚本已支持可选旗标与输出目录）
 python tools\build_blindrotate_jni.py <new> "-march=native -mtune=native" <new>\out
 # 5. 换 DLL 后跑基准 —— 会在 d=1 处段错误
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.BlindRotateBench 8192 20
+.\run-mpc4j.ps1 -Class com.fusepir.probe.BlindRotateBench 8192 20
 ```
 
 **注意：换 DLL 后必崩，务必先备份 `coding/native-jni/lib/blindrotate.dll`。**

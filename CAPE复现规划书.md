@@ -92,7 +92,7 @@
 | 1 | `(q_anc, st^C_anc) ← FusePIR.Query(pp_F, sk, K₁)` | ⚠️ | **anchor 的 `(c_a, r_a)` 服务器可还原**（N5）；`colIdx` 还是明文 |
 | 2-3 | `b_qry ← BF.Gen(0,{K₂..K_Q})`；`τ ← ‖b_qry‖₁` | ✅ | `τ` 只在客户端 |
 | 4 | `q_BF ← RLWE.Enc_{s_R}(b_qry)` | ✅ | **密文**，客户端加密 + 序列化过线（211–432 KB） |
-| 5-6 | `q ← (q_anc, q_BF)`；`st_C ← (st^C_anc, τ)` | ✅ | 默认路径 `{"qBFBytes":[...]}` |
+| 5-6 | `q ← (q_anc, q_BF)`；`st_C ← (st^C_anc, τ)` | ✅ | 默认路径 `{"qBFBytes":[...], "anchorColIdx":[…], "anchorRowIdx":[…]}`。⚠️ **2026-10-14 晚前，`q_anc` 那一半根本没发** —— 服务端写死读关键词 #0，见 §0.6 第 8 条 |
 
 ### ANSWER
 
@@ -109,7 +109,8 @@
 | 14 | `return resp` | ⚠️→✅ | ~~响应里带了明文 `valueId`~~ → **2026-10-14 已改**：只发 `ctPay`（= `ct_v`），候选值由客户端自己解。见 §0.7 ① |
 | 4-7（打分） | `ct_score,j ← CtCtMul(q_BF, ct_{B^F_j})` + `log₂ℓ_BF` 轮折叠 | ✅ | 逐候选密文分数，与明文参考值逐条相等 |
 | 8 | `resp ← ({ct_{v_j}}, ct_score,j)` | ✅ | **2026-10-14 已改**：`{ct_{v_j}}` 以 `ctPay`（= `ct_v`）返回，不再用明文 id |
-| ANSWER 2 内层 | `resp_anc ← FusePIR.Answer(st^F_S, q_anc)` | ⚠️ | 载荷是对的；**候选 Bloom 密文不是"检索出来的那条"**（D2：重新加密） |
+| ANSWER 2 内层 | `resp_anc ← FusePIR.Answer(st^F_S, q_anc)` | ⚠️ | 载荷是对的；**候选 Bloom 密文不是"检索出来的那条"**（D2：重新加密）。⚠️ 2026-10-14 晚前**锚是写死的**（见 §0.6 第 8 条），现已修 |
+| **14 / §4.1** | `resp ← Pack(...)` 后**只返回加密的候选值与分数** | ⚠️ | `ctPay` **名实不符**：名字声称密文、值是**明文载荷**（且含候选值 id）⇒ 已正名 `payloadPlain` + 附注。真修要发 B_pay 条密文（约 30.9 MB/响应），**要等 Pack 的决定** —— 见 §0.6 第 9 条 |
 
 ### DECODE
 
@@ -136,6 +137,21 @@
 > ⇒ D13 从"`(c_a, r_a)` 两者都可还原"变成"**只剩 `r_a`**"。
 > ❌ 与 ⚠️ 的总数没变少是错觉：那两处从 ❌ 变成了 ✅，不是消失了。
 
+> ## 📌 2026-10-14 深夜：拿到**完整伪代码**后新增两条（第 8、9 条）
+>
+> 上表七条是"对着抽取文本与摘要"得出的。用户随后提供了 Algorithm 1/2 的**完整转录**，
+> 逐行核对后新增两条**硬偏离**，并更正了四处口径（含 D2 的归因）。
+> **完整报告**：`docs/reports/伪代码逐行复核-两处硬偏离-2026-10-14.md`
+>
+> | 更正 | 内容 |
+> |---|---|
+> | 第 8 条（新，已修） | **默认路径的锚检索写死读第 0 个关键词** —— `q_anc` 那一半查询根本不存在 |
+> | 第 9 条（新，已改名） | **`ctPay` 名实不符** —— 名字声称密文、值是明文载荷（含候选值 id） |
+> | D2 归因更正 | `Pack` 就是 `ct^{BF}_j` 的来源 ⇒ D2 与 Pack 是**同一个洞**（原文证据，不再是推断）；而计划书写的 D2"真障碍"（`SampleExtract` 缩放噪声）**是我们绕开 Pack 才撞上的**，不是论文路上的石头 |
+> | `B_pay` 标注 | CAPE 的 `B_pay = 2 + m(1+ℓ_BF)` 是**我们的推断**（Alg 2 从未重述 `B_pay`），必须标注为推断 |
+> | `q^col` 读法 | 第 5 行写 `RLWE.Enc(e)`（单数）而 ANSWER 5 用 `CtPtMul(q^col[c], …)` ⇒ **读法(ii)「C 条标量密文」是唯一类型成立的读法**，41 MB 是它的价格，不是选择 |
+> | `s_L ≠ s_R` 证据加强 | 第 5 行**同一行**里列选择子用 `s_R`、行选择子用 `s_L` ⇒ 不能再解释成记法不严 |
+
 ---
 
 ## 📌 0.6　"现在算完整 CAPE 了吗" —— **不算，而且原因不是速度**
@@ -155,6 +171,8 @@
 | **5** | `q^row` 无噪声（D1）**且 `s_L` 被绑在 `s_R` 上** | SETUP 3 的 `sk = (s_L, s_R)`；§2.5 的 `Δ·m + e` | ❌ **比"无噪声"更严重**：`s_R == s_L` 逐位是硬要求 ⇒ **不能引用论文的独立性论证**。P1-2 判据已算出，前置是先定 `R`。**P1-1 完成后这是最大的一条** |
 | **6** | 单 JVM 密钥未隔离 | —— | ❌ 两方部署模型无法验证。⚠️ P1-1 新增一条同源边界：**选择子必须与解码者同一把秘密** |
 | **7** | BFF 位置函数 `h_i` 没实现 | ChalametPIR Alg.1 L8-10 | ⚠️ P1-4 已如实记录（F1–F4） |
+| **8** | ~~**默认路径的锚检索写死读第 0 个关键词**~~ | Alg 2 QUERY 1 + ANSWER 2：`resp_anc ← FusePIR.Answer(st_S, q_anc)` | ✅ **2026-10-14 晚已修**：请求体改为**必带** `anchorColIdx`/`anchorRowIdx`（由公开哈希 H 算出），缺了就报错；只有 `-Dcape.fixedAnchor=true` 才允许回退且响应显式标注。**回归用例**：`CapeDefaultPathTest` §6 用"锚 ≠ 关键词 #0"的组合 —— 修复前必然 ⊥ |
+| **9** | **`ctPay` 名实不符**（名字声称密文、值是明文载荷） | Alg 1 DECODE 2-4（客户端解密）+ §4.1 | 🟡 **2026-10-14 晚改名 `payloadPlain` + 附注**。⇒ 上一轮"响应不再发明文 `valueId`"在回环里只是**名义上的**：同样的 id 就在载荷里。**真修要等 Pack**（发 B_pay 条密文 ≈ 30.9 MB/响应，Pack 存在的意义正是把它压掉） |
 
 **可记录、不影响"算不算"**（论文允许自选参数）：
 `N=8192`（论文 16384）、`ε_BF=2⁻⁶`（论文 2⁻²⁰）、`B_pay=59`、`d=16`（论文 512）、`ℓ_BF=18`、
@@ -494,29 +512,29 @@
 cd coding\rgsw-lab
 
 # 几何 + 合取恰好性（假阴性必须为 0）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeTableDiag "E:\学习\密码赛\coding\cape-demo\db\keywords.json" 8192
+.\run-mpc4j.ps1 -Class com.fusepir.probe.CapeTableDiag "E:\学习\密码赛\coding\cape-demo\db\keywords.json" 8192
 
 # ---- 2026-10-14 新增：P0-1 ~ P0-4 + 默认路径 ----
 
 # 打分信道选型（两个 t 各实测一次；证明 t=2^32 下 BatchEncoder 不可用）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeScoreChannelProbe 8192
+.\run-mpc4j.ps1 -Class com.fusepir.probe.CapeScoreChannelProbe 8192
 
 # A2 ANSWER 4-8：每候选密文分数（含 ℓ_BF < N/2 用例、折叠当量、3 条负对照）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeBloomScore 8192 18
+.\run-mpc4j.ps1 -Class com.fusepir.cape.CapeBloomScore 8192 18
 
 # 线上格式：q_BF / ct_score 能不能真的过线（含损坏负对照）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeWireFormatProbe 8192 18
+.\run-mpc4j.ps1 -Class com.fusepir.probe.CapeWireFormatProbe 8192 18
 
 # **默认路径**跨进程验收（需服务 + -Dcape.insecure.keyecho=true）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeDefaultPathTest 8756
+.\run-mpc4j.ps1 -Class com.fusepir.probe.CapeDefaultPathTest 8756
 
 # 跨进程：出站隐私 + 响应结构自述 + N5 坐标泄露（不需要密钥）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeAlgorithm2Diag 8756
+.\run-mpc4j.ps1 -Class com.fusepir.probe.CapeAlgorithm2Diag 8756
 
 # ---- 2026-10-14 晚新增：P1-1（列选择子密文化）----
 
 # 跨进程线格式：41 MB 选择子流过 JSON/H​TTP 并被服务器用起来（需服务在跑）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeColumnSelWireTest 8756
+.\run-mpc4j.ps1 -Class com.fusepir.probe.CapeColumnSelWireTest 8756
 # 期望：P1-1 请求体 91.7 MB；服务器 6 s 内跑完；换列 ⇒ 载荷不同；ALL CHECKS PASSED
 ```
 
@@ -525,7 +543,7 @@ cd coding\rgsw-lab
 ```powershell
 cd coding
 $env:DSH_JVM_OPTS = '-Dcape.web=E:\学习\密码赛\coding\cape-demo\web -Dcape.selftest=true'
-.\rgsw-lab\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeDemoService 8756 8192 16 "E:\学习\密码赛\coding\cape-demo\db\keywords.json"
+.\rgsw-lab\run-mpc4j.ps1 -Class com.fusepir.demo.CapeDemoService 8756 8192 16 "E:\学习\密码赛\coding\cape-demo\db\keywords.json"
 # 期望看到四段：
 #   === CAPE Algorithm 2 进程内端到端自检（P0-1 ~ P0-4）===  ...... 9 PASS / 0 FAIL
 #   === sealed 合规路径进程内自检 ===                        ...... 4 PASS / 0 FAIL（P1-1 形态）
@@ -546,13 +564,13 @@ $env:DSH_JVM_OPTS = '-Dcape.web=E:\学习\密码赛\coding\cape-demo\web -Dcape.
 # ---- 原有 ----
 
 # 列选择基准形态（C 个独立密文 + 常数编码 + 两条负对照）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeColumnSelectBaseline 8192 26 15
+.\run-mpc4j.ps1 -Class com.fusepir.probe.CapeColumnSelectBaseline 8192 26 15
 
 # 出站隐私（字段白名单；P1-1 后 /api/query-sealed 默认放行，-Dcape.sealed=false 可关）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeSealedFlowTest 8756
+.\run-mpc4j.ps1 -Class com.fusepir.probe.CapeSealedFlowTest 8756
 
 # 出站 bf 可反解的演示（说明为什么 bf 默认不发）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeBfLeakProbe
+.\run-mpc4j.ps1 -Class com.fusepir.probe.CapeBfLeakProbe
 ```
 
 **打分信道那条新出口**：
@@ -577,7 +595,7 @@ cd E:\学习\密码赛\tools
 ```powershell
 cd coding
 $env:DSH_JVM_OPTS = '-Dcape.web=E:\学习\密码赛\coding\cape-demo\web'
-.\rgsw-lab\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeDemoService 8756 8192 16 "E:\学习\密码赛\coding\cape-demo\db\keywords.json"
+.\rgsw-lab\run-mpc4j.ps1 -Class com.fusepir.demo.CapeDemoService 8756 8192 16 "E:\学习\密码赛\coding\cape-demo\db\keywords.json"
 # 另一窗口：POST /api/query  {"keywords":["Adam Sandler","family"]}
 # 期望：hit=true  payloadMismatch=0  约 36.5 s
 ```

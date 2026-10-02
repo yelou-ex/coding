@@ -20,7 +20,7 @@
 > ```powershell
 > cd coding
 > $env:DSH_JVM_OPTS = '-Dcape.web=E:\学习\密码赛\coding\cape-demo\web -Dcape.selftest=true'
-> .\rgsw-lab\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeDemoService 8756 8192 16 "E:\学习\密码赛\coding\cape-demo\db\keywords.json"
+> .\rgsw-lab\run-mpc4j.ps1 -Class com.fusepir.demo.CapeDemoService 8756 8192 16 "E:\学习\密码赛\coding\cape-demo\db\keywords.json"
 > # 期望：=== CAPE Algorithm 2 进程内端到端自检（P0-1 ~ P0-4）=== ... 9 PASS / 0 FAIL
 > ```
 >
@@ -33,6 +33,50 @@
 > **`r_a` 那一半仍然开着**（要靠 P1-2）。
 >
 > 详见 [`CAPE复现规划书.md`](CAPE复现规划书.md) 的 **§0 进度快照**。
+>
+> ## ✅ 2026-10-14 深夜：拿到**完整伪代码**后，修掉两条硬偏离
+>
+> 用户提供了 Algorithm 1/2 的完整转录。逐行核对后新增两条**硬偏离**并当场修掉一条：
+>
+> ### ① 默认路径的锚检索**写死读第 0 个关键词**（已修）
+>
+> `runQueryCapeSealed` 调 `runAnchorNative()`，里面是 `cIdx[a] = tb.colOf[0]`；
+> 而客户端发的是 `{"d","qBFBytes"}` —— **`q_anc` 那一半查询根本不存在**，
+> 尽管论文 Alg 2 ANSWER 2 明写 `resp_anc ← FusePIR.Answer(st_S, q_anc)`。
+>
+> ⇒ 默认路径**只能回答"锚 = DB 第 0 个关键词"的查询**（别的锚会因
+> `f = fp(关键词0) ≠ fp(K)` 返回 ⊥ —— 响亮失败，这要谢谢 P0-4 的指纹校验）。
+> 而 `selftestCape` / `CapeDefaultPathTest` 原先的绿灯，是**"演示池第 0 组
+> 恰好以关键词 0 为锚"**换来的，不是协议能力。
+>
+> **修法**：请求体必带 `anchorColIdx`/`anchorRowIdx`（由公开哈希 H 算出），
+> 缺了就报错；只有 `-Dcape.fixedAnchor=true` 才允许回退且响应显式标注。
+> **回归用例**：`CapeDefaultPathTest` §6 用"锚 ≠ 关键词 #0"的组合 —— 修复前必然失败。
+>
+> ### ② `ctPay` 名实不符（已正名 `payloadPlain`）
+>
+> 字段名声称是密文（"ct_v"），值是 `nativeCapeAnswer` 的**解密结果** ——
+> 明文载荷，而且里面就装着候选值的 id。
+> ⇒ **上一轮"响应不再发明文 `valueId`"在回环里只是名义上的**。
+> 这与 `bf`→`d2PlaintextBf` 是**同一种事故模式**，只是方向相反。
+>
+> 新增判据（配阳性对照）：**任何以 `ct` 开头的响应字段都不得是"载荷形状的明文数组"**。
+> **真修要等 Pack** —— 得发 B_pay 条密文（按实测单条 524,401 字节推算 ≈ 30.9 MB/响应），
+> 而 Pack 的意义正是把它压掉。
+>
+> ### ③ 顺带更正了四处口径（含 D2 的归因）
+>
+> - **`Pack` 就是 `ct^{BF}_j` 的来源**（Alg 2 ANSWER 3 从 `resp_anc` 里 parse 出来）
+>   ⇒ **D2 不是独立 bug，是 Pack 缺失的症状**；而且计划书写的 D2"真障碍"
+>   （`SampleExtract` 缩放噪声）**是我们绕开 Pack 才撞上的**，不是论文路上的石头。
+> - **`s_L ≠ s_R` 的证据加强**：Alg 1 QUERY 5 **同一行**里列选择子用 `s_R`、
+>   行选择子用 `s_L` ⇒ 不能再解释成记法不严。
+> - **`B_pay` 是推断**：CAPE 的 `B_pay = 2 + m(1+ℓ_BF)`，Alg 2 从未重述 `B_pay`。
+> - **`q^col` 的读法**：第 5 行写 `RLWE.Enc(e)`（单数）而 ANSWER 5 用
+>   `CtPtMul(q^col[c], …)` ⇒ **「C 条标量密文」是唯一类型成立的读法**，
+>   41 MB 是它的价格，不是我们的选择。
+>
+> 完整报告见 [`docs/reports/伪代码逐行复核-两处硬偏离-2026-10-14.md`](docs/reports/伪代码逐行复核-两处硬偏离-2026-10-14.md)。
 >
 > ## ✅ 2026-10-14 晚：P1-1（列选择子密文化）**已完成**，并挖出 sealed 路径的真根因
 >
@@ -186,7 +230,7 @@
 
 ```powershell
 cd coding\rgsw-lab
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeDemo
+.\run-mpc4j.ps1 -Class com.fusepir.demo.CapeDemo
 ```
 
 **IDEA 里**：用 IDEA 打开 `coding/` 这一层 → 跑 `rgsw-lab` 的 **`CapeDemo`** → 点绿三角。
@@ -202,7 +246,7 @@ cd coding\rgsw-lab
 ## 二、`CapeDemo` 会跑三件事（一键，约 2.5 分钟）
 
 ```powershell
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeDemo
+.\run-mpc4j.ps1 -Class com.fusepir.demo.CapeDemo
 # 想换规模就传 N d 对（成对出现）：... CapeDemo 4096 16
 ```
 
@@ -260,18 +304,18 @@ cd coding\rgsw-lab
 
 | 命令 | 作用 |
 |---|---|
-| `... -Class com.fusepir.rgsw.CapeEndToEnd4 [N d]` | 四步端到端（演示 1）。默认 `4096 16` |
-| `... -Class com.fusepir.rgsw.SampleToPackLink [N]` | 连接点与缩放噪声（演示 2）。默认 `4096` || **`... -Class com.fusepir.rgsw.CapeDefaultPathTest [port]`** | **默认路径跨进程验收**（判定 + 5 负对照 + 位向量检测器的阳性对照）。需服务开 `-Dcape.insecure.keyecho=true` |
-| **`... -Class com.fusepir.rgsw.CapeAlgorithm2Diag [port]`** | **跨进程**：出站隐私 + 响应结构自述 + **N5 坐标泄露**（不需要密钥） |
-| **`... -Class com.fusepir.rgsw.CapeBloomScore [N] [lBf]`** | **A2 ANSWER 4-8：每候选密文分数**（含 `ℓ_BF < N/2` 用例与折叠当量） |
-| **`... -Class com.fusepir.rgsw.CapeWireFormatProbe [N] [lBf]`** | **线上格式**：`q_BF` / `ct_score` 能否真的过线（含损坏负对照） |
-| **`... -Class com.fusepir.rgsw.CapeScoreChannelProbe [N]`** | **打分信道选型**：为什么必须 `t=65537`（`2³²` 下 `BatchEncoder` 不可用） |
-| **`... -Class com.fusepir.rgsw.CapeBffParamDiag`** | **P1-4：BFF 参数化逐条对照 ChalametPIR**（闭式 + 我们的值 + 三处形态差），**全离线、秒级** |
-| **`... -Class com.fusepir.rgsw.CapeNttShareProbe [port]`** | **P2-1 第一步：每列成本**（明文 NTT 那一行的载体）。需服务开 `-Dcape.selftest=true` |
-| `... -Class com.fusepir.rgsw.RingPack 8192 8` | 论文的 `Pack` = Ring Packing，**6/6** |
-| `... -Class com.fusepir.rgsw.BloomScoring 4096` | 槽位域二进制同态内积，**5/5** |
-| `... -Class com.fusepir.rgsw.SelToExtractBench 4096 64 32 32 1` | 列选择 → 提取；**逐列全系数对拍**（`c=0/1/C−1`） |
-| `... -Class com.fusepir.rgsw.AnswerPathMini 4096 512` | 最小 ANSWER 骨干（另一条实现路径） |
+| `... -Class com.fusepir.probe.CapeEndToEnd4 [N d]` | 四步端到端（演示 1）。默认 `4096 16` |
+| `... -Class com.fusepir.probe.SampleToPackLink [N]` | 连接点与缩放噪声（演示 2）。默认 `4096` || **`... -Class com.fusepir.probe.CapeDefaultPathTest [port]`** | **默认路径跨进程验收**（判定 + 5 负对照 + 位向量检测器的阳性对照）。需服务开 `-Dcape.insecure.keyecho=true` |
+| **`... -Class com.fusepir.probe.CapeAlgorithm2Diag [port]`** | **跨进程**：出站隐私 + 响应结构自述 + **N5 坐标泄露**（不需要密钥） |
+| **`... -Class com.fusepir.cape.CapeBloomScore [N] [lBf]`** | **A2 ANSWER 4-8：每候选密文分数**（含 `ℓ_BF < N/2` 用例与折叠当量） |
+| **`... -Class com.fusepir.probe.CapeWireFormatProbe [N] [lBf]`** | **线上格式**：`q_BF` / `ct_score` 能否真的过线（含损坏负对照） |
+| **`... -Class com.fusepir.probe.CapeScoreChannelProbe [N]`** | **打分信道选型**：为什么必须 `t=65537`（`2³²` 下 `BatchEncoder` 不可用） |
+| **`... -Class com.fusepir.probe.CapeBffParamDiag`** | **P1-4：BFF 参数化逐条对照 ChalametPIR**（闭式 + 我们的值 + 三处形态差），**全离线、秒级** |
+| **`... -Class com.fusepir.probe.CapeNttShareProbe [port]`** | **P2-1 第一步：每列成本**（明文 NTT 那一行的载体）。需服务开 `-Dcape.selftest=true` |
+| `... -Class com.fusepir.prim.RingPack 8192 8` | 论文的 `Pack` = Ring Packing，**6/6** |
+| `... -Class com.fusepir.bloom.BloomScoring 4096` | 槽位域二进制同态内积，**5/5** |
+| `... -Class com.fusepir.probe.SelToExtractBench 4096 64 32 32 1` | 列选择 → 提取；**逐列全系数对拍**（`c=0/1/C−1`） |
+| `... -Class com.fusepir.fusepir.AnswerPathMini 4096 512` | 最小 ANSWER 骨干（另一条实现路径） |
 | `cd ..\tiny-cape` 见其 `README.md` | **独立**的极简验证层（N=8/t=17/q=97、零依赖）。**不参与主程序**，仅作交叉校验 |
 
 **⭐ 服务端进程内自检**（A2 正确性断言的**推荐入口**，不需要任何后门）：
@@ -279,7 +323,7 @@ cd coding\rgsw-lab
 ```powershell
 cd coding
 $env:DSH_JVM_OPTS = '-Dcape.web=E:\学习\密码赛\coding\cape-demo\web -Dcape.selftest=true'
-.\rgsw-lab\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeDemoService 8756 8192 16 "E:\学习\密码赛\coding\cape-demo\db\keywords.json"
+.\rgsw-lab\run-mpc4j.ps1 -Class com.fusepir.demo.CapeDemoService 8756 8192 16 "E:\学习\密码赛\coding\cape-demo\db\keywords.json"
 ```
 
 > 为什么 A2 的正确性断言需要进程内：它要两样**进程内**的东西 ——
@@ -1048,7 +1092,7 @@ packed    = Σ_i selected                    ⇒ 槽 i 解出来就是 m_i ✓
 
 #### ⑥ `RingPack` 实测（N = 8192，**6/6 通过**）
 
-跑法：`cd coding\rgsw-lab; .\run-mpc4j.ps1 -Class com.fusepir.rgsw.RingPack 8192 32`
+跑法：`cd coding\rgsw-lab; .\run-mpc4j.ps1 -Class com.fusepir.prim.RingPack 8192 32`
 
 | 项 | 内容 | 结果 |
 |---|---|---|
@@ -1481,18 +1525,18 @@ IllegalArgumentException: keyswitching is not supported by the context
 # 默认路线（纯 Java）—— 各项自检
 cd coding\rgsw-lab
 .\run-mpc4j.ps1                                                  # RGSW + CMUX 自检（5 项）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.Mpc4jCapability 16384    # 论文规模四项能力
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.BlindRotateOps 2048      # 盲旋转两种口径
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.RgswPolyTest 2048        # 一般多项式 RGSW
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.LweRlweBridge 2048       # SampleExtract / Pack
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.BlindRotateComplete 16384 64   # 完整盲旋转（论文规模）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.SizeProbe                # 量真实密文的素数分量数与序列化字节数
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.BlindRotateStress 2048   # 盲旋转压力测试：轮数扫描 + 索引噪声扫描
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.AnswerPathMini 2048 512  # 最小 ANSWER 链路（列选择→盲旋转→样本提取→三路相加）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.LweRlweConversion 2048 32 # LWE↔RLWE 桥（RLWE→LWE 模数切换 / Pack / 三路相加）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.BloomInnerProductProbe 4096 # 裁决实验：槽位域 vs 系数域（必须 N≥4096，见 5.2）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.BloomScoring 4096        # Bloom 打分（槽位域二进制同态内积，5 项自检）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.RingPack 8192 32         # ★ Ring Packing = 论文的 Pack（6 项自检，A4 的最后一环）
+.\run-mpc4j.ps1 -Class com.fusepir.probe.Mpc4jCapability 16384    # 论文规模四项能力
+.\run-mpc4j.ps1 -Class com.fusepir.prim.BlindRotateOps 2048      # 盲旋转两种口径
+.\run-mpc4j.ps1 -Class com.fusepir.probe.RgswPolyTest 2048        # 一般多项式 RGSW
+.\run-mpc4j.ps1 -Class com.fusepir.prim.LweRlweBridge 2048       # SampleExtract / Pack
+.\run-mpc4j.ps1 -Class com.fusepir.prim.BlindRotateComplete 16384 64   # 完整盲旋转（论文规模）
+.\run-mpc4j.ps1 -Class com.fusepir.probe.SizeProbe                # 量真实密文的素数分量数与序列化字节数
+.\run-mpc4j.ps1 -Class com.fusepir.probe.BlindRotateStress 2048   # 盲旋转压力测试：轮数扫描 + 索引噪声扫描
+.\run-mpc4j.ps1 -Class com.fusepir.fusepir.AnswerPathMini 2048 512  # 最小 ANSWER 链路（列选择→盲旋转→样本提取→三路相加）
+.\run-mpc4j.ps1 -Class com.fusepir.prim.LweRlweConversion 2048 32 # LWE↔RLWE 桥（RLWE→LWE 模数切换 / Pack / 三路相加）
+.\run-mpc4j.ps1 -Class com.fusepir.probe.BloomInnerProductProbe 4096 # 裁决实验：槽位域 vs 系数域（必须 N≥4096，见 5.2）
+.\run-mpc4j.ps1 -Class com.fusepir.bloom.BloomScoring 4096        # Bloom 打分（槽位域二进制同态内积，5 项自检）
+.\run-mpc4j.ps1 -Class com.fusepir.prim.RingPack 8192 32         # ★ Ring Packing = 论文的 Pack（6 项自检，A4 的最后一环）
 
 # LWE 层（纯 JDK，无依赖；注意：lwe-java/ 下没有 run.ps1，按 README 手动 javac）
 cd coding\lwe-java
@@ -1740,21 +1784,21 @@ cd coding\native-jni
 ```powershell
 cd coding\rgsw-lab
 .\run-mpc4j.ps1                                                  # #1  5/5
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.RgswPolyTest 2048        # #2  3/3
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.LweRlweBridge 2048       # #3  2/2
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.BlindRotateOps 2048      # #4  4/4（内含 N=16384 段，约 1 分钟）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.BlindRotateComplete 2048 64      # #5
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.Mpc4jCapability 4096     # #6
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.SizeProbe                # #9（N=16384 固定）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.BlindRotateStress 2048   # #10 #11
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.AnswerPathMini 2048 512  # #13
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.AnswerPathMini 4096 512  # #14
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.RingPack 8192 32          # #16  6/6（约 1 分钟）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.RingPack 4096 32          # #17  P1 过、P2~P4 崩（参数边界）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.PackGoalCheck             # #18
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.ExpandProbe 4096 4        # #20  16/16（SealPIR EXPAND 判别）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.DecomposeEquiv 4096 6     # #21  3/3（切段快慢路径逐位对拍）
-.\run-mpc4j.ps1 -Class com.fusepir.rgsw.CmuxProfile 4096 40       # #22  单轮 CMUX 拆分
+.\run-mpc4j.ps1 -Class com.fusepir.probe.RgswPolyTest 2048        # #2  3/3
+.\run-mpc4j.ps1 -Class com.fusepir.prim.LweRlweBridge 2048       # #3  2/2
+.\run-mpc4j.ps1 -Class com.fusepir.prim.BlindRotateOps 2048      # #4  4/4（内含 N=16384 段，约 1 分钟）
+.\run-mpc4j.ps1 -Class com.fusepir.prim.BlindRotateComplete 2048 64      # #5
+.\run-mpc4j.ps1 -Class com.fusepir.probe.Mpc4jCapability 4096     # #6
+.\run-mpc4j.ps1 -Class com.fusepir.probe.SizeProbe                # #9（N=16384 固定）
+.\run-mpc4j.ps1 -Class com.fusepir.probe.BlindRotateStress 2048   # #10 #11
+.\run-mpc4j.ps1 -Class com.fusepir.fusepir.AnswerPathMini 2048 512  # #13
+.\run-mpc4j.ps1 -Class com.fusepir.fusepir.AnswerPathMini 4096 512  # #14
+.\run-mpc4j.ps1 -Class com.fusepir.prim.RingPack 8192 32          # #16  6/6（约 1 分钟）
+.\run-mpc4j.ps1 -Class com.fusepir.prim.RingPack 4096 32          # #17  P1 过、P2~P4 崩（参数边界）
+.\run-mpc4j.ps1 -Class com.fusepir.probe.PackGoalCheck             # #18
+.\run-mpc4j.ps1 -Class com.fusepir.probe.ExpandProbe 4096 4        # #20  16/16（SealPIR EXPAND 判别）
+.\run-mpc4j.ps1 -Class com.fusepir.probe.DecomposeEquiv 4096 6     # #21  3/3（切段快慢路径逐位对拍）
+.\run-mpc4j.ps1 -Class com.fusepir.probe.CmuxProfile 4096 40       # #22  单轮 CMUX 拆分
 
 cd coding\lwe-java                                                # #7 #8（按 lwe-java/README.md 手动 javac）
 ```

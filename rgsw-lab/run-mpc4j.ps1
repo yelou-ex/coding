@@ -3,15 +3,15 @@
 #  (ASCII only: Windows PowerShell 5.1 reads .ps1 as ANSI/GBK without a BOM)
 #
 #  Usage:  .\run-mpc4j.ps1                                  -> Mpc4jRgsw self-test
-#          .\run-mpc4j.ps1 -Class com.fusepir.rgsw.Mpc4jCapability
-#          .\run-mpc4j.ps1 -Class com.fusepir.rgsw.Mpc4jCapability 16384
+#          .\run-mpc4j.ps1 -Class com.fusepir.probe.Mpc4jCapability
+#          .\run-mpc4j.ps1 -Class com.fusepir.probe.Mpc4jCapability 16384
 #
 #  Anything after -Class is forwarded to the Java program as its argv.
 #  NOTE: without the $args forwarding below, ".\run-mpc4j.ps1 -Class X 16384"
 #  silently ran at X's DEFAULT size (the 16384 was dropped), which made the
 #  documented commands do the wrong thing.
 # ============================================================================
-param([string]$Class = 'com.fusepir.rgsw.Mpc4jRgsw')
+param([string]$Class = 'com.fusepir.prim.Mpc4jRgsw')
 $progArgs = $args
 # 路线 A（native）的产物：把它的 classes 目录加进 classpath，并把 java.library.path 指过去，
 # 这样 rgsw-lab 里的 NativeCapeAnswer 才能 import 到 com.fusepir.nativejni.NativeBlindRotate。
@@ -42,10 +42,14 @@ New-Item -ItemType Directory -Force -Path $out | Out-Null
 # 原来这里是一份【硬编码的文件名列表】，新加的类必须手动登记，否则会被静默跳过 ——
 # 2026-09-29 合并远端的四步端到端时就踩到了：`CapeEndToEnd4` 编译都没编译，
 # 只报一句 "找不到或无法加载主类"。改成 BUILT.md 里的 glob + 排除法，新类自动纳入。
-$srcDir = Join-Path $here 'src\main\java\com\fusepir\rgsw'
+# ⚠️ 2026-10-14 深夜：源码**不再是一个平铺的包**，改成按论文分层：
+#     prim / bloom / bff / fusepir / cape / demo / probe / legacy
+#     所以这里必须 **-Recurse**（原先是 `Get-ChildItem $srcDir -Filter *.java`，
+#     只扫顶层 —— 换成分层目录后那些类会被静默漏掉，只报"找不到或无法加载主类"）。
+$srcDir = Join-Path $here 'src\main\java\com\fusepir'
 $routeC = @('RgswOps.java', 'RgswCiphertext.java', 'MonomialOps.java', 'BootstrapKey.java',
             'RgswLabMain.java', 'MonomialKeyTest.java', 'LabConfig.java')
-$srcFiles = Get-ChildItem $srcDir -Filter *.java |
+$srcFiles = Get-ChildItem $srcDir -Recurse -Filter *.java |
     Where-Object { $_.Name -notin $routeC } |
     Select-Object -ExpandProperty FullName
 

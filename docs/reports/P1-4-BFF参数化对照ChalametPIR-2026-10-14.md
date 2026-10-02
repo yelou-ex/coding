@@ -3,7 +3,7 @@
 > **状态**：✅ 完成（2026-10-14）。**可跑版**：`CapeBffParamDiag`
 > ```powershell
 > cd coding\rgsw-lab
-> .\run-mpc4j.ps1 -Class com.fusepir.rgsw.CapeBffParamDiag
+> .\run-mpc4j.ps1 -Class com.fusepir.probe.CapeBffParamDiag
 > # 期望：=== ALL CHECKS PASSED：闭式已对上，且三处形态差已如实标注 ===
 > ```
 > **规划书对这一项的要求**（§三 P1-4 原文）：
