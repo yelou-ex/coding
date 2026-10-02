@@ -1,9 +1,9 @@
 # `coding/` —— CAPE / FusePIR 的 Java 复现
 
-> **一句话**：复现 `Submission_usenix_232`（USENIX'232）里的 **CAPE（算法 2）+ FusePIR（算法 1）**。
+> **一句话**：复现论文里的 **CAPE（算法 2）+ FusePIR（算法 1）**。
 > 纯 Java、Windows 直跑、**四步端到端已通**。**不实现** CAPE-C / FusePIR-C。
 >
-> **状态基准日**：2026-09-29　|　变更历史见本文末尾 **§变更历史**
+> **状态基准日**：2026-10-14　|　变更历史见本文末尾 **§变更历史**
 >
 > ## 📌 先读这两份
 >
@@ -13,6 +13,14 @@
 > | **本文件** | 怎么跑（见下）、四步 ↔ 代码对照、已记录的偏差、文档地图、变更历史 |
 >
 > 其余文档按需查 → **见 §文档地图**。
+>
+> ## ⚠️ 怎么读这份文件（1600 行，分三种时效）
+>
+> | 部分 | 时效 | 说明 |
+> |---|---|---|
+> | **文首**：演示 / 文档地图 / 🚫偏差表 | ✅ **当前** | 偏差表 2026-10-14 逐条复核过，D1~D10 每条都标了"仍有效 / 已修 / 判断反了" |
+> | **§一~§十四**（四步对照 / 各步详情 / 结构 / 参数 / 所缺清单 / IDEA） | ✅ **当前**（§一 于 2026-10-14 二次纠正） | 其中 §一 讲列选择，**本轮改过、方向与上一版相反**，以本节为准 |
+> | **附录 A / 附录 B / §变更历史** | ⚠️ **历史留存** | 保留当时的发现过程与实测输出。**结论可能已被后续推翻**，凡与文首偏差表或 §一 冲突的，以文首为准 |
 
 ---
 
@@ -108,18 +116,57 @@ cd coding\rgsw-lab
 
 # 📖 文档地图
 
-> **41 个 md 里只有 4 类。** 先确定你要问什么，再按表找。
+> **先确定你要问什么，再按表找。** 单一路径：`docs/` 下是全部文档，`rgsw-lab/*.md` 是原语实测，
+> `SYNC.md` 是同步协议。（本表 2026-10-14 核对过文件名的真实存在性；
+> 逐文件的更详细说明见 §十四。）
+
+## 入口与状态
 
 | 你想知道 | 读这个 |
 |---|---|
-| **有什么问题 / 还能不能信"跑通"** | **[`缺陷总表.md`](docs/缺陷总表.md)** ← 唯一权威清单 |
-| **怎么跑起来** | 本文件 §演示；IDEA 用 [`IDEA运行说明.md`](docs/IDEA运行说明.md) |
+| **有什么问题 / 还能不能信"跑通"** | **[`缺陷总表.md`](docs/缺陷总表.md)** ← 唯一权威清单（P0/P1/P2 + 已修 + 口径 + 整改顺序） |
+| **本文档里哪些结论已被推翻** | 本文件 **§一**（列选择，改过两次）、**§🚫 已记录的偏差**（D1~D10 逐条标注了是否仍有效） |
+| **怎么跑起来** | 本文件 §一「演示」；IDEA 用 [`IDEA运行说明.md`](docs/IDEA运行说明.md) |
 | **整体构建方式**（手工 javac、模块划分、路线 A/B/C） | [`BUILT.md`](docs/BUILT.md) |
-| **各层怎么调用**（RLWE / RGSW / LWE） | [`HE_三层调用说明汇总.md`](docs/HE_三层调用说明汇总.md)、`../rgsw-lab/RGSW_调用说明.md`、`../rgsw-lab/LWE_RLWE桥_调用说明.md`、`../lwe-java/README.md` |
-| **论文怎么写的**（原文摘录、数学规范） | [`论文原文-ANSWER摘录.md`](docs/论文原文-ANSWER摘录.md)、[`CAPE-数学规范-SETUP到ANSWER.md`](docs/CAPE-数学规范-SETUP到ANSWER.md) |
+| **四步端到端的完成情况** | [`四步端到端-完成报告.md`](docs/四步端到端-完成报告.md)（**顶部有 2026-09-29 复核修正块，先读那段**） |
+| **QUERY / DECODE 的编排** | [`QUERY_DECODE_编排说明.md`](docs/QUERY_DECODE_编排说明.md) |
 | **哪份实现是默认的** | [`默认实现一览.md`](docs/默认实现一览.md)、[`RLWE路线审计.md`](docs/RLWE路线审计.md) |
-| **某个具体结论的实测过程** | `rgsw-lab/*_调研.md`、`rgsw-lab/*_实测.md`；明文侧见 `docs/knowledge/` |
-| **历史记录 / 谁什么时候改的** | 本文件 §变更历史、`docs/reports/`、`docs/archive/`（**已归档，不再维护**） |
+
+## 论文依据
+
+| 内容 | 读这个 |
+|---|---|
+| **论文原文摘录**（算法 1 + 附录 B） | [`论文原文-ANSWER摘录.md`](docs/论文原文-ANSWER摘录.md) |
+| **数学规范**（SETUP → QUERY → ANSWER） | [`CAPE-数学规范-SETUP到ANSWER.md`](docs/CAPE-数学规范-SETUP到ANSWER.md) |
+| **论文精读**（算法 1~5 逐行转写） | [`../Submission_usenix_232/Submission_usenix_232_精读讲解.md`](../Submission_usenix_232/Submission_usenix_232_精读讲解.md) ⚠️ 在 `coding/` 之外 |
+| **参数总表**（论文给的 / Pirouette 继承 / 我们定的 / 实测的） | [`../CAPE_参数表.md`](../CAPE_参数表.md) ⚠️ 同上；其 §三 的"`ℓ_BF = N`"推断已作废，见本文件 §十一 |
+| **逐子程序对照论文** | [`逐子程序核对-我们的实现是否符合论文算法-2026-10-13.md`](docs/reports/逐子程序核对-我们的实现是否符合论文算法-2026-10-13.md) |
+
+## 各层调用与实现
+
+| 内容 | 读这个 |
+|---|---|
+| **各层怎么调用**（RLWE / RGSW / LWE） | [`HE_三层调用说明汇总.md`](docs/HE_三层调用说明汇总.md)、[`../rgsw-lab/RGSW_调用说明.md`](../rgsw-lab/RGSW_调用说明.md)、[`../rgsw-lab/LWE_RLWE桥_调用说明.md`](../rgsw-lab/LWE_RLWE桥_调用说明.md)、[`../lwe-java/README.md`](../lwe-java/README.md) |
+| **LWE ↔ RLWE 桥**（约定 / API / 符号对照 / 三个坑） | [`../rgsw-lab/LWE_RLWE桥_调用说明.md`](../rgsw-lab/LWE_RLWE桥_调用说明.md)；最早实测记录见 [`../rgsw-lab/LWE_RLWE桥_实测.md`](../rgsw-lab/LWE_RLWE桥_实测.md)（其中"还需与 `q_L=2N` 做模数切换"一句**已被 `LweRlweConversion` 解决**） |
+| **论文的 `Pack` = Ring Packing**（原语溯源 CDKS21 / 构造 / 实测 / 缩放障碍） | [`../rgsw-lab/LWE_RLWE打包_RingPack_调研.md`](../rgsw-lab/LWE_RLWE打包_RingPack_调研.md) |
+| **盲旋转**（论文定义原文 / 轮数口径修正 / 论文规模耗时） | [`../rgsw-lab/BlindRotate_实测.md`](../rgsw-lab/BlindRotate_实测.md) |
+| **RGSW**（自检与参数 / 踩坑记录：七个坑 + MPC4J 新增三个） | [`../rgsw-lab/RGSW_调用说明.md`](../rgsw-lab/RGSW_调用说明.md) |
+| **明文侧概念**（Bloom 在 R×C 矩阵中的存储与提取、代码对照） | [`knowledge/`](docs/knowledge/) |
+| **rgsw-lab 的 70 个可执行入口**（按用途分类） | [`../rgsw-lab/README.md`](../rgsw-lab/README.md) ← 该模块自己的索引 |
+| **逐项状态表** | [`../CAPE_子程序实现对照表.md`](../CAPE_子程序实现对照表.md) ⚠️ 在 `coding/` 之外 |
+
+## 实测记录与归档
+
+| 内容 | 读这个 |
+|---|---|
+| **性能瓶颈归因**（瓶颈是盲旋转 98% 而非列选择） | [`ANSWER单元性能剖析与速度差距归因-2026-09-30.md`](docs/reports/ANSWER单元性能剖析与速度差距归因-2026-09-30.md) |
+| **我们是否达到论文速度 / 逐篇检索记录** | [`速度差距-逐篇检索记录-2026-10-13.md`](docs/reports/速度差距-逐篇检索记录-2026-10-13.md)（§18/§19 是最新两轮） |
+| **列选择 vs 两篇新论文**（我们符合基准 CAPE，compress 属 CAPE-C） | [`列选择vs两篇新论文-缺点与可修缮性-2026-09-30.md`](docs/reports/列选择vs两篇新论文-缺点与可修缮性-2026-09-30.md) |
+| **MPC4J/SEAL 可用加速点**（RNS/NTT 底层是 public 的，我们绕过了） | [`MPC4J-SEAL可用加速点盘点-2026-09-30.md`](docs/reports/MPC4J-SEAL可用加速点盘点-2026-09-30.md) |
+| **同步验证记录 / 沙箱限制 / 负结果** | `docs/reports/` 其余文件；负结果如 [`盲旋转加速-march=native负结果与回滚-2026-10-01.md`](docs/reports/盲旋转加速-march=native负结果与回滚-2026-10-01.md) |
+| **历史记录 / 谁什么时候改的** | 本文件 §变更历史；一次性文档在 [`archive/`](docs/archive/)（**已归档，不再维护**） |
+| **同步到远端的步骤** | [`SYNC.md`](SYNC.md) |
+
 
 **分层看**：
 
@@ -140,8 +187,8 @@ coding/
 │   ├── reports/           ← 同步验证记录、审阅报告
 │   └── archive/           ← 已归档的一次性文档（不再维护，见其 README）
 ├── tools/                 ← 一次性探针与基准（各有自己的 README）
-│   ├── tools/param-probe/       ← 论文参数规模测算
-│   └── tools/rlwe-bench/        ← 自研 RLWE vs MPC4J 基准
+│   ├── param-probe/       ← 论文参数规模测算
+│   └── rlwe-bench/        ← 自研 RLWE vs MPC4J 基准
 ├── rgsw-lab/*.md          ← 各原语的调用说明与实测
 ├── lwe-java/ lib/ native-jni/ rlwe-java/ tiny-cape/ ← 各模块 README
 └── cape-fusepir-database-handoff/ ← 明文侧模块 README + HANDOFF
@@ -154,22 +201,42 @@ coding/
 > **权威清单见 [`缺陷总表.md`](docs/缺陷总表.md)。** 本表只是**速查**，编号 `D1~D10` 是历史编号；
 > 与那边的 `P0/P1/P2` 映射：D1→**P0-1**、D2→**P0-3**、D3→P2-7、D4/D6/D7→**P1-6**、
 > D5→**P1-4**、D8→P2-7、D9→**P1-7/P2-6**、D10→口径 2。
+>
+> **⚠️ 2026-10-14 逐条复核过**：下表有四条已过时（D3 判断反了、D5/D6 已修、D9 数字全变），
+> 已就地标注。**"历史编号"不等于"当前状态"** —— 引之前先看标注。
 
 > **硬约束是"不能改变原论文的算法；参数与实现可以自选，但必须记录在案"**——
 > 下表就是"在案"的那部分。**不阻塞跑通，但任何结论都要带着它们说。**
+
+## A. 仍然有效（引结论必须带上）
 
 | # | 偏差 | 论文 | 本仓库 | 影响 |
 |---|---|---|---|---|
 | **D1** | **行索引无噪声** | `b = ⟨a,s⟩ + Δ·m + e` | `b = ⟨a,s⟩ + r`（**`Δ=1, e=0`**） | ⚠️ **不满足 LWE 噪声模型 ⇒ 不能引 LWE 安全性论证**。且 `BlindRotateOps.blindRotate` 对 `e=±1` **零容忍**（实测整体推偏一格、取到相邻记录）。工程决定见 §3.7，整改项 **R3b** |
 | **D2** | **候选 Bloom 密文非全程同态** | `Parse{(ct_vj, ct^BF_j)} from resp_anc`，`ct^BF_j` 是**检索出来的密文** | 用解密后的明文位**重新加密** | 已实测出**真障碍**：`sampleExtract` 输出在 `q_R` 上，喂 `RingPack` 要缩放到 `Z_t`，而该缩放引入 **≈√N 的舍入噪声**（实测 \|残差\| 最大 ≈30，理论 `std ≈ 15`）——**噪声是 Bloom 位值 1 的十几~几十倍** ⇒ `s_j == τ` 精确判定不成立。见 `SampleToPackLink` 与 §5.3 |
-| **D3** | **列选择子是 C 个独立密文** | `q_col ← an encryption of e_{c_a}`（**1 个**密文） | **C 个**常数编码密文 | 通信量 C 倍。等价且更省的写法是**单项式编码** `E(X) = X^{−c_a R}`（每位置 1 个密文，且无零项）——已实测 6/6 |
-| **D4** | **`ℓ_BF = 2`（演示）** | `ε_BF = 2^-20` ⇒ 约 80~100 位 | 演示用 2 位 | τ 判定几乎无区分度。真实数据子集实测 `ℓ_BF = 5075, h = 16`，**> N** ⇒ 需分段 |
-| **D5** | **BFF 位置是顺序 `0..8`** | `h_a(K)` 哈希派生 | `pos[i][a] = pool++` | 未走真 BFF 位置函数。且 `R=16` 下 `c = u/R` **恒为 0** ⇒ 演示**从未覆盖 `c ≥ 1`** |
-| **D6** | **Bloom 位用 `String.hashCode`** | 公开哈希族 `G = {g_1,…,g_h}`，`h ≥ 3` | `hashCode·0x9E3779B1 mod ℓ_BF`，`h=1` | 非密码学哈希、可逆 |
-| **D7** | **指纹不是 40 bit** | 40-bit | 字符串哈希截断到 1000 以内 | 自洽（客户端/服务端同一份），但与论文不符 |
-| **D8** | **`Query` 对象混装私有量与可见量** | 客户端私有 / 服务端可见应分离 | 同一个 `Query` 里既有 `K, r_a, c_a, u` 也有 `q_col, a, β` | **真实部署必须拆成两个结构体**。见上面"不证明什么"第 1 条 |
-| **D9** | **规模远小于论文** | `N=16384`、`n∈{128,256,512}`、`m∈{2^9..2^11}`、`B_pay = 2+m` | 演示 `N=4096, d=16, B_pay=8` | 测原理可以，**不能声称论文配置已复现** |
+| **D7** | **指纹不是 40 bit** | 40-bit | `inField(kw.hashCode(), t)`（`CapeDemoData` L291） | 自洽（客户端/服务端同一份），但与论文不符；且 `String.hashCode` 非密码学哈希 |
+| **D8** | **`Query` 对象混装私有量与可见量** | 客户端私有 / 服务端可见应分离 | 同一个 `Query` 里既有 `K, r_a, c_a, u` 也有 `q_col, a, β` | **真实部署必须拆成两个结构体**。见 §四"不证明什么"第 1 条 |
 | **D10** | **参数下限 `N ≥ 4096`** | 论文 `N=16384` | 完整四步要 `N ≥ 4096` | 根因：密钥切换需 ≥2 个工作素数，`bfvDefault(2048)` 只给 1 个。**这不是偏差，是这套 Java 移植的硬约束**，列在此处备查 |
+
+## B. 已修 / 已纠正（不要再当偏差引用）
+
+| # | 原记载 | 2026-10-14 复核结果 |
+|---|---|---|
+| **D3** | ~~"列选择子是 C 个独立密文"是偏差~~ | 🔄 **判断反了**。基准 CAPE 的**列选择子本来就是 C 个独立密文**（Alg 1 QUERY 5 + ANSWER 5 + `CtPtMul` 是 ct×pt，见 §一）。**真偏差是**：`nativeCapeAnswer` 走的是**明文列号** `colIdx`，数学等价但丢失了"选择子对 RLWE IND-CPA 不可区分"的隐私性质 |
+| **D5** | ~~"BFF 位置是顺序 `0..8`"~~ | ✅ **主路径已修**：`CapeDemoData.keywordHash` 用 murmur3 混合 + 线性探测，把 `u` 摊到 `[0, cellsPerCol·C)`。仍留三处为演示而写的顺序版：`CapeAnswerFull:90`、`CapeColumnPacked:75`、`CapeEndToEnd4:211`（后者的注释已说明为何不再用 `pool++`） |
+| **D6** | ~~"Bloom 位用 `String.hashCode`，`h=1`"~~ | ✅ **已修**：`common/BfGen.java` 现为 counter-mode **SHA-256** 的 `h` 次独立哈希，本库取 `h=5`、`ℓ_BF=18`；该文件头记录了被否掉的两种更省写法（重叠窗口、double hashing）及其反例 |
+
+## C. 演示配置相对论文的口径差（数字已更新）
+
+| 项 | 论文 | 本仓库当前 | 差距与后果 |
+|---|---|---|---|
+| **`ε_BF`** | 2⁻²⁰ | **2⁻⁶** | Bloom 置位数与假阳性率都上去。实测（全部 16256 个有序关键词对）：**假阴性 0**（论文论证的前提，必须为 0），**假阳性率 3.44%** vs 模型 1.64% ⇒ **约 1/29 的查询会多返回一个假阳性值**。论文取 2⁻²⁰ 正是为压掉它 |
+| **`ℓ_BF`** | `ℓ(n, ε_BF)`，未给值 | **18** | 由 `maxSetSize=2`、`ε_BF=2⁻⁶` 经 `BfGen.choose` 定出 |
+| **`N` / `d`** | 16384 / 512 | **8192 / 16** | 测原理可以，**不能声称论文配置已复现** |
+| **`B_pay`** | `2 + m`（`m = max_i|V_{K_i}|`，最大到 2¹¹） | **59** = `2 + 3×(1+18)` | 论文的 `B_pay` 量级大得多 |
+| **`t` / gadget** | 论文用"SEAL 默认" | **t=2³² / base=2³² / 6 层** | 平衡分解位必须落在 `[0,t)` ⇒ `base < 2t`，`t` 的上限决定 `base` 上限 |
+| **性能** | Table 3 的 `Time(s)` | **≈36.5 s / 177 单元** | ⚠️ 论文那列是**等值 3.00 的模型输出、不是实测**；且我们的 36.5 s **不含** CAPE 的加密 Bloom 得分那部分（未实现）⇒ **两边不可直接比** |
+
 
 ---
 
@@ -212,14 +279,17 @@ coding/
 
 ---
 
-# 一、列选择的正确定义（2026-09-19 纠正）
+# 一、列选择的定义（2026-10-14 二次纠正，取代 2026-09-19 版）
 
-## 1.1 之前错在哪
+> **这一节改过两次，两次纠正的方向相反，所以把原文出处逐条钉在下面。**
+> 第一次（2026-09-19）把算子从 `CtCtMul` 改成 `CtPtMul` —— **对**。
+> 第二次（2026-10-14）发现同一次纠正里还写错了**选择子的形态**（写成"1 个密文"），**已修**。
 
-旧文档写的是：「**CAPE 的列选择与加密 Bloom 得分都必须是密文×密文**（论文算法 2 第 4 行明确写 `CtCtMul`）」。
-**前半句是错的。**
+## 1.1 算子是 `CtPtMul`（不是 `CtCtMul`）
 
-论文 §2.5 在给出四个同态操作后，紧接着写了一句把用途钉死的话：
+旧文档写「列选择与加密 Bloom 得分**都必须是密文×密文**」。**前半句是错的。**
+
+论文 §2.5 在给出四个同态操作后，紧接着一句把用途钉死：
 
 > `CtCtAdd(ct_0,ct_1) → Enc(m_0+m_1)`,
 > `CtPtMul(ct_0,m_1) → Enc(m_0·m_1)`,
@@ -228,63 +298,89 @@ coding/
 > **The first two operations are used extensively in FusePIR for encrypted selection and reconstruction.
 > CAPE additionally uses ciphertext–ciphertext multiplication and rotation to evaluate encrypted Bloom scores.**
 
-即：
+⇒ **列选择与 BFF 重建 → 只用 `CtCtAdd` / `CtPtMul`**；`CtCtMul` / `CtRotate` **只**用于 Bloom 得分。
+注意 `CtPtMul(ct_0, m_1)` 的第二个参数是**明文** —— 这是判定的关键，见 1.2。
 
-- **加密选择（列选择）与 BFF 重建 → 只用 `CtCtAdd` / `CtPtMul`（密文 × 明文）**；
-- **`CtCtMul` 与 `CtRotate` → 只用于 CAPE 的加密 Bloom 得分**（算法 2 第 4~7 行）。
+## 1.2 选择子的形态：**C 个独立密文**（本轮修正）
 
-`CtCtMul` 出现在算法 2 里，但**不是**用在列选择上。
+论文 **Algorithm 1 QUERY 第 3~5 行**（原文，`out_cape.txt:837-838` 两栏交错已拆开）：
 
-## 1.2 正确的列选择语义
+```
+3: u_a ← h_a(K),  r_a ← u_a mod R,  c_a ← ⌊u_a/R⌋.
+4: e ← (0,...,0, 1, 0,...,0) ∈ {0,1}^C, with the 1 at index c_a.
+5: q_a = (q^col_a, q^row_a) = ( RLWE.Enc_{s_R}(e), LWE.Enc_{s_L}(r_a) ).
+```
 
-1. **客户端**把列坐标 `c_a` 做成 one-hot 向量 `e_{c_a} = (0,…,1,…,0) ∈ {0,1}^C`，
-   **把它的每一位当作明文多项式的一个系数**，然后**整体做一次 RLWE 加密**：
+**⚠️ 这里最容易读错的地方**：`q^col_a[c]` 在 ANSWER 里带下标 `c`，而 `q^col_a` 本身写作 `RLWE.Enc(e)`，
+字面看像"一个密文、`c` 是密文内的系数位"。**但那是 CAPE-C 的形态。** 区分如下：
 
-   ```
-   q_col,a ← RLWE.Enc_{s_R}(e_{c_a})          ← 只发一个密文，不是"每位一个密文"
-   ```
-
-2. **服务端**把**数据库的每一列**打包成一个**明文多项式**（服务端本来就有明文 DB，这一侧不需要加密）：
-
-   ```
-   P_{c,b}(X) ← Σ_{r=0}^{R−1} D[r + cR][b] · X^r        （算法 1 SETUP 第 14 行）
-   ```
-
-   论文原文（§3.1）：*"We further represent the array into a two-dimensional layout and **pack each
-   column into polynomial coefficients**. This design allows the server to **select the target column
-   homomorphically** and then extract the desired entry using the encrypted row index."*
-
-3. 两者做**明文–密文同态内积**（`CtPtMul`，密文 × 明文）：
-
-   ```
-   Acc_{a,b} ← Σ_{c=0}^{C−1} CtPtMul(q_col,a[c], P_{c,b}(X))      （算法 1 ANSWER 第 5 行）
-   ```
-
-   —— `q_col,a[c]` 是"加密选择器的第 c 位"，`P_{c,b}(X)` 是"第 c 列"；求和就是内积，
-   结果 `Acc_{a,b}` 是**被选中那一列**的加密。
-
-4. **之后**才用**行选择器**做盲旋转，把目标行挪到常数位：
-
-   ```
-   Acc'_{a,b} ← BlindRotate(q_row,a, Acc_{a,b})                    （算法 1 ANSWER 第 6 行）
-   ct_{a,b}   ← SampleExtract_0(Acc'_{a,b})                        （算法 1 ANSWER 第 7 行）
-   ```
-
-## 1.3 与旧理解的逐项对照
-
-| 项 | ❌ 旧文档 | ✅ 正确 |
+| | 基准 CAPE（Algorithm 1） | CAPE-C（Algorithm 5） |
 |---|---|---|
-| 列选择的算子 | `CtCtMul`（密文×密文） | **`CtPtMul`（密文×明文）** |
-| 列选择器的形态 | 每位一个 LWE 密文（再转 RGSW） | **一个 RLWE 密文**，one-hot 的每一位是**明文多项式的系数** |
-| 数据库一侧 | 参与密文运算 | **是明文多项式**（每列一个），由服务端本地持有 |
-| 行选择器的形态 | 逐位 LWE（`ℓ_r` 条） | **一条 `LWE.Enc(r_a)`**（不是逐位） |
-| `CtCtMul` 用在哪 | 列选择 + Bloom 得分 | **只用于 Bloom 得分** |
-| `LWEtoRGSW` 何时需要 | "CAPE 主流程必需" | **只有 C 变体需要** |
+| 符号 | `q^col_a` | **`q̂^col_a`**（带 hat） |
+| 客户端送什么 | **C 个独立密文**，每个加密一个常数 `e[c]` | 紧凑坐标 `z_a = bin_{ℓ_c}(c_a) ‖ bin_{ℓ_r}(r_a)` 的 LWE 加密 |
+| 服务端 | 直接用 | **同态扩展**：`Homomorphically expand C^col_a into q̂^col_a, an encryption of e_{c_a}` |
+| 附录所述 | —— | *"**Instead of directly sending the RLWE one-hot column selectors** and LWE row selectors, the client sends compact seeded LWE encryptions of their binary coordinates."* |
 
-> **待与 artifact 对齐的一点（不阻塞主线）**：论文把内积写成 `C` 项之和，工程上可等价地压成
-> **一次** `CtPtMul`——把整张表按列交错打进一个明文多项式、把选择器写成对应的负指数多项式即可。
-> 两种写法在负循环环 `Z_t[X]/(X^N+1)` 里**符号约定**（`X^{−k} = −X^{N−k}`）必须逐位对拍；
-> 落地时二选一，**以与作者 artifact 一致为准**。
+**判定依据（三条独立证据）**：
+
+1. **算子类型**：ANSWER 第 5 行是 `CtPtMul`，而 §2.5 定义 `CtPtMul(ct_0, m_1)` 的第二个参数是**明文**。
+   若选择子是"1 个密文、`c` 是系数位"，要取出第 `c` 个系数就必须用 `CtCtMul` —— 与算子类型矛盾。
+2. **附录 D.1 的措辞**：*"For every payload block b, the **encrypted column selector** chooses the column `c_a`"* ——
+   单数指的是**每路一个选择器对象**，而 QUERY 第 2 行为 `a = 0..2` 各生成一个，故共 3 个；
+   每个内部是 C 个密文。这与 Table 1 的 `O(√n)` 查询量一致。
+3. **附录开头的对比句**（`out_cape.txt:1811-1812`）明确把"C 个 one-hot 选择器"当作 **CAPE-C 要替换掉的东西**：
+   *"Instead of directly sending the RLWE one-hot column selectors … the client sends compact … coordinates."*
+
+所以基准形态是：
+
+```
+QUERY  （客户端）  q^col_a[c] ← RLWE.Enc_{s_R}(e[c])      c = 0..C−1，C 个常数编码的密文
+ANSWER （服务端）  Acc_{a,b} ← Σ_{c=0}^{C−1} CtPtMul(q^col_a[c], P_{c,b}(X))
+```
+
+## 1.3 表一侧：每列被打包成一个明文多项式
+
+论文 §3.1 原文：
+
+> *"We further represent the array into a two-dimensional layout and **pack each column into
+> polynomial coefficients**. This design allows the server to **select the target column
+> homomorphically** and then extract the desired entry using the encrypted row index."*
+
+Algorithm 1 SETUP 第 14 行给出式子，**行号 r 就是 `X` 的幂次**（这是"行选择器做盲旋转"能成立的前提）：
+
+```
+P_{c,b}(X) ← Σ_{r=0}^{R−1} D[r + cR][b] · X^r
+```
+
+⇒ **每个 `(c, b)` 一个多项式**，共 `C × B_pay` 条；表在服务端是**明文**（服务端本来就有 DB，
+只有 **query** 需要加密）。`CtPtMul` 的两侧因此是"密文选择子 × 明文列多项式"，天然匹配。
+
+## 1.4 行选择器：一条 `LWE.Enc(r_a)`（不是逐位）
+
+同上 QUERY 第 5 行：`q^row_a = LWE.Enc_{s_L}(r_a)`。它与 `BlindRotate` 的定义（§2.5）一致：
+*"Given an LWE encryption `ct_L ← LWE.Enc_s(r)` and an RLWE encryption of an accumulator …
+rotates the accumulator according to the encrypted index r."*
+
+**逐位版本属于 CAPE-C**：它把 `bin_{ℓ_r}(r_a)` 逐位转 RGSW，驱动"按索引位的盲旋转"。
+
+## 1.5 逐项对照（含本轮对 1.3 旧表的修正）
+
+| 项 | ❌ 错的理解 | ✅ 正确 |
+|---|---|---|
+| 列选择算子 | `CtCtMul`（ct×ct） | **`CtPtMul`（ct×pt）** |
+| **列选择子形态** | ~~"一个 RLWE 密文，one-hot 每位是系数"~~ | **C 个独立密文**，每个是常数编码（`e[c]` 放常数项） |
+| 数据库一侧 | 参与密文运算 | **明文多项式**，每 `(c,b)` 一条，服务端本地持有 |
+| 行选择器 | 逐位 LWE（`ℓ_r` 条） | **一条 `LWE.Enc(r_a)`**（逐位属 CAPE-C） |
+| `CtCtMul` 用在哪 | 列选择 + Bloom 得分 | **只用于 Bloom 得分** |
+| `LWEtoRGSW` 何时需要 | "CAPE 主流程必需" | **只有 CAPE-C 需要** |
+
+> **本实现现状（必须与上面区分开）**：`nativeCapeAnswer` 收的是**明文列号** `colIdx`（`jlongArray cIdx`），
+> 在 native 侧用 `p[0] = (cc == colIdx[a])` 自造 one-hot 明文。这在**数学上等价于**基准形态
+> （常数编码 + `ct×pt`，结果同样是 `P_{c_a,b}`），所以 `Acc == P_{c_a}` 的自检会通过；
+> **但它把列号暴露给了服务端**，不具备附录 D.2 所依赖的"`a column selector is indistinguishable
+> by RLWE IND-CPA security`"。出处见 `docs/QUERY_DECODE_编排说明.md` 的偏差表第 1 行。
+> 探针：`CapeColumnSelectBaseline`（C 个独立密文 + 常数编码，N=8192 下全部断言通过）。
+
 
 ---
 
@@ -960,20 +1056,54 @@ resp ← ({ct_vj, ct_score,j})_{j=1}^m
 
 # 十一、参数现状
 
-| 参数 | 值 | 来源 |
+> ⚠️ **本表是"论文目标参数"与"本仓库当前取值"的对照，两者不要混读。**
+> 更细的参数来源分类（论文给的 / 从 Pirouette 继承的 / 我们定的 / 实测的）见
+> [`../CAPE_参数表.md`](../CAPE_参数表.md)。
+
+## 11.1 论文给的目标参数（§5.1）
+
+| 参数 | 值 | 出处 |
 |---|---|---|
 | `t` | 65537 | ✅ 论文 §5.1 |
 | `N` | 16384 | ✅ 论文 §5.1 |
-| 系数模数 | 声明 9 素数 / 438 位；**工作层 8 素数 / 389 位**（BFV 留最后一个素数作 `q_last`） | 论文只说"SEAL 默认"；位数我们实测补出 |
+| 系数模数 | 论文只说"SEAL 默认配置"；`N=16384` 时我们实测为声明 9 素数 / 438 位 | 位数由实测补出 |
 | BFF `k` / 指纹 / `ε_BF` | 3 / 40 bit / 2⁻²⁰ | ✅ 论文 §5.1 |
-| `ℓ_BF` | = N = 16384 | ⚠️ 由"查询恰为 1 个密文"反推（整改 R7 待核） |
+| `ℓ_BF`（Bloom 长度） | **论文没给具体值**：只说 `ℓ_BF = ℓ(n, ε_BF)`、"每次实验内固定" | ⚠️ 见下方批注 |
 | `R`、`C`、`ℓ_c`、`ℓ_r` | `R ≤ N`、`RC ≥ L_BFF`；`ℓ_c=⌈log₂C⌉`、`ℓ_r=⌈log₂R⌉` | ✅ 约束是论文给的；**具体取值未定** |
 | **`d`（LWE 维数）** | **512** | ⚠️ **论文没给**，取自 Pirouette Table 4 |
-| `q_L` | `2N`（结构约束：盲旋转要求 q 为 2 的幂且 q=2N） | ✅ 推得 |
-| **行选择器索引编码** | **Δ=1 且无噪声**：`b = ⟨a,s⟩ + r`，`r ∈ [0,R)` | ⚠️ **本项目工程决定**（3.7，候选 (b)）；**安全性未论证** |
 | `σ²` | 3.192（σ≈1.7866） | ⚠️ Pirouette |
-| gadget 底 / 层数 | 现状 2¹⁶ / 25；（Pirouette：`B_rgsw=2²⁴`、`ℓ_rgsw=8`） | ⚠️ 有差距，见整改 R6 |
-| 旋转密钥步长集 | `{1,2,4,…,ℓ_BF/2}` = 14 个 | ✅ 由算法推得 |
+| gadget 底 / 层数 | Pirouette：`B_rgsw=2²⁴`、`ℓ_rgsw=8` | ⚠️ 与我们的取值有差距 |
+| 旋转密钥步长集 | `log₂ℓ_BF` 个"2 的幂"步长 | ✅ 由算法推得（折叠循环用 `CtRotate(·, 2^r)`） |
+
+> **⚠️ 批注：`ℓ_BF` 的两处常见误读，都已在 2026-10-14 核实为错。**
+>
+> 1. **"由查询恰为 1 个密文 ⇒ `ℓ_BF = N = 16384`" —— 推断不成立。**
+>    这个数字来自论文的**查询通信量**（Table 3 / §5.2）：加密 Bloom 查询是"一个 RLWE 密文"，
+>    `N=16384` 时其**序列化体积**约 1152 KiB，与 FusePIR 三路选择合计 ≈2305 KiB 同量级。
+>    **密文体积不是 Bloom 长度**：`ℓ_BF` 是比特数，`N` 是多项式次数，两者的关系由
+>    `ℓ_BF ≤ N`（一条密文要装下整条向量）给出上界，不能反推等号。
+>    （溯源：`../CAPE_参数表.md` L36-46 有此推断，本轮已标注作废。）
+> 2. **"列选择器是 1 个密文"也不能用来推 `ℓ_BF`** —— 见 §一：基准 CAPE 的选择子是
+>    **C 个独立密文**，这个前提本身不成立。
+>
+> 论文 §5.2 实测的查询量（16/64-bit 两档）：**FusePIR ≈ 2304.97 KiB**、**FusePIR-C ≈ 0.16 KiB**
+> （降四个数量级）、MMK ≈ 768.25 KiB。**CAPE 没有单独的查询量数字**，它 = FusePIR anchor 查询 + 1 个 Bloom 查询。
+
+## 11.2 本仓库当前实际用的取值（演示配置）
+
+| 参数 | 值 | 说明 |
+|---|---|---|
+| `N` / `d` | **8192 / 16** | 由 `CapeDemoService` 与 `cape-demo/db/keywords.json` 的 `meta` 决定 |
+| `t` / gadget 底 / 层数 | **2³² / 2³² / 6** | 从 `meta.plainModulus`、`meta.baseBits` 读入；平衡分解要求 `base < 2t` |
+| `ℓ_BF` (`lBf`) | **18** | 由 `meta.maxSetSize=2`、`meta.epsBf=2⁻⁶` 经 `BfGen.choose` 定出 |
+| `B_pay` | **59** | `2 + maxValues·(1+ℓ_BF) = 2 + 3×19` |
+| `maxValues` / `C` / `R` / `k` | **3 / 26 / 16 / 3** | `C` 由 `cellsPerCol = R/maxValues = 5` 与关键词数 128 定出 |
+| 单元数 / 实测 ANSWER | **177 / ≈36.5 s** | `177 = k·B_pay`；见 §十三的性能记录 |
+| `L_BFF`（槽位总数） | **130** | `= cellsPerCol × C`，见 `CapeTableDiag` 的几何自检 |
+
+> **两处必须一起说的口径差**：`ε_BF` 我们取 2⁻⁶（论文 2⁻²⁰）⇒ 实测假阳性率约 3.4%（论文可忽略）；
+> `N` 我们取 8192（论文 16384）⇒ **不能声称论文配置已复现**。
+
 
 ---
 
@@ -1193,32 +1323,27 @@ cd coding\native-jni
 
 # 十四、逐文件说明
 
-> **按问题找文档 → 见本文开头的 [§文档地图](#-文档地图)。** 本节是**逐文件**的补充说明。
+> **本节的定位**：只保留**文档地图没有**的"每个文件里到底写了什么"的细节，
+> 以及**在 `coding/` 之外**因而不在 git 里的那几份。
+> 按问题找文档 → 见文首 [§文档地图](#-文档地图)。
+> **⚠️ 2026-10-14 清掉了一批与文档地图重复的行**（缺陷总表 / BUILT / IDEA / QUERY_DECODE /
+> 数学规范 / 论文原文摘录 / 默认实现一览 / RLWE路线审计 / HE_三层 / RingPack 等）。
 
-| 文档 | 内容 |
+| 文档 | 里面写了什么（地图里没有的细节） |
 |---|---|
-| **[`缺陷总表.md`](docs/缺陷总表.md)** | **所有已知问题的唯一权威清单**：P0/P1/P2 + 已修 + 口径 + 整改顺序 + 来源对照 |
-| **[`BUILT.md`](docs/BUILT.md)** | 构建与运行：模块划分、路线 A/B/C、手工 javac 的排除清单 |
-| **[`IDEA运行说明.md`](docs/IDEA运行说明.md)** | IDEA 一键跑、参数下限、排错表 |
-| **[`四步端到端-完成报告.md`](docs/四步端到端-完成报告.md)** | 四步端到端完成报告（**顶部有 2026-09-29 复核修正块，先读那段**） |
-| `QUERY_DECODE_编排说明.md` | QUERY + DECODE 的编排说明与实测 |
-| `CAPE-数学规范-SETUP到ANSWER.md` | 数学规范（SETUP → QUERY → ANSWER） |
-| `论文原文-ANSWER摘录.md` | 从论文 PDF 提取的原文摘录（算法 1 + 附录 B） |
-| `rgsw-lab/LWE_RLWE打包_RingPack_调研.md` | **论文 `Pack` = Ring Packing**：原语溯源（CDKS21）、构造、实测、缩放障碍 |
-| `docs/knowledge/` | 明文侧概念：Bloom 在 R×C 矩阵中的存储与提取、代码对照 |
-| `docs/reports/` | 同步验证记录、两份《CAPE 核心密码原语逐项缺陷报告》、**《ANSWER 单元性能剖析与速度差距归因》**（瓶颈是盲旋转 98% 而非列选择）、**《列选择 vs 两篇新论文——缺点与可修缮性》**（我们符合基准 CAPE，compress 属 CAPE-C）、**《MPC4J/SEAL 可用加速点盘点》**（RNS/NTT 底层是 public 的，我们绕过了） |
-| `docs/archive/` | **已归档，不再维护** —— 一次性"更正/进度"文档，内容已并入 `缺陷总表.md`；见其 `README.md` |
-| `默认实现一览.md` | **哪条路线是默认、哪个文件夹放什么**（最容易被搞混的六处） |
-| `RLWE路线审计.md` | 三条路线的逐文件判定、补丁带来的转折、论文规模实测结果 |
-| `HE_三层调用说明汇总.md` | 三层（LWE / RLWE / RGSW）的关系与 API |
-| `../rgsw-lab/RGSW_调用说明.md` | RGSW 层的自检与参数；**踩坑记录**（七个坑 + MPC4J 新增的三个） |
-| `rgsw-lab/BlindRotate_实测.md` | 盲旋转的论文定义原文、轮数口径修正、论文规模耗时 |
-| `../rgsw-lab/LWE_RLWE桥_调用说明.md` | **LWE ↔ RLWE 桥的调用说明**：三个约定（LWE-in-RLWE / 模数不匹配 / `q_L=2N` 装不下载荷）、API 速查、完整示例、**符号约定对照**、SEAL Java 移植版的三个坑、实测结果、边界 |
-| `rgsw-lab/LWE_RLWE桥_实测.md` | SampleExtract / Pack 的**最早**实测记录与方法论警告（写于桥之前，其"还需与 q_L=2N 做模数切换"一句**已被 `LweRlweConversion` 解决**） |
-| `../CAPE_子程序实现对照表.md` | 逐项状态表（**注意：其第 4c/9/14 项正按本 README 第〇、一节整改**） |
-| `../CAPE_参数表.md` | 参数总表（论文给的 / 从 Pirouette 继承的 / 我们定的 / 实测的） |
-| `../Submission_usenix_232/Submission_usenix_232_精读讲解.md` | 论文精读（算法 1~5 的逐行转写） |
-| `SYNC.md` | 推送到远端的步骤与环境问题记录 |
+| [`四步端到端-完成报告.md`](docs/四步端到端-完成报告.md) | 四步首次全接通的**过程记录**；**顶部有 2026-09-29 复核修正块，先读那段** |
+| [`knowledge/`](docs/knowledge/) | 明文侧的**代码对照**：Bloom 在 R×C 矩阵中怎么存、怎么取 |
+| `docs/reports/`（见地图，勿按简称找） | 除地图点名的那几份外，还有：两份《CAPE 核心密码原语逐项缺陷报告》、《论文优化路径——列选择与盲旋转前后步骤》、《ANSWER 两段速度实测》、《Bloom 适配论文与参数最小化》、《Pirouette 源码定位》、MSVC/HEXL 两条负结果、沙箱限制清单 |
+| [`archive/`](docs/archive/) | **已归档、不再维护**：一次性"更正/进度"文档，内容已并入 `缺陷总表.md`；见其 `README.md` |
+| [`../rgsw-lab/LWE_RLWE桥_实测.md`](../rgsw-lab/LWE_RLWE桥_实测.md) | SampleExtract / Pack 的**最早**实测记录与方法论警告（写于桥之前；其"还需与 `q_L=2N` 做模数切换"一句**已被 `LweRlweConversion` 解决**） |
+| [`../CAPE_子程序实现对照表.md`](../CAPE_子程序实现对照表.md) ⚠️ 仓库外 | 逐项状态表。**注意其第 4c/9/14 项正按本 README §〇、§一 整改** |
+| [`../CAPE_参数表.md`](../CAPE_参数表.md) ⚠️ 仓库外 | 参数**来源分类**（论文给的 / Pirouette 继承 / 我们定的 / 实测的）。**其 §三 的"`ℓ_BF = N = 16384`"推断已于 2026-10-14 作废**，见本文件 §十一 |
+| [`../Submission_usenix_232/Submission_usenix_232_精读讲解.md`](../Submission_usenix_232/Submission_usenix_232_精读讲解.md) ⚠️ 仓库外 | 论文精读：**算法 1~5 的逐行转写**（查"论文到底怎么写的"最快的一手材料） |
+| [`SYNC.md`](SYNC.md) | 推送到远端的步骤、`.gitignore` 策略、环境问题记录 |
+
+> **⚠️ 关于三处 `../` 引用**：它们在 `coding/` 之外，**不在这个 git 仓库里**（本仓库是
+> `coding/`，用户自己维护外层目录）。clone 本仓库的人会看到悬空路径 —— 这是有意的，不是漏改。
+
 
 ---
 
@@ -1462,12 +1587,16 @@ cd coding\lwe-java                                                # #7 #8（按 
 
 # 变更历史
 
-> 只记**会推翻旧结论**或**新增能力**的事。逐次整改的细节见 `四步端到端-完成报告.md`、
-> `rgsw-lab/LWE_RLWE打包_RingPack_调研.md`、`四步端到端-复核发现-2026-09-29.md`（工作区根目录）。
+> 只记**会推翻旧结论**或**新增能力**的事。逐次整改的细节见 [`四步端到端-完成报告.md`](docs/四步端到端-完成报告.md)、
+> `../rgsw-lab/LWE_RLWE打包_RingPack_调研.md`、`四步端到端-复核发现-2026-09-29.md`（工作区根目录，**不在本仓库**）。
 
 | 日期 | 变更 | 影响 |
 |---|---|---|
-| **2026-09-29** | **文档整理**：新增 **`缺陷总表.md`**（所有问题的唯一权威清单，合并两份审阅报告 + 本项目实测）；`README.md` 重排（演示置顶 + **§文档地图** + §已记录的偏差指向总表）；6 份一次性文档移入 `docs/archive/`；删掉与 `docs/reports/` **字节相同**的重复文件 | 41 个 md 有了唯一入口 |
+| **2026-10-14** | **README 大修：合并重复 + 纠正错误理解**。① **§一 二次纠正列选择**——上一版（2026-09-19）把选择子写成"1 个密文"，**方向反了**；基准 CAPE 的 `q^col_a` 是 **C 个独立密文**（依据：Alg 1 QUERY 5 + ANSWER 5 的 `CtPtMul` 是 ct×pt + 附录 D.1 措辞 + 附录开头"C 个 one-hot"是 CAPE-C 要替换的对象）。"1 个密文"是 **CAPE-C 扩展后**的 `q̂^col`。② 删掉 §1.2 结尾那条"可压成一次 `CtPtMul`"的**错误注记**。③ **🚫 偏差表逐条复核**：D3 判断反了、D5/D6 已修、D9 数字全变，拆成「仍有效 / 已修纠正 / 演示口径差」三张表。④ **§十一 参数节重写**：`ℓ_BF = N = 16384` 的**推断作废**（把密文体积 1152 KiB 当成了 Bloom 长度），拆成"论文目标参数"与"本仓库实际取值"两张表。⑤ **文档地图与 §十四 合并去重**，并修掉三处**对不上真实文件名**的报告引用。⑥ 文首加"怎么读这份文件"的**时效分层**说明 | 同一件事（列选择子形态）此前在偏差表 D3、§一、实际代码里有**三种互相矛盾**的说法；现统一为：论文 = C 个独立密文 / 本实现 = **明文列号**（数学等价、丢失 IND-CPA 不可区分性） |
+| **2026-10-14** | 目录整理：根目录专题 md 归入 `docs/`、数据集展平同名套层、`param-probe`+`rlwe-bench` 收进 `tools/`、删构建产物与重复 zip | 根目录只剩 `README.md` + `SYNC.md`；git 全部识别为 rename，历史保留 |
+| **2026-10-14** | 后端审计：堵住**出站 `bf` 明文外泄**（它是 `b_qry`，用公开 H 可反解出关键词）、`integrity` 改名 `payloadRoundTrip`（原名字高估了证明力）、补上缺失的**合取判定断言**、`expected` 改两点标定 | 假基线 48.7 s → 35.6 s（实测偏差 +32% → −0.6%）；新增 `CapeBfLeakProbe` |
+| **2026-10-14** | 表构造几何 bug：补零判据把"多项式列号"与"槽位下标"当同一量纲 ⇒ 第 8 列起整列被清空 | 症状只有加密侧一句 `result ciphertext is transparent`；新增 `CapeTableDiag` 断言守护 |
+| **2026-09-29** | **文档整理**：新增 **`缺陷总表.md`**（所有问题的唯一权威清单，合并两份审阅报告 + 本项目实测）；`README.md` 重排（演示置顶 + **§文档地图** + §已记录的偏差指向总表）；6 份一次性文档移入 `docs/archive/`；删掉与 `docs/reports/` **字节相同**的重复文件 | md 有了唯一入口（当时 41 份） |
 | | **查 Bloom**：发现 `CapeEndToEnd4` 的客户端 `b_qry` **构造错误 ⇒ 漏判**（已复现反例，`BloomQueryConstructionCheck`）；并查出 `packed` 是**死代码**、`intAt` 窗口重叠、`padToSlots` 静默截断 | 见 `缺陷总表.md` P0-2 / P0-3 / P2-2 / P2-3 |
 | | **修终端中文乱码**：`-Dfile.encoding` 管不到 `System.out`（JEP 400），4 个入口脚本补 `-Dstdout.encoding=UTF-8` | 附录 A 第 18 条 |
 | | **`CapeDemo` 一键批量跑三种规模**（2048/4096/8192），`N=2048` 的预期停点被捕获并标注 | 见 §演示 |
