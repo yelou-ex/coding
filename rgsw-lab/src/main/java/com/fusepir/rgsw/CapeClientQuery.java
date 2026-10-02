@@ -141,12 +141,23 @@ public final class CapeClientQuery {
         q.sBits = bskBits.clone();
         q.a = new long[k][d];
         q.beta = new long[k];
-        SecureRandom rnd = new SecureRandom();
+        // ⚠️ 行选择子的构造**不引入任何噪声项**（按需求「盲旋转不要噪声」）：
+        //    β ≡ Σ_i a_i · s_i + r_a  (mod 2N)   —— 严格等式
+        // 老路径 nativeCapeAnswer 也是这个形式（betav = (sum + ridx[a]) % 2N），
+        // 所以两边在这一点上完全一致。真正的噪声只来自同态运算本身。
+        //
+        // a_i 用**确定性序列**（与老路径相同的 XorShift 常量），不用 SecureRandom：
+        // 这样「同一次查询」在同一台机器上可复现，排查时能把随机性排除掉。
+        // 真部署应换成密码学安全的均匀采样（SecureRandom），这里为了对齐老路径先固定。
         long twoN = 2L * n;
+        long rngState = 20260930L;
         for (int a = 0; a < k; a++) {
             long sum = 0;
             for (int i = 0; i < d; i++) {
-                q.a[a][i] = Math.floorMod(rnd.nextLong(), twoN);
+                rngState ^= rngState << 13;
+                rngState ^= rngState >>> 7;
+                rngState ^= rngState << 17;
+                q.a[a][i] = Math.floorMod(rngState, twoN);
                 if (q.sBits[i] == 1) {
                     sum = (sum + q.a[a][i]) % twoN;
                 }

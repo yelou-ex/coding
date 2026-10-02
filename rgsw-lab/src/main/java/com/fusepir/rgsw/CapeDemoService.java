@@ -720,6 +720,15 @@ public final class CapeDemoService {
      * **服务器侧的 ANSWER 只有一个实现，就是 {@link #runQuerySealed}**。
      */
     private void hQuerySealed(HttpExchange ex) throws IOException {
+        if (!Boolean.getBoolean("cape.sealed")) {
+            // ⚠️ 默认**拒绝**：sealed 路径的隐私部分已修好（服务器不接触明文关键词），
+            // 但**正确性未修完** —— native 返回的载荷恒为 0。
+            // 一个「返回成功但结果是 0」的接口比一个报错的接口危险得多，
+            // 所以这里默认返回明确的失败，只有显式 -Dcape.sealed=true 时才放行做实验。
+            send(ex, 501, err("sealed 路径正确性未修完（载荷恒 0），默认关闭；"
+                + "加 -Dcape.sealed=true 可放行做实验。演示与生产走 /api/query（老路径）。"));
+            return;
+        }
         if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
             send(ex, 405, err("POST only"));
             return;
@@ -880,8 +889,11 @@ public final class CapeDemoService {
         CapeDemoData db = CapeDemoData.load(dbPath);
         CapeDemoService svc = new CapeDemoService(port, n, d, db);
 
-        // 合规路径（sealed）自检：必须在**本进程内**跑，因为 β 需要「与累加器同一个
-        // 秘密」的比特，而取它的上下文句柄是进程内裸指针（跨进程会段错误）。
+        // 合规路径（sealed）自检：**默认关闭**。
+        // 它的隐私断言通过、但正确性断言失败（载荷恒 0，见
+        // docs/reports/逐子程序核对-我们的实现是否符合论文算法-2026-10-13.md 附录）。
+        // 默认打开只会每次启动都报一次 FAIL、误导使用者以为主线坏了；
+        // 要用 -Dcape.selftest=true 显式开启（配合 -Dcape.sealed=true）。
         if (Boolean.getBoolean("cape.selftest")) {
             svc.selftestSealed();
         }

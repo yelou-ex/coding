@@ -1738,4 +1738,5 @@ JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_native
     return arr;
     JNI_END(env, nullptr)
 }
+
 }  // extern "C"

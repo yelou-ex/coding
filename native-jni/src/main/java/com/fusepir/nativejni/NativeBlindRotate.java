@@ -173,6 +173,7 @@ public final class NativeBlindRotate {
      */
     public static native long[] nativeCmuxProfile(long h, int d, int rounds);
 
+
     private static int passed = 0;
     private static int failed = 0;
 
