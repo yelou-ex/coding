@@ -9,7 +9,7 @@ package com.fusepir.rgsw;
  * that the Galois permutation tables are lazily allocated - and are verified at
  * the paper's parameters (N=16384, t=65537, 9 declared primes).
  *
- * This file is kept only as a cross-check tool. See coding/RLWE路线审计.md.
+ * This file is kept only as a cross-check tool. See coding/docs/RLWE路线审计.md.
  */
 
 

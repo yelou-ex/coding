@@ -85,8 +85,8 @@ LWE 不在本次范围：`com.fusepir` 的 `cape.he.*`（`coding/lwe-java/`）�
 |---|---|---|
 | `rgsw-lab/.../Mpc4jRgsw.java` | **RGSW 加密 / 外部乘积 / CMUX**（测试全绿） | 需要 native 侧新增原语接口 |
 | `rgsw-lab/.../Mpc4jCapability.java` | 四项能力探针（打包/ct×ct/旋转/模切换） | 同上 |
-| `param-probe/.../ParamProbe.java` | 参数位宽探测（N=16384 跑不动，正是它的结论来源） | 可由 `native-jni/src/seal_params_probe.cpp` 替代 ✅ 已有替代品 |
-| `rlwe-bench/src/RlweBench.java` | 自研 vs 纯 Java 移植版的性能对照 | 对照基准，可保留但需标注 |
+| `tools/param-probe/.../ParamProbe.java` | 参数位宽探测（N=16384 跑不动，正是它的结论来源） | 可由 `native-jni/src/seal_params_probe.cpp` 替代 ✅ 已有替代品 |
+| `tools/rlwe-bench/src/RlweBench.java` | 自研 vs 纯 Java 移植版的性能对照 | 对照基准，可保留但需标注 |
 
 ### ❌ 路线 C（自研，已弃用）——待收敛
 

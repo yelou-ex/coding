@@ -1,4 +1,4 @@
-# ============================================================================
+#  ============================================================================
 #  Run the native SealPIR test against the prebuilt mpc4j-native-fhe.dll.
 #
 #  ASCII only (Windows PowerShell 5.1 reads .ps1 as ANSI/GBK). Paths are
@@ -8,13 +8,15 @@
 #    .\run.ps1                                  # use .\lib\mpc4j-native-fhe.dll
 #    .\run.ps1 -Root 'C:/.../seal'              # use the freshly built one
 #    .\run.ps1 -N 8192 -T 65537 -Db 128 -Index 7
-# ============================================================================
+#    .\run.ps1 -CompileOnly                     # 只编 Java 绑定，不跑测试
+#  ============================================================================
 param(
     [string]$Root = '',
     [int]$N = 16384,
     [long]$T = 65537,
     [int]$Db = 256,
-    [int]$Index = 170
+    [int]$Index = 170,
+    [switch]$CompileOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -56,6 +58,16 @@ $files = Get-ChildItem $src -Recurse -Filter *.java | ForEach-Object { $_.FullNa
 Write-Host "[compile] $($files.Count) java file(s)"
 & $javac -encoding UTF-8 -d $out $files
 if ($LASTEXITCODE -ne 0) { Write-Error 'javac failed'; exit $LASTEXITCODE }
+
+if ($CompileOnly) {
+    # 为什么需要这个开关：`rgsw-lab\run-mpc4j.ps1` 把 `native-jni/lib/classes`
+    # 放进了 classpath，没有它 rgsw-lab **根本编译不过**（`找不到符号 com.fusepir.nativejni`）。
+    # 而 classes/ 是 .gitignore 的构建产物，新克隆的仓库里不存在 —— 于是
+    # "跑演示"的第一步就被卡在一个只能顺带跑耗时测试的脚本上。
+    # 有了它，准备环境就是一句 `.\run.ps1 -CompileOnly`。
+    Write-Host "[done] bindings compiled to $out (skipped the native test)"
+    exit 0
+}
 
 Write-Host "[run] N=$N t=$T db=$Db index=$Index  (dll: $libdir)"
 # JDK 25 warns about restricted native access unless it is enabled explicitly,

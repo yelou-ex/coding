@@ -75,9 +75,35 @@ public final class ArithmeticBffSelfTestMain {
             layoutOk && formulaOk, "段长逐点与公式一致 = " + formulaOk);
 
         // ================= T3 MovieLens 真数据 =================
-        Path tags = args.length > 0 ? Path.of(args[0])
-            : Path.of("..", "ml-latest-small", "ml-latest-small", "tags.csv");
+        //
+        // ⚠️ 路径必须按**进程工作目录**解析，而不是模块目录 —— 这是个踩过的坑。
+        //
+        // `run.ps1` 不切换工作目录，所以从 `coding\` 启动时 cwd 就是 `coding\`，
+        // `..` 会落到 `E:\学习\密码赛\`（那里没有数据集）。仓库里数据集的位置是
+        // `coding\ml-latest-small\`，所以从 coding\ 启动要 `ml-latest-small/tags.csv`。
+        //
+        // 2026-10-14 整理目录时我把这段改成过 `..\ml-latest-small\tags.csv` 并以为
+        // 原写法多套了一层；实测 T3 直接跳过，才发现套层不是多余的、原写法对的是
+        // "从模块目录启动"那种情形。现在两种 cwd 都试，谁先存在用谁，并打印选中路径。
+        Path tags = null;
+        if (args.length > 0) {
+            tags = Path.of(args[0]);
+        } else {
+            for (Path cand : new Path[]{
+                    Path.of("ml-latest-small", "tags.csv"),          // cwd = coding\
+                    Path.of("..", "ml-latest-small", "tags.csv"),    // cwd = 模块目录
+                    Path.of("..", "..", "ml-latest-small", "tags.csv")}) {
+                if (Files.exists(cand)) {
+                    tags = cand;
+                    break;
+                }
+            }
+            if (tags == null) {
+                tags = Path.of("ml-latest-small", "tags.csv");
+            }
+        }
         System.out.println();
+        System.out.println("T3 数据集路径 = " + tags.toAbsolutePath());
         if (!Files.exists(tags)) {
             System.out.println("T3 跳过：找不到 " + tags.toAbsolutePath());
         } else {

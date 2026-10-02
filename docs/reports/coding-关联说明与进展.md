@@ -84,7 +84,7 @@ robocopy D:\DFY-ws\coding D:\DFY-MMBS-ws /E /MOVE
 | `rlwe-java/` | RLWE + NTT + 多素数 CRT + 外部积 | ✅ 6/6 通过 |
 | `rgsw-lab/` | RGSW 加密、外部积、单项式旋转、自举密钥、CMUX | ✅ 6/6 通过 |
 | `cape-fusepir-database-handoff/` | 明文侧预处理（BFF/Bloom） | 张明哲那条线 |
-| `param-probe/`、`pdf-extract/` | 工具 | — |
+| `tools/param-probe/`、`pdf-extract/` | 工具 | — |
 
 **你负责的部分（按 `HE_三层调用说明汇总.md` 第八节"还没做的"）：**
 

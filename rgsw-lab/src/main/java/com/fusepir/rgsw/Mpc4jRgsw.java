@@ -20,7 +20,7 @@ import java.util.Random;
 /**
  * 建立在 <b>MPC4J 的 BFV</b> 之上的 RGSW 层。
  *
- * <h3>⚠️ 路线提示（详见 coding/RLWE路线审计.md）</h3>
+ * <h3>⚠️ 路线提示（详见 coding/docs/RLWE路线审计.md）</h3>
  * 本文件走的是 <b>路线 B：纯 Java 移植版</b>（`edu.alibaba.mpc4j.crypto.fhe.seal.*`，
  * 即 `coding/lib/mpc4j-crypto-fhe-seal.jar`），<b>不是</b>目标路线
  * <b>路线 A：native</b>（`coding/native-jni/lib/mpc4j-native-fhe.dll` + 真 SEAL 4.0.0）。

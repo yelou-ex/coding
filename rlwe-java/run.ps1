@@ -30,8 +30,24 @@ $src = Get-ChildItem -Path (Join-Path $here 'src') -Recurse -Filter *.java |
     ForEach-Object { $_.FullName }
 
 Write-Host "[compile] $javacPath"
+# ⚠️ 为什么必须临时放宽 $ErrorActionPreference（第 12 行设的是 'Stop'）。
+#
+# Windows PowerShell 会把**原生程序 stderr 的每一行都当成一条错误记录**，而
+# `'Stop'` 让第一条错误就终止脚本。javac 即使编译成功，也常往 stderr 写提示，
+# 实测两种都会触发：
+#     [dep-ann] 未使用 @Deprecated 注解的已过时项目      （加 -nowarn **压不住**）
+#     注: 某些输入文件使用或覆盖了已过时的 API            （-nowarn 也压不住）
+# 后果很误导：`out\` 里 0 个 class，日志却像"javac 编译失败"，而其实编译是好的。
+# 判据只能是 $LASTEXITCODE，所以这里对这次调用放宽策略、之后立刻恢复。
+#
+# 同一个坑对每一处 javac / java 调用都成立 —— native-jni/run.ps1 的注释里记的是同一件事，
+# 它的绕法是给 java 加 `2>&1 |` 把 stderr 导进管道；这里用作用域放宽，更直接。
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 & $javacPath -encoding UTF-8 -d $out $src
-if ($LASTEXITCODE -ne 0) { Write-Error "compile failed"; exit $LASTEXITCODE }
+$compileExit = $LASTEXITCODE
+$ErrorActionPreference = $prevEap
+if ($compileExit -ne 0) { Write-Error "compile failed"; exit $compileExit }
 
 if ($mode -eq 'jar') {
     $jar = Join-Path $here 'rlwe.jar'

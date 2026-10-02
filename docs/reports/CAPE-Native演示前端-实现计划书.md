@@ -220,7 +220,7 @@ B_pay = 2 + maxValues × (1 + ℓ_BF)
 
 ## 3. 数据集选择
 
-### 3.1 候选评估（`coding/ml-latest-small/ml-latest-small/`）
+### 3.1 候选评估（`coding/ml-latest-small/`）
 
 | 文件 | 形状 | 当 CAPE 的库 |
 |---|---|---|

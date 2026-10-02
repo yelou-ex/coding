@@ -10,7 +10,7 @@ import edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext;
 import edu.alibaba.mpc4j.crypto.fhe.seal.RelinKeys;
 
 /**
- * ⚠️ 路线：<b>B（纯 Java 移植版）</b>，不是目标路线 native —— 详见 coding/RLWE路线审计.md。
+ * ⚠️ 路线：<b>B（纯 Java 移植版）</b>，不是目标路线 native —— 详见 coding/docs/RLWE路线审计.md。
  *
  * <p>native 侧的等价物在 `coding/native-jni/`：
  * <ul>

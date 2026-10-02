@@ -17,7 +17,7 @@ import java.util.Collection;
  *   判定          : ⟨b_qry, b_v⟩ == τ ?   τ = ‖b_qry‖₁
  * </pre>
  * 两边<b>必须用同一个 {@code B(keyword)}</b> 才能做内积。
- * 历史上踩过的两个坑（都记在 {@code coding/缺陷总表.md}）：
+ * 历史上踩过的两个坑（都记在 {@code coding/docs/缺陷总表.md}）：
  * <ul>
  *   <li><b>位位置混入 value</b>（`digest(keyword + ":" + value)`）：同一位关键词在不同 value 下落到不同位置，
  *       两边永远对不上、内积恒为 0。已修。</li>

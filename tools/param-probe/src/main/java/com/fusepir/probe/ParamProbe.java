@@ -15,7 +15,7 @@ import java.math.BigInteger;
  * 没有给出系数模数 q 到底多大。本工具直接调用现成的 Java 同态库，
  * 把 q、缩放因子 Δ、以及解密允许的噪声上限算成位宽，供参数选择时参考。
  *
- * <p>运行方式见 coding/param-probe/README.md
+ * <p>运行方式见 coding/tools/param-probe/README.md
  */
 public final class ParamProbe {
 

@@ -236,12 +236,12 @@ javac -encoding UTF-8 -d $out $src          # 任意 JDK 11+ 均可
 
 ```powershell
 # 参数规模对比（tags.csv 在 ml-latest-small 里）
-java -cp $out com.fusepir.database.DatabaseInitializerMain $root\ml-latest-small\ml-latest-small\tags.csv paper
-java -cp $out com.fusepir.database.DatabaseInitializerMain $root\ml-latest-small\ml-latest-small\tags.csv test 32
+java -cp $out com.fusepir.database.DatabaseInitializerMain $root\ml-latest-small\tags.csv paper
+java -cp $out com.fusepir.database.DatabaseInitializerMain $root\ml-latest-small\tags.csv test 32
 
 # 生成磁盘 BFF（最小参数 + 前 32 关键词 → 149 KB / 0.1 s）
 java -cp $out com.fusepir.database.DiskBffEncodeMain `
-     $root\ml-latest-small\ml-latest-small\tags.csv `
+     $root\ml-latest-small\tags.csv `
      $root\..\_bfftest 2048 32
 
 # 端到端明文查询
@@ -271,9 +271,9 @@ cape/
 ├── rgsw-lab/                   ← RGSW / 盲旋转 / RingPack / Bloom 打分（HE 主线）
 ├── rlwe-java/                  ← 自研 RLWE（**已弃用**，仅作交叉校验）
 ├── lwe-java/                   ← LWE 层（唯一实现，MPC4J 没有）
-├── rlwe-bench/                 ← 性能对照基准
+├── tools/rlwe-bench/                 ← 性能对照基准
 ├── cape-fusepir-database-handoff/  ← 明文侧：BFF / Bloom / 载荷
-├── param-probe/                ← 参数位宽探测
+├── tools/param-probe/                ← 参数位宽探测
 ├── pdf-extract/                ← 论文 PDF 分栏提取
 ├── ml-latest-small/            ← MovieLens 数据集（可直接跑 demo）
 │

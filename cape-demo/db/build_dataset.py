@@ -46,7 +46,7 @@ import sys
 from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_ML = os.path.join(HERE, "..", "..", "ml-latest-small", "ml-latest-small")
+DEFAULT_ML = os.path.join(HERE, "..", "..", "ml-latest-small")
 
 
 def read_csv(path: str):

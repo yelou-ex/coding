@@ -1,7 +1,7 @@
 # coding/ 仓库同步说明
 
 > 本文档说明 `coding/` 这个 git 仓库怎么同步到远端。
-> 状态（2026-09-16）：**本地已就绪，只差推送**。
+> 状态（2026-10-14）：**本地已就绪，只差推送**（领先 `origin/main` 33 个提交）。
 
 ---
 
@@ -10,14 +10,31 @@
 | 项 | 值 |
 |---|---|
 | 远端 | `https://github.com/yelou-ex/coding.git` |
-| 分支 | `main`（**尚未设置 upstream，即从未推送过**） |
-| 提交 | `00b6de9` chore: add .gitignore... / `9a11d7c` first commit |
-| 已跟踪文件 | 58 个（纯源码 + 文档 + 参数） |
+| 分支 | `main`（上游已设为 `origin/main`，但本地领先 33 个提交，从未推送） |
+| 已跟踪文件 | **280 个**（纯源码 + 文档 + 参数 + 数据集） |
 | `.gitignore` | 已就位（见第三节） |
 
-内容构成：`rlwe-java/`、`rgsw-lab/`、`lwe-java/` 三个密码学层次模块，
-`param-probe/`、`pdf-extract/` 两个工具，`cape-fusepir-database-handoff/`（明文预处理），
-以及 `HE_三层调用说明汇总.md` 等文档。
+内容构成：
+
+```
+coding/
+├── README.md            入口（演示 + 文档地图 + 变更历史）
+├── SYNC.md              本文件
+├── docs/                全部文档（2026-10-14 起根目录只留 README/SYNC）
+├── tools/               一次性探针：param-probe/、rlwe-bench/
+├── ml-latest-small/     MovieLens 数据集（tracked，仓库要能直接跑演示）
+├── common/              com.fusepir.common.BfGen（客户端与服务器**共用**的 BF.Gen）
+├── lwe-java/            LWE 层（cape.he）
+├── rlwe-java/           自研 RLWE（路线 C 的库）
+├── rgsw-lab/            MPC4J/SEAL 实现与实验台（见其 README.md）
+├── native-jni/          真 SEAL 的 JNI DLL + 绑定
+├── cape-demo/           前端 + 数据集构建脚本
+├── cape-fusepir-database-handoff/  明文侧模块
+├── tiny-cape/           零依赖极小验证层（**故意不共用代码**）
+├── pdf-extract/         论文 PDF 抽取脚本
+├── patches/             MPC4J 补丁
+└── lib/                 MPC4J/SEAL 预编译 jar 与依赖
+```
 
 ---
 
@@ -83,13 +100,22 @@ git remote set-url origin https://<用户名>:<token>@github.com/yelou-ex/coding
 34 个 `.class`、`lwe-java.zip`、`cape-fusepir-database-handoff.zip`、
 `rgsw-lab/rgsw.jar`、`rlwe-java/rlwe.jar`、6 个 IDE 文件、3 个 `pdf-extract/out_*.txt`。
 
+**2026-10-14 追加**：`ml-latest-small.zip`（978 KB）取消跟踪 —— 它与 `ml-latest-small/` 里的
+CSV 内容重复，留着就是一份冗余。zip 仍在磁盘上（需要时可用它重新解出数据集），
+`.gitignore` 已加显式规则，不会被重新加回。
+
 **仍然提交**（有意保留）：
 - 源码与文档；
 - `params.env`（参数文件，属于"配置"而非"产物"）；
-- `ml-latest-small/` 数据集（约 4 MB，公开数据集 MovieLens；保留是为了仓库能直接跑演示。
+- `ml-latest-small/` 数据集（约 4.1 MB，公开数据集 MovieLens；保留是为了仓库能直接跑演示。
   若不想要，把 `ml-latest-small*` 加进 `.gitignore` 并从索引移除即可）。
 
-> 体积现状：仓库跟踪内容约 **4.8 MB**，其中数据集占约 4.1 MB。
+> 体积现状（2026-10-14 实测，被跟踪文件合计 **35.9 MB**）：
+> `lib/` **23.00 MB**（MPC4J 预编译 jar + 依赖）、`native-jni/` **7.95 MB**（两个 DLL）、
+> `ml-latest-small/` **3.15 MB**、`rgsw-lab/` 0.76 MB、`cape-demo/` 0.50 MB，其余均 < 0.2 MB。
+> 也就是说 **86% 的体积是「不可再生的二进制依赖」**（jar 与 DLL），
+> 源码 + 文档合计不到 2 MB。
+> （早先记的 4.8 MB 是加数据集与 lib 之前的快照。）
 
 ---
 

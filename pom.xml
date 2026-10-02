@@ -35,9 +35,11 @@
     <!--
         未纳入聚合的模块（各自独立，不需要一起构建）：
           rlwe-java    自研 RLWE（已弃用，仅作交叉校验）
-          rlwe-bench   性能对照基准
           native-jni   真 SEAL 的 JNI DLL + 验证程序
-          param-probe  参数位宽探测
           tiny-cape    零依赖的极小验证层（参数小到能手算，独立编译）
+
+        tools/ 下是两个一次性探针，同样不参与聚合，各有自己的 README：
+          tools/rlwe-bench   性能对照基准
+          tools/param-probe  参数位宽探测
     -->
 </project>

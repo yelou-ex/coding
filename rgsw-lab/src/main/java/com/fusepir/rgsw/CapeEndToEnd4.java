@@ -26,7 +26,7 @@ import java.util.TreeSet;
  *   <li><b>DECODE</b>（客户端）：<b>唯一一次解密</b> → 载荷解析 → 指纹校验 → 阈值判定</li>
  * </ul>
  *
- * <h3>2026-09-29 修的六件事（详见 {@code coding/缺陷总表.md}）</h3>
+ * <h3>2026-09-29 修的六件事（详见 {@code coding/docs/缺陷总表.md}）</h3>
  * <table border="1">
  *   <tr><th>编号</th><th>原问题</th><th>现在</th></tr>
  *   <tr><td>P0-2</td>

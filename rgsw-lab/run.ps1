@@ -7,7 +7,7 @@
 #                 .\run-mpc4j.ps1 -Class com.fusepir.rgsw.Mpc4jCapability
 #                 .\run-mpc4j.ps1 -Class com.fusepir.rgsw.BlindRotateOps
 #  It runs on coding/lib/mpc4j-crypto-fhe-seal.jar (MPC4J's SEAL Java port).
-#  Kept only as a cross-check tool. See coding/RLWE路线审计.md
+#  Kept only as a cross-check tool. See coding/docs/RLWE路线审计.md
 # ============================================================================
 # ============================================================================
 #  RGSW lab runner

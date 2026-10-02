@@ -37,6 +37,12 @@ lwe-java/src/.idea/
 # ---- 派生数据（由 PDF 重新抽取即可）----
 pdf-extract/out_*.txt
 
+# ---- 数据集 ----
+# `ml-latest-small/` 里的 CSV 是**入库**的（仓库要能直接跑演示）；
+# 同名 zip 只是本地的方便副本，2026-10-14 已取消跟踪（内容与 CSV 重复，
+# 留着会让仓库多一份 978 KB 的冗余）。zip 仍在磁盘上，需要时可用它重新解出。
+ml-latest-small.zip
+
 # ---- Python ----
 __pycache__/
 *.pyc

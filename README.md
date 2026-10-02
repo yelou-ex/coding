@@ -9,7 +9,7 @@
 >
 > | 文档 | 作用 |
 > |---|---|
-> | **[`缺陷总表.md`](缺陷总表.md)** | **所有已知问题的唯一权威清单**（P0/P1/P2 + 已修 + 口径）。**引结论前必看** —— 里面还挂着 P0，就说明"还没实现论文的 CAPE" |
+> | **[`缺陷总表.md`](docs/缺陷总表.md)** | **所有已知问题的唯一权威清单**（P0/P1/P2 + 已修 + 口径）。**引结论前必看** —— 里面还挂着 P0，就说明"还没实现论文的 CAPE" |
 > | **本文件** | 怎么跑（见下）、四步 ↔ 代码对照、已记录的偏差、文档地图、变更历史 |
 >
 > 其余文档按需查 → **见 §文档地图**。
@@ -26,7 +26,7 @@ cd coding\rgsw-lab
 ```
 
 **IDEA 里**：用 IDEA 打开 `coding/` 这一层 → 跑 `rgsw-lab` 的 **`CapeDemo`** → 点绿三角。
-**不用填程序实参**（默认 `4096 16`）。详见 [`IDEA运行说明.md`](IDEA运行说明.md)。
+**不用填程序实参**（默认 `4096 16`）。详见 [`IDEA运行说明.md`](docs/IDEA运行说明.md)。
 
 **两个必踩的前提**：
 
@@ -112,12 +112,12 @@ cd coding\rgsw-lab
 
 | 你想知道 | 读这个 |
 |---|---|
-| **有什么问题 / 还能不能信"跑通"** | **[`缺陷总表.md`](缺陷总表.md)** ← 唯一权威清单 |
-| **怎么跑起来** | 本文件 §演示；IDEA 用 [`IDEA运行说明.md`](IDEA运行说明.md) |
-| **整体构建方式**（手工 javac、模块划分、路线 A/B/C） | [`BUILT.md`](BUILT.md) |
-| **各层怎么调用**（RLWE / RGSW / LWE） | [`HE_三层调用说明汇总.md`](HE_三层调用说明汇总.md)、`rgsw-lab/RGSW_调用说明.md`、`rgsw-lab/LWE_RLWE桥_调用说明.md`、`lwe-java/README.md` |
-| **论文怎么写的**（原文摘录、数学规范） | [`论文原文-ANSWER摘录.md`](论文原文-ANSWER摘录.md)、[`CAPE-数学规范-SETUP到ANSWER.md`](CAPE-数学规范-SETUP到ANSWER.md) |
-| **哪份实现是默认的** | [`默认实现一览.md`](默认实现一览.md)、[`RLWE路线审计.md`](RLWE路线审计.md) |
+| **有什么问题 / 还能不能信"跑通"** | **[`缺陷总表.md`](docs/缺陷总表.md)** ← 唯一权威清单 |
+| **怎么跑起来** | 本文件 §演示；IDEA 用 [`IDEA运行说明.md`](docs/IDEA运行说明.md) |
+| **整体构建方式**（手工 javac、模块划分、路线 A/B/C） | [`BUILT.md`](docs/BUILT.md) |
+| **各层怎么调用**（RLWE / RGSW / LWE） | [`HE_三层调用说明汇总.md`](docs/HE_三层调用说明汇总.md)、`../rgsw-lab/RGSW_调用说明.md`、`../rgsw-lab/LWE_RLWE桥_调用说明.md`、`../lwe-java/README.md` |
+| **论文怎么写的**（原文摘录、数学规范） | [`论文原文-ANSWER摘录.md`](docs/论文原文-ANSWER摘录.md)、[`CAPE-数学规范-SETUP到ANSWER.md`](docs/CAPE-数学规范-SETUP到ANSWER.md) |
+| **哪份实现是默认的** | [`默认实现一览.md`](docs/默认实现一览.md)、[`RLWE路线审计.md`](docs/RLWE路线审计.md) |
 | **某个具体结论的实测过程** | `rgsw-lab/*_调研.md`、`rgsw-lab/*_实测.md`；明文侧见 `docs/knowledge/` |
 | **历史记录 / 谁什么时候改的** | 本文件 §变更历史、`docs/reports/`、`docs/archive/`（**已归档，不再维护**） |
 
@@ -126,18 +126,24 @@ cd coding\rgsw-lab
 ```
 coding/
 ├── README.md              ← 入口：演示 + 四步对照 + 偏差 + 文档地图 + 变更历史
-├── 缺陷总表.md             ← 问题权威清单（P0/P1/P2/已修/口径/整改顺序）
-├── BUILT.md               ← 构建与运行（手工 javac、模块、路线）
-├── IDEA运行说明.md         ← IDEA 一键跑 + 排错
-├── 默认实现一览.md / RLWE路线审计.md
-├── CAPE-数学规范-*.md / 论文原文-ANSWER摘录.md
-├── HE_三层调用说明汇总.md / QUERY_DECODE_编排说明.md / 四步端到端-完成报告.md / SYNC.md
-├── docs/
+├── SYNC.md                ← 同步协议与"哪些东西不入库"
+├── ml-latest-small/       ← MovieLens 数据集（可由 ml-latest-small.zip 重新解出）
+├── docs/                  ← **文档都在这里**（2026-10-14 起根目录只留 README/SYNC）
+│   ├── 缺陷总表.md         ← 问题权威清单（P0/P1/P2/已修/口径/整改顺序）
+│   ├── BUILT.md           ← 构建与运行（手工 javac、模块、路线）
+│   ├── IDEA运行说明.md     ← IDEA 一键跑 + 排错
+│   ├── 默认实现一览.md / RLWE路线审计.md
+│   ├── CAPE-数学规范-*.md / 论文原文-ANSWER摘录.md
+│   ├── HE_三层调用说明汇总.md / QUERY_DECODE_编排说明.md / 四步端到端-完成报告.md
+│   ├── CAPE-ANSWER耗时-Q缩放与规模.txt / CAPE-vs-BKPIR-同规模合取查询Q对比.txt
 │   ├── knowledge/         ← 明文侧概念（BFF / Bloom / Pack）
 │   ├── reports/           ← 同步验证记录、审阅报告
 │   └── archive/           ← 已归档的一次性文档（不再维护，见其 README）
+├── tools/                 ← 一次性探针与基准（各有自己的 README）
+│   ├── tools/param-probe/       ← 论文参数规模测算
+│   └── tools/rlwe-bench/        ← 自研 RLWE vs MPC4J 基准
 ├── rgsw-lab/*.md          ← 各原语的调用说明与实测
-├── lwe-java/ lib/ native-jni/ param-probe/ rlwe-java/ tiny-cape/ ← 各模块 README
+├── lwe-java/ lib/ native-jni/ rlwe-java/ tiny-cape/ ← 各模块 README
 └── cape-fusepir-database-handoff/ ← 明文侧模块 README + HANDOFF
 ```
 
@@ -145,7 +151,7 @@ coding/
 
 # 🚫 已记录的偏差（引结论时必须一起说）
 
-> **权威清单见 [`缺陷总表.md`](缺陷总表.md)。** 本表只是**速查**，编号 `D1~D10` 是历史编号；
+> **权威清单见 [`缺陷总表.md`](docs/缺陷总表.md)。** 本表只是**速查**，编号 `D1~D10` 是历史编号；
 > 与那边的 `P0/P1/P2` 映射：D1→**P0-1**、D2→**P0-3**、D3→P2-7、D4/D6/D7→**P1-6**、
 > D5→**P1-4**、D8→P2-7、D9→**P1-7/P2-6**、D10→口径 2。
 
@@ -607,10 +613,10 @@ r ∈ [0, R),  R ≤ N
 | **LWE 层**：`LWE.Enc/Dec`、模数切换 | **`lwe-java/`** | `src/main/java/cape/he/LWE.java`：`keyGenBinary` / `encrypt` / `decrypt`<br>`LWECiphertext.switchModulus` | ❌ **没有第二份可直接调用的 LWE 原语**。⚠️ 但注意：**MPC4J 并非"完全没有 LWE"**——它的 `cppir` 家族（ChalametPIR / SimplePIR / FrodoPIR / Piano / Plinko）本身就是 **LWE / 矩阵型 PIR**，内部用 `IntVector`/`IntMatrix` 做 `b = s·A`、`c = s·M` 这类运算，另有 `GaussianLweParam` 参数枚举（n=1024/1408、σ=6.4）。**但那是协议级实现，没有可复用的 `LWE.Enc/Dec` 原语**——所以做 CAPE 的 LWE 层仍以 `lwe-java/` 为准 |
 | **RGSW**：`RGSW.Enc`、外部乘积、`CMUX` | **`rgsw-lab/`** | `Mpc4jRgsw.java`：<br>· `encryptRgswConstant(μ)`（**自举密钥 BK**）<br>· `encryptRgswPoly(m)`（一般多项式，`enc_sk` 用）<br>· `externalProduct(rgsw, ct)`<br>· `cmux(rgsw, a, b)` | ❌ `rgsw-lab/` 里的 `RgswOps.java`、`RgswCiphertext.java`、`MonomialOps.java`、`BootstrapKey.java`、`LabConfig.java`、`RgswLabMain.java`、`MonomialKeyTest.java`、`examples/RlweDemo.java`（**路线 C，已加弃用横幅**） |
 | **`BlindRotate`** | **`rgsw-lab/`** | `BlindRotateOps.java`：**`blindRotate`（d 轮 = CAPE 口径 🟡）** / `blindRotateByBits`（逐索引位 = CAPE-C 口径）<br>`BlindRotateComplete.java`（端到端完整版）<br>`AnswerPathMini.java`（**最小 ANSWER 链路**，见 5.1） | ❌ 无替代 |
-| **`SampleExtract_j`** / **`Pack`** / **LWE↔RLWE 桥** | **`rgsw-lab/`** | `LweRlweBridge.java`：`sampleExtract` / `packFromSample` / `decryptSampleViaPack`（q_R 下的系数 ↔ 样本映射）<br>**`LweRlweConversion.java`**：`extractLwe`（RLWE→LWE，含 `q_R→q_L` 模数切换，产出 `cape.he.LWECiphertext`）/ `packLwe` / `rlweSecretAsLweKey`<br>**调用说明 → `rgsw-lab/LWE_RLWE桥_调用说明.md`** | ❌ 无替代（互逆映射，故意写在一起） |
+| **`SampleExtract_j`** / **`Pack`** / **LWE↔RLWE 桥** | **`rgsw-lab/`** | `LweRlweBridge.java`：`sampleExtract` / `packFromSample` / `decryptSampleViaPack`（q_R 下的系数 ↔ 样本映射）<br>**`LweRlweConversion.java`**：`extractLwe`（RLWE→LWE，含 `q_R→q_L` 模数切换，产出 `cape.he.LWECiphertext`）/ `packLwe` / `rlweSecretAsLweKey`<br>**调用说明 → `../rgsw-lab/LWE_RLWE桥_调用说明.md`** | ❌ 无替代（互逆映射，故意写在一起） |
 | **`LWEtoRGSW`** | **⏸ 本次不做** | `LweToRgswOps.java`（骨架，现测不通过）——**仅 CAPE-C 需要** | — |
 | **数据库预处理**（明文侧：BFF / Bloom / 载荷 / **列多项式 `P_{c,b}(X)`**） | **`cape-fusepir-database-handoff/`** | `DatabasePreprocessor.java`、`BloomParameters.java`、`PlaintextPayload.java` | — |
-| 参数位宽 / 性能测量 | `param-probe/`、`rlwe-bench/`、`rgsw-lab/SizeProbe.java` | — | — |
+| 参数位宽 / 性能测量 | `tools/param-probe/`、`tools/rlwe-bench/`、`rgsw-lab/SizeProbe.java` | — | — |
 
 **为什么 RLWE 的"默认"是两处**：**库**（那个 jar）在 `lib/`，而**调用它的代码**在 `rgsw-lab/`
 （`Mpc4jRgsw.java` 就是 RLWE 层的门面）。`rlwe-java/` 是**最早的自研版**，不是默认。
@@ -797,7 +803,7 @@ packed    = Σ_i selected                    ⇒ 槽 i 解出来就是 m_i ✓
 | **`cape-fusepir-database-handoff/`** | 数据库预处理（**明文侧**）：BFF 布局、Bloom 过滤器、载荷编码、MovieLens 载入 | `DatabasePreprocessor.java`、`BloomParameters.java`、`PlaintextPayload.java` |
 | **`native-jni/`** | 🔵 **对照路线**：真 SEAL 4.0.0 的 JNI 封装（`mpc4j-native-fhe.dll`） | `SealPirNativeTest`、`seal_params_probe.cpp` |
 | **`rlwe-java/`** | ❌ **已弃用**：自研 RLWE（缺缩放回落，密文×密文做不出可用结果），仅作交叉校验 | — |
-| `param-probe/`、`rlwe-bench/` | 测量工具（参数位宽、性能对照） | — |
+| `tools/param-probe/`、`tools/rlwe-bench/` | 测量工具（参数位宽、性能对照） | — |
 | `pdf-extract/` | 三份 PDF 的**按栏切分**提取文本（原始提取是错行的） | `out_cape.txt`、`out_bkpir.txt`、`out_survey.txt` |
 | `ml-latest-small/` | MovieLens 数据集（测试数据） | — |
 
@@ -1037,7 +1043,7 @@ resp ← ({ct_vj, ct_score,j})_{j=1}^m
 # 十二点五、在 IDEA 里跑起来（组员看这一节）
 
 > **目标**：clone 下来 → 打开 IDEA → 点绿三角 → 看到 `=== CAPE 四步端到端跑通 ===`。
-> 详细版见 [`IDEA运行说明.md`](IDEA运行说明.md)。
+> 详细版见 [`IDEA运行说明.md`](docs/IDEA运行说明.md)。
 
 ## 0. 唯一硬要求：JDK 25
 
@@ -1191,10 +1197,10 @@ cd coding\native-jni
 
 | 文档 | 内容 |
 |---|---|
-| **[`缺陷总表.md`](缺陷总表.md)** | **所有已知问题的唯一权威清单**：P0/P1/P2 + 已修 + 口径 + 整改顺序 + 来源对照 |
-| **[`BUILT.md`](BUILT.md)** | 构建与运行：模块划分、路线 A/B/C、手工 javac 的排除清单 |
-| **[`IDEA运行说明.md`](IDEA运行说明.md)** | IDEA 一键跑、参数下限、排错表 |
-| **[`四步端到端-完成报告.md`](四步端到端-完成报告.md)** | 四步端到端完成报告（**顶部有 2026-09-29 复核修正块，先读那段**） |
+| **[`缺陷总表.md`](docs/缺陷总表.md)** | **所有已知问题的唯一权威清单**：P0/P1/P2 + 已修 + 口径 + 整改顺序 + 来源对照 |
+| **[`BUILT.md`](docs/BUILT.md)** | 构建与运行：模块划分、路线 A/B/C、手工 javac 的排除清单 |
+| **[`IDEA运行说明.md`](docs/IDEA运行说明.md)** | IDEA 一键跑、参数下限、排错表 |
+| **[`四步端到端-完成报告.md`](docs/四步端到端-完成报告.md)** | 四步端到端完成报告（**顶部有 2026-09-29 复核修正块，先读那段**） |
 | `QUERY_DECODE_编排说明.md` | QUERY + DECODE 的编排说明与实测 |
 | `CAPE-数学规范-SETUP到ANSWER.md` | 数学规范（SETUP → QUERY → ANSWER） |
 | `论文原文-ANSWER摘录.md` | 从论文 PDF 提取的原文摘录（算法 1 + 附录 B） |
@@ -1205,9 +1211,9 @@ cd coding\native-jni
 | `默认实现一览.md` | **哪条路线是默认、哪个文件夹放什么**（最容易被搞混的六处） |
 | `RLWE路线审计.md` | 三条路线的逐文件判定、补丁带来的转折、论文规模实测结果 |
 | `HE_三层调用说明汇总.md` | 三层（LWE / RLWE / RGSW）的关系与 API |
-| `rgsw-lab/RGSW_调用说明.md` | RGSW 层的自检与参数；**踩坑记录**（七个坑 + MPC4J 新增的三个） |
+| `../rgsw-lab/RGSW_调用说明.md` | RGSW 层的自检与参数；**踩坑记录**（七个坑 + MPC4J 新增的三个） |
 | `rgsw-lab/BlindRotate_实测.md` | 盲旋转的论文定义原文、轮数口径修正、论文规模耗时 |
-| `rgsw-lab/LWE_RLWE桥_调用说明.md` | **LWE ↔ RLWE 桥的调用说明**：三个约定（LWE-in-RLWE / 模数不匹配 / `q_L=2N` 装不下载荷）、API 速查、完整示例、**符号约定对照**、SEAL Java 移植版的三个坑、实测结果、边界 |
+| `../rgsw-lab/LWE_RLWE桥_调用说明.md` | **LWE ↔ RLWE 桥的调用说明**：三个约定（LWE-in-RLWE / 模数不匹配 / `q_L=2N` 装不下载荷）、API 速查、完整示例、**符号约定对照**、SEAL Java 移植版的三个坑、实测结果、边界 |
 | `rgsw-lab/LWE_RLWE桥_实测.md` | SampleExtract / Pack 的**最早**实测记录与方法论警告（写于桥之前，其"还需与 q_L=2N 做模数切换"一句**已被 `LweRlweConversion` 解决**） |
 | `../CAPE_子程序实现对照表.md` | 逐项状态表（**注意：其第 4c/9/14 项正按本 README 第〇、一节整改**） |
 | `../CAPE_参数表.md` | 参数总表（论文给的 / 从 Pirouette 继承的 / 我们定的 / 实测的） |
@@ -1342,7 +1348,7 @@ cd coding\native-jni
       ⇒ **PowerShell 拿 UTF-8 去解 GBK 字节** ⇒ 每个汉字变 `�`。
     - **修法**：java 命令行补上
       `-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8`。
-      已修：`rgsw-lab/run-mpc4j.ps1`、`rgsw-lab/run.ps1`、`rlwe-bench/run.ps1`、`rlwe-java/run.ps1`。
+      已修：`rgsw-lab/run-mpc4j.ps1`、`rgsw-lab/run.ps1`、`tools/rlwe-bench/run.ps1`、`rlwe-java/run.ps1`。
     - **为什么 `git log` 没事**：git 自己按 UTF-8 输出，与 Java 的 `stdout.encoding` 无关。
       **"有的中文正常有的乱码"不是随机的，是两种不同的输出方。**
     - **IDEA 里一般不用管**：IDEA 的控制台有自己的编码设置（见 `IDEA运行说明.md` §七）。

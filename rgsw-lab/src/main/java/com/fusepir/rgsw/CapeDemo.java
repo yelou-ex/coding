@@ -179,7 +179,7 @@ public final class CapeDemo {
         row("Pack = Ring Packing / RLWE-Pack", "RingPack 6/6（CDKS21 = ePrint 2020/015）");
 
         System.out.println();
-        System.out.println("── B0. 2026-09-29 本轮已修（八条，详见 coding/缺陷总表.md）──");
+        System.out.println("── B0. 2026-09-29 本轮已修（八条，详见 coding/docs/缺陷总表.md）──");
         row("P0-2 客户端 b_qry 构造", "改成只由关键词算（BfGen.bits），不再用 b_v / 服务器明文库");
         row("P0-3 packed 死代码", "删除；ANSWER 里显式标注「Pack 未接通」");
         row("P0-4 Query 混装", "拆成 ClientState（不发）/ ServerQuery（发出去）并打印边界");
