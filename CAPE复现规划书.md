@@ -155,6 +155,17 @@
 | **两条路** | (a) 换成"LWE-in-RLWE"：把 `s ∈ Z_q^d` 真正作为多项式放进 RLWE 密钥（`LweToRgswOps` 的自检里已有这个做法）；(b) 保持现状但把 `d` 的语义与"约 2/3 轮恒等"写进文档 |
 | **验收** | 文档里 `d` 的定义与代码一致；若走 (a)，`LweToRgswOps` 的验收 0/1/2 需通过 |
 
+### P1-4　把 BFF 参数化与 ChalametPIR 逐条对上（最低成本，纯文献工作，建议先做）
+
+| | |
+|---|---|
+| **论文依据** | 附录 A 原文（`out_cape.txt:1774-1776`）：*"The concrete finite-size choices of `s` and `L_BFF` follow the parameterization of BFF used in ChalametPIR [8]. For large `n`, the resulting array lengths approach **1.125n and 1.075n for k=3 and k=4**."* |
+| **现状** | 我们只"知道论文这么说"，**没逐条比对过**：`s` 怎么选、`L_BFF` 的闭式、位置函数 `h_j` 的构造、`k∈{3,4}` 的支持范围 |
+| **为什么现在能做** | **ChalametPIR 的 PDF 本地就有**（`E:\学习\密码赛\ChalametPIR\Celi 和 Davidson - Call Me By My Name….pdf`，757 KB）—— 我先前误报成"缺失"，已更正 |
+| **做法** | 读 ChalametPIR 的 BFF 参数化，与 `CapeDemoData` 的 `keywordHash`／`cellsPerCol`／`L_BFF` 三方对照，落成一张表 |
+| **验收** | 文档里出现"`s` = ？、`L_BFF` = ？"的**闭式**，并说明我们的 `L_BFF = cellsPerCol·C = 130`（n=128）与论文 `≲1.125n = 144` 的关系 |
+| **产出** | 顺便验证 `L_BFF ≤ 1.125n` 这条界在我们参数下是否成立（当前 130 vs 128 关键词 ⇒ 比值 1.016，**在界内**） |
+
 ### P2-1　NFLlib 替换 SEAL 的标量 NTT（C2）
 
 **依赖 A1**（需你放源码，见 `沙箱受限清单-需要人工获取.md`）。完整计划已在
@@ -215,8 +226,18 @@ $env:DSH_JVM_OPTS = '-Dcape.web=E:\学习\密码赛\coding\cape-demo\web'
 
 ## 六、依赖的外部产物
 
-见 `沙箱受限清单-需要人工获取.md`。**推进 P0/P1 不需要任何外部产物**；
-只有 **P2-1（NFLlib）** 需要你放源码。
+见 `沙箱受限清单-需要人工获取.md`。**核对后的结论**：
+
+| 分类 | 需要人工获取？ |
+|---|---|
+| **对照论文 PDF（七篇，含 ChalametPIR）** | ❌ 全都在本地 —— 其中"缺 ChalametPIR"是我先前的**误报**，已更正 |
+| **SEAL 4.0.0 源码与工具链** | ❌ 都在 `tools/`（MinGW、CMake、`SEAL-4.0.0/`、`SEAL-build/`） |
+| **P0-1 ~ P0-4（补齐 Algorithm 2）** | ❌ **零外部依赖，现在就能做** |
+| **P1-1 ~ P1-4（语义/文献）** | ❌ **零外部依赖**（P1-4 只需读本地已有的 ChalametPIR PDF） |
+| **P2-1（NFLlib 替换 NTT）** | ✅ **唯一需要你手动获取的**：https://github.com/quarkslab/NFLlib |
+| **推送仓库** | ✅ 需要你在自己终端 `git push`（沙箱拿不到 TLS 凭据） |
+
+⇒ **换句话说：除了 `P2-1` 和推送，其它现在全部可做。**
 
 ---
 
@@ -235,12 +256,19 @@ $env:DSH_JVM_OPTS = '-Dcape.web=E:\学习\密码赛\coding\cape-demo\web'
 ## 八、建议的推进顺序
 
 ```
-P0-4 (⊥，最便宜) → P0-3 (判定改密文) → P0-1 + P0-2 (打分 + 响应结构，绑定做)
-   → P1-1 (列选择子改客户端加密，有现成探针可抄)
-   → P1-3 (d 语义，改文档或改实现二选一)
-   → P1-2 (行选择子噪声，最难，可能只能记为已知偏离)
-   → P2-1 (NFLlib，等源码)
+P0-4 (⊥，最便宜，先把"拒绝"这条打通)
+  → P0-3 (判定改密文；配负对照)
+  → P0-1 + P0-2 (打分 + 响应结构，必须绑定做)
+  ── 到这里才算"Algorithm 2 的增量"补齐 ──
+  → P1-1 (列选择子改客户端加密，有现成探针可抄)
+  → P1-4 (BFF 参数化对 ChalametPIR，纯文献、最低成本)
+  → P1-3 (d 语义：改文档或改实现，二选一)
+  → P1-2 (行选择子噪声，最难，可能只能记为"已知偏离")
+  → P2-1 (NFLlib，唯一等外部产物的)
 ```
+
+> **注**：P1-4 是纯文献工作、零风险，**可以和 P0 并行做**（不碰代码），
+> 适合在你等 P0 改动的间隙让我先出那张对照表。
 
 **先把 P0 做完**：那四件合起来才是"Algorithm 2 的增量"，
 做完之前**不能声称实现了论文的 CAPE**——现在只能声称"FusePIR 检索骨架 + 明文合取判定"。
