@@ -284,6 +284,25 @@ public final class CapeClientQuery {
     /**
      * 序列化成发往服务器的 JSON。
      *
+     * <p><b>⚠️ 2026-10-14 修正：这个方法的隐私性质此前被高估了。</b>
+     *
+     * <p>旧版无条件执行 {@code m.put("bf", q.bfSlots)}，而 {@code bfSlots} 就是
+     * {@code b_qry} 的**明文**槽表示（0/1）。因为 {@code H} 是公开参数，
+     * 服务器拿置位集合穷举关键词即可**反解出查询关键词** —— 实测：
+     * <pre>
+     *   出站 bf 的置位 = [0, 9, 12, 15, 17]（τ=5）
+     *   用公开 H 穷举库里 128 个关键词 ⇒ 唯一匹配 "family"
+     * </pre>
+     * 而 {@code CapeSealedFlowTest} 的隐私断言只检查「关键词字符串 / τ / b_qry
+     * 字面量」是否出现在 JSON 里，字段改叫 {@code bf} 就全部通过 —— **断言测的是
+     * 名字，不是性质**。这正是「绿灯但没证明任何事」的典型。
+     *
+     * <p>现在：<b>{@code bf} 默认不发。</b>只有显式 {@code -Dcape.d2=true}
+     * （D2 开发用）时才发，且发的是 {@code d2PlaintextBf: true} 明确标注的字段，
+     * 免得将来有人把这个字段当默认行为继承下去。D2 的正确接入口是
+     * <b>加密后</b>的 {@code q_BF}（见 {@link BloomScoring#encryptBloomVector}），
+     * 不是明文位向量。
+     *
      * <p><b>清单（用来证明这条信道里没有明文）</b>：
      * <table>
      *   <tr><th>字段</th><th>发不发</th><th>理由</th></tr>
@@ -292,7 +311,7 @@ public final class CapeClientQuery {
      *   <tr><td>beta</td><td>发</td><td>{@code ⟨a,s_L⟩ + r_a}，r_a 被掩掉</td></tr>
      *   <tr><td>sBits</td><td>发</td><td>**公开引导密钥材料** {@code bsk = {RGSW(s_i)}}；
      *       bsk 的定义就是"加密后的秘密比特"，本来就发布给服务器</td></tr>
-     *   <tr><td>bf</td><td>发</td><td>q_BF（当前是槽形式的明文占位，D2 落地后换成真密文）</td></tr>
+     *   <tr><td>bf</td><td><b>默认不发</b></td><td>它是 {@code b_qry} 本身；要发必须是**密文**</td></tr>
      *   <tr><td><b>关键词</b></td><td><b>不发</b></td><td>—</td></tr>
      *   <tr><td><b>b_qry / τ</b></td><td><b>不发</b></td><td>τ 是接受阈值，论文明确保留在客户端</td></tr>
      * </table>
@@ -313,7 +332,10 @@ public final class CapeClientQuery {
         m.put("aFlat", flat);
         m.put("beta", q.beta);
         m.put("sBits", q.sBits);
-        m.put("bf", q.bfSlots);
+        // bf = b_qry 明文，默认不外发；见方法注释里的实测反解。
+        if (Boolean.getBoolean("cape.d2")) {
+            m.put("d2PlaintextBf", q.bfSlots);
+        }
         return Json.write(m);
     }
 

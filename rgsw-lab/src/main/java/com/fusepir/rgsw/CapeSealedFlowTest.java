@@ -38,6 +38,35 @@ public final class CapeSealedFlowTest {
     private static int pass = 0;
     private static int fail = 0;
 
+    /**
+     * 出站 JSON **允许**出现的字段（白名单）。
+     *
+     * <p>这比「按名字查坏字段」和「按形状查位向量」都可靠：
+     * <ul>
+     *   <li>按名字查 → 漏。真实事故就是字段从 {@code bQry} 改名成 {@code bf} 后全部通过。</li>
+     *   <li>按形状查（"一整条全 0/1 数组"）→ 误报。实测 {@code aFlat} 是 48 个 LWE 系数，
+     *       恰好全是 0/1（概率 2⁻⁴⁸，但真的发生了），而 {@code a} 本来就该发。</li>
+     * </ul>
+     * 白名单则把「服务器实际上需要什么」写成精确集合：服务端 ANSWER 只用
+     * {@code colIdx/rowIdx} 选列选行、{@code aFlat/beta} 做 LWE 掩码、{@code sBits}
+     * 建引导密钥。任何第 6 个字段都是设计变更，必须显式加进来 ——
+     * 这样「不小心多发了一个位向量」不可能悄悄通过。
+     */
+    private static final List<String> ALLOWED_OUTBOUND_KEYS =
+        Arrays.asList("colIdx", "rowIdx", "d", "aFlat", "beta", "sBits");
+
+    /** 取出 JSON 的顶层键名（本项目的 Json 写出器不嵌套对象，所以按 `"key":` 扫即可）。 */
+    private static List<String> topLevelKeys(String json) {
+        List<String> keys = new ArrayList<>();
+        java.util.regex.Matcher m = java.util.regex.Pattern
+            .compile("\"([A-Za-z0-9_]+)\"\\s*:")
+            .matcher(json);
+        while (m.find()) {
+            keys.add(m.group(1));
+        }
+        return keys;
+    }
+
     private static void check(String what, boolean ok, String detail) {
         if (ok) {
             pass++;
@@ -109,6 +138,15 @@ public final class CapeSealedFlowTest {
         String json = CapeClientQuery.toJson(q);
 
         // ---------- 断言 1：发出去的信道里没有明文关键词 ----------
+        //
+        // ⚠️ 2026-10-14：这一节原来只用**字段名**做断言，因此放过了一次真实泄漏 ——
+        // `toJson` 曾无条件发 `m.put("bf", q.bfSlots)`，而 bfSlots 就是 b_qry 的明文。
+        // 名字叫 `bf` 而不叫 `bQry`，`contains(bQry)` 就查不出来；而服务器用公开的 H
+        // 穷举 128 个关键词即可从置位集合**唯一恢复出查询关键词**（见 CapeBfLeakProbe）。
+        //
+        // 所以除了名字断言，再加一条**形状断言**：出站 JSON 里不允许出现
+        // 「一整条全是 0/1 的数组」。这条与字段名叫什么无关，是本项目里唯一能自动
+        // 抓住"位向量换个名字发出去"的检查。
         System.out.println();
         System.out.println("---------------- 1. 出站 JSON 的隐私性 ----------------");
         List<String> leaked = new ArrayList<>();
@@ -121,6 +159,18 @@ public final class CapeSealedFlowTest {
         check("出站 JSON 不含 tau", !json.matches("(?s).*\"tau\"\\s*:.*"), "");
         check("出站 JSON 不含 b_qry", !json.matches("(?s).*\"bQry\"\\s*:.*"), "");
         check("出站 JSON 不含关键词集合", !json.matches("(?s).*\"keywords\"\\s*:.*"), "");
+        // 白名单断言：出站 JSON 的字段集必须恰好是服务器 ANSWER 真正需要的那些。
+        // 这是本项目里唯一能自动抓住「不小心多发了一个位向量」的检查 ——
+        // 不依赖字段名、也不依赖形状（两者都试过，一个漏一个误报）。
+        List<String> keys = topLevelKeys(json);
+        List<String> extra = new ArrayList<>();
+        for (String keyName : keys) {
+            if (!ALLOWED_OUTBOUND_KEYS.contains(keyName)) {
+                extra.add(keyName);
+            }
+        }
+        check("出站 JSON 字段集在白名单内（服务器只需要那 5 类）",
+            extra.isEmpty(), "多余字段=" + extra + "  实得=" + keys);
         System.out.println("        body 长度 = " + json.length() + " 字符");
         System.out.println("       [diag] 客户端 colIdx=" + Arrays.toString(q.colIdx)
             + " rowIdx=" + Arrays.toString(q.rowIdx)

@@ -333,8 +333,19 @@ public final class CapeDemoService {
         timing.put("unitCount", K * tb.bPay);
         timing.put("note", "setupMsLast is NOT included in totalMs");
         out.put("timing", timing);
-        out.put("integrity", bad == 0 && fp == fpWant);
+        // ⚠️ 2026-10-14 改名并说清证明力。旧字段名 `integrity` 被高估了：
+        // 它比对的只是「解密回来的载荷 == 明文载荷」，覆盖 share 重建 + 列选择 +
+        // 行盲旋转 + 解密；**完全不含合取逻辑**（legacy 的合取是下面的明文
+        // `boolean conj`），更不含同态得分——agent 路径里根本没有得分。
+        // 但 `integrity` 与 hit/results 并排出现，读起来像"整条链已验"，所以改成一个
+        // 不夸大、也仍然是合法 JSON 标识符的名字；旧名保留为同值别名字段，避免打断前端。
+        boolean payloadRoundTrip = (bad == 0 && fp == fpWant);
+        out.put("payloadRoundTrip", payloadRoundTrip);
+        out.put("integrity", payloadRoundTrip);   // 兼容别名
         out.put("payloadMismatch", bad);
+        out.put("payloadRoundTripNote",
+            "只证明「三路 share 重建 + 列选择 + 行盲旋转 + 解密」正确；"
+                + "不含合取判定，也不含同态得分（两者本路径未实现）");
         return Json.write(out);
     }
 
@@ -445,24 +456,46 @@ public final class CapeDemoService {
      */
     private double measureUnitMs() {
         try {
-            final int probeB = Math.min(K, tb.bPay);          // k 个载荷块
-            long[] flat = CapeDemoSetupProbe.flatten(tb.p, n, tb.bPay);
+            // ⚠️ 2026-10-14 改成**两点标定（测斜率）**。原因：单点探针只跑
+            // probeB = k 块，而真实 ANSWER 跑 bPay 块。每次 nativeCapeAnswer 调用都有
+            // **与块数无关的固定开销**（建 bootstrap key、列选择子、内存分配），
+            // 单点除以块数会把这笔固定开销摊到 3 块上而不是 59 块上 ⇒ 单元被高估。
+            // 实测：单点报 275 ms/单元 ⇒ 预期 48 680 ms，而端到端是 36 852 ms（偏大 32%）。
+            // 用两个不同块数求斜率即可把这笔开销完全消掉，且不需要知道它是什么。
+            //
+            // 块数取 2 与 8（都远小于 bPay=59，所以只多花几百毫秒）：
+            //     T(m) = c + m·K·unit
+            //     unit = (T(8) − T(2)) / (K·(8−2))
+            final int p1 = 2;
+            final int p2 = Math.min(8, tb.bPay);
+            if (p2 <= p1) {
+                return measureUnitMsSinglePoint();
+            }
             long[] cIdx = new long[K];
             long[] rIdx = new long[K];
             for (int a = 0; a < K; a++) {
                 cIdx[a] = tb.colOf[0];
                 rIdx[a] = tb.rowOf[0] + a;
             }
-            // 预热一次（把 native 内存池、NTT 表、页缓存都跑热）
-            NativeBlindRotate.nativeCapeAnswer(ctxHandle, d, tb.c, K, probeB, flat, cIdx, rIdx);
-            long t0 = System.nanoTime();
-            NativeBlindRotate.nativeCapeAnswer(ctxHandle, d, tb.c, K, probeB, flat, cIdx, rIdx);
-            long t1 = System.nanoTime();
-            double ms = (t1 - t0) / 1e6 / (K * probeB);
+            // 预热：把 native 内存池、NTT 表、页缓存跑热，否则第一次调用会主导斜率
+            NativeBlindRotate.nativeCapeAnswer(ctxHandle, d, tb.c, K, tb.bPay,
+                tableFlat, cIdx, rIdx);
+            long tp1 = timeProbe(p1, cIdx, rIdx);
+            long tp2 = timeProbe(p2, cIdx, rIdx);
+            // 再测一轮取小值，压掉调度抖动（斜率对噪声很敏感：两块之差是分母）
+            long tp1b = timeProbe(p1, cIdx, rIdx);
+            long tp2b = timeProbe(p2, cIdx, rIdx);
+            double t1 = Math.min(tp1, tp1b) / 1e6;
+            double t2 = Math.min(tp2, tp2b) / 1e6;
+            double unit = (t2 - t1) / ((double) K * (p2 - p1));
+            if (!(unit > 0) || !Double.isFinite(unit)) {
+                System.out.println("[warn] 两点标定得到非正斜率（" + unit + "），回退单点");
+                return measureUnitMsSinglePoint();
+            }
             System.out.printf("[setup] 标定：一个真实单元 = %.1f ms"
-                    + "（跑 %d 路 × %d 块，含 %d 轮 CMUX + %d 次读大表）%n",
-                ms, K, probeB, d, tb.c);
-            return ms;
+                    + "（两点法：%d 块 %.0f ms vs %d 块 %.0f ms，斜率已消掉固定开销）%n",
+                unit, p1, t1, p2, t2);
+            return unit;
         } catch (Throwable ex) {
             System.out.println("[warn] 单元标定失败，回退到旧的一次盲旋转估计：" + ex);
             try {
@@ -482,6 +515,37 @@ public final class CapeDemoService {
                 return 0;
             }
         }
+    }
+
+    /** 跑一个「只算 {@code blockCount} 个载荷块」的真查询，返回纳秒耗时。 */
+    private long timeProbe(int blockCount, long[] cIdx, long[] rIdx) {
+        long t0 = System.nanoTime();
+        NativeBlindRotate.nativeCapeAnswer(ctxHandle, d, tb.c, K, blockCount,
+            tableFlat, cIdx, rIdx);
+        return System.nanoTime() - t0;
+    }
+
+    /**
+     * 旧的一次性单点标定（只跑 {@code k} 块）。保留作两点法的回退路径：
+     * 它**偏高**（把固定开销摊到 k 块上），但在斜率算不出来时聊胜于无。
+     */
+    private double measureUnitMsSinglePoint() {
+        final int probeB = Math.min(K, tb.bPay);
+        long[] flat = CapeDemoSetupProbe.flatten(tb.p, n, tb.bPay);
+        long[] cIdx = new long[K];
+        long[] rIdx = new long[K];
+        for (int a = 0; a < K; a++) {
+            cIdx[a] = tb.colOf[0];
+            rIdx[a] = tb.rowOf[0] + a;
+        }
+        NativeBlindRotate.nativeCapeAnswer(ctxHandle, d, tb.c, K, probeB, flat, cIdx, rIdx);
+        long t0 = System.nanoTime();
+        NativeBlindRotate.nativeCapeAnswer(ctxHandle, d, tb.c, K, probeB, flat, cIdx, rIdx);
+        long t1 = System.nanoTime();
+        double ms = (t1 - t0) / 1e6 / (K * probeB);
+        System.out.printf("[setup] 标定（单点回退，偏高）：一个单元 ≈ %.1f ms"
+                + "（跑 %d 路 × %d 块）%n", ms, K, probeB);
+        return ms;
     }
 
     /**
@@ -509,9 +573,11 @@ public final class CapeDemoService {
         e.put("queryUs", 320);
         e.put("decodeUs", 100);
         e.put("setupMs", setupJavaMs + setupNativeMs);
-        e.put("source", "SETUP 时实测一个真实单元（nativeCapeAnswer，载荷块截断到 k）× unitCount");
-        e.put("note", "预期值 = 单元实测 × " + unitCount
-            + "；与端到端会有几个百分点的出入（不同单元的缓存状态不同），跑一次查询即换成实测");
+        e.put("source", "SETUP 时两点标定一个真实单元的**斜率**（nativeCapeAnswer，块数 2 vs 8）"
+            + "× unitCount —— 斜率已消掉与块数无关的固定开销");
+        e.put("note", "预期值 = 单元斜率 × " + unitCount
+            + "；改用两点法前用单点（块数=k）会高估约 32%（把固定开销摊到 k 块上）。"
+            + "跑一次查询后前端会换成实测值");
         return e;
     }
 
@@ -784,6 +850,11 @@ public final class CapeDemoService {
         }
         if (q.colIdx.length == 0 || q.sBits.length < d) {
             throw new IllegalArgumentException("malformed sealed query");
+        }
+        // bf 默认不外发（它是 b_qry 明文，能反解出查询关键词，见 toJson 注释）。
+        // 字段名带 d2PlaintextBf 前缀就是为了让"这是明文、只用于 D2 开发"无法被误读。
+        if (req.containsKey("d2PlaintextBf")) {
+            q.bfSlots = toLongs(req.get("d2PlaintextBf"));
         }
         return q;
     }
