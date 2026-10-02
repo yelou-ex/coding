@@ -100,9 +100,13 @@ def main():
     ap.add_argument("--file", default="coords_all.txt")
     ap.add_argument("--before", type=int, default=3)
     ap.add_argument("--after", type=int, default=6)
+    ap.add_argument("--page", type=int, default=None,
+                    help="只看某一页；配合 --page 可快速定位。")
     args = ap.parse_args()
 
     rows = load(args.file)
+    if args.page is not None:
+        rows = [r for r in rows if r["page"] == args.page]
     streams = build_streams(rows)
     needle = strip_ws(args.needle).lower()
 
