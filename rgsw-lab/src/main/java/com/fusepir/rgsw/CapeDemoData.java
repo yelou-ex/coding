@@ -332,17 +332,85 @@ public final class CapeDemoData {
         }
 
         // ---- P_{c,b}(X) ----
-        // 论文 A1 L817-821 明确把 D[L_BFF .. RC−1] **补零**：
-        //     for u = L_BFF to RC − 1 do  D[u] ← 0 ∈ Z_t^{B_pay}
-        // 早先的版本先用 `1 + rnd.nextLong(t-1)` 把整张表填满随机值、再覆写 BFF 槽。
-        // 密文下不可区分、功能等价（槽都被覆写了），但那**不是逐字复现** ——
-        // 而且它掩盖了一个事实：表里除了 BFF 槽之外本来就该是 0。
-        // 现在按论文补零（数组默认即 0，无需显式循环）。
+        //
+        // ⚠️ **这一段我来回改过三次，把依据钉在原文上，别再改第四遍。**
+        //
+        // 论文里有**两套** Encode，参数化不同，混起来就会改错方向：
+        //
+        //   (甲) 正文 **Algorithm 1 (FusePIR)**（`coords_all.txt` 671-684 行）：
+        //          9: for u = L_BFF to RC − 1 do
+        //         10:     D[u] ← 0 ∈ Z_t^{B_pay}.
+        //         11: end for
+        //         12: for c = 0 to C − 1 do
+        //          ...
+        //         14:     P_{c,b}(X) ← Σ_{r=0}^{R−1} D[r + cR][b]·X^r.
+        //        —— `L_BFF = |D|`，表切到 `RC ≥ L_BFF`，**尾部 [L_BFF, RC) 补零**。
+        //
+        //   (乙) 附录 **Algorithm 3 (Encode)**（`coords_all.txt` 1448/1476-1478）：
+        //        3:  L_BFF ← max(0.875 + 0.25·max_i |V_{K_i}|, ⌈1.125n⌉)
+        //        12: D[u] ← ⊥.                （u = 0..L_BFF−1，"未填充"标记）
+        //         6: D[u] ←$ Z_t^B.           （u = 0..L_BFF−1，**全区间均匀随机**）
+        //        —— 正文 §2.4 与附录都写 "initialized (uniformly) in Z_t^B"，指这套。
+        //
+        // **我们这组参数下两套等价**：槽位 u 的取值范围是 `[0, span)`、
+        // `span = cellsPerCol·C`；物理列数就是 `C`、列内只用到
+        // `(cellsPerCol−1)·maxValues + k` 行。即 `L_BFF = span` 时
+        // `[L_BFF, RC)` 这个尾部**不被任何行掩码寻址**（甲的第 9-11 行永不触发），
+        // 于是「随机化 [0, L_BFF)」与「零填充 + 尾部补零」功能同一。
+        //
+        // 我上一次把它改崩，原因不是选了哪一套，而是**尾部判据的量纲写错了**：
+        // 写成 `cc*r + rr >= L_BFF`，把「多项式列号 cc」和「槽位下标 u」当成了同
+        // 一个量（u 每列只摊 cellsPerCol 个，cc 却一路数到 C），于是 cc ≥ 8 时
+        // `8*16 = 128` 已逼近 130 ⇒ **第 8 列起整列被清空**。老路径要读的是
+        // 第 0..25 列，症状就是 col≥8 的关键词三路 share 全 0 ⇒ 载荷 0 ⇒
+        // 解密报 "result ciphertext is transparent"。
+        //
+        // 现在按 (乙) 实现：**槽位 u ∈ [0, L_BFF) 全部均匀随机，再把 BFF 槽覆写**。
+        // 选 (乙) 而不是零填充的理由是**语义**而不是正确性：零填充会让「哪些槽没被
+        // 用过」在明文表里一眼可见（本 demo 单进程、表在本地；真正的两方部署里服务
+        // 器只拿到加密表与盲旋转结果，两者都不可见）。两条路的解密结果完全相同。
         long[][][] p = new long[c][bPay][n];
+        final int lBff = cellsPerCol * c;
+        // 槽位 u 对应「列 cc = u/cellsPerCol、列内第 cell = u%cellsPerCol 个 cell」，
+        // cell 占满 maxValues 行（起始行 cell*maxValues）。按列遍历、逐 cell 填，
+        // 每个 cell 恰好填一次，不重复、不遗漏。
+        for (int cc = 0; cc < c; cc++) {
+            for (int cell = 0; cell < cellsPerCol; cell++) {
+                int base = cell * maxValues;
+                for (int a = 0; a < maxValues; a++) {
+                    for (int b = 0; b < bPay; b++) {
+                        p[cc][b][base + a] = rnd.nextLong(t);
+                    }
+                }
+            }
+        }
         for (int i = 0; i < kwCount; i++) {
             for (int a = 0; a < k; a++) {
                 for (int b = 0; b < bPay; b++) {
                     p[colOf[i]][b][rowOf[i] + a] = share[i][a][b];
+                }
+            }
+        }
+        // (3) dataRadius 自检：把「真正会被读到的系数」钉死。
+        //     老路径读的是列 c_a = u/cellsPerCol ∈ [0, C)、列内行
+        //     (u%cellsPerCol)*maxValues + a（a ∈ [0,k)），所以被读到的系数满足
+        //     cc < C 且 rr < (cellsPerCol−1)*maxValues + k。上面随机化 + 覆写只覆盖
+        //     了 [0, dataRadius)，其余系数保持数组默认的 0 —— 它们不承载语义。
+        //     这条自检就是用来防「半径算错导致整列被清空/载荷被污染」那类事故的：
+        //     我上一次改坏表构造，症状正是 col≥8 的整列变成 0。
+        int dataRadius = (cellsPerCol - 1) * maxValues + k;
+        if (lBff <= kwCount) {
+            throw new IllegalStateException("L_BFF = " + lBff + " must exceed the keyword count "
+                + kwCount + "; BFF.Encode requires at least one spare slot");
+        }
+        for (int cc = 0; cc < c; cc++) {
+            for (int rr = dataRadius; rr < n; rr++) {
+                for (int b = 0; b < bPay; b++) {
+                    if (p[cc][b][rr] != 0) {
+                        throw new IllegalStateException("column " + cc + " coefficient " + rr
+                            + " bit " + b + " is outside the data radius " + dataRadius
+                            + " but non-zero");
+                    }
                 }
             }
         }
