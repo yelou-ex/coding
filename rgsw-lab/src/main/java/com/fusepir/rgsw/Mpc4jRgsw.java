@@ -120,6 +120,22 @@ public final class Mpc4jRgsw {
 
     /** @param unused 保留参数（素数个数由 bfvDefault 自动决定） */
     public Mpc4jRgsw(int n, long t, int unused, int base) {
+        this(n, t, unused, base, null);
+    }
+
+    /**
+     * <b>复用一把已有的密钥</b>（{@code sk != null} 时不再随机生成）。
+     *
+     * <p><b>为什么需要这个重载</b>：一条 {@code ct_score} 只有在**客户端与服务端共享同一把
+     * sk** 时才解得出来。单进程回环里两边本来就该是同一个密钥持有者，但"各自
+     * {@code new Mpc4jRgsw(...)}"会各生成一把随机密钥 —— 症状是**解密不报错、只是解出垃圾**
+     * （本项目实测：分数解成 26921 而不是 0..ℓ_BF），非常容易被误读成"打分算错了"。
+     *
+     * <p>所以测试里要复用服务端那把 sk：见 {@code CapeDefaultPathTest}。
+     *
+     * @param sk 复用的密钥；{@code null} 表示新生成一把
+     */
+    public Mpc4jRgsw(int n, long t, int unused, int base, SecretKey sk) {
         this.n = n;
         this.t = t;
         this.base = base;
@@ -141,10 +157,10 @@ public final class Mpc4jRgsw {
         }
         this.declaredQBits = declaredBits;
 
-        this.keyGen = new KeyGenerator(context);
-        this.sk = keyGen.secretKey();
-        this.encryptor = new Encryptor(context, sk);
-        this.decryptor = new Decryptor(context, sk);
+        this.keyGen = (sk != null) ? new KeyGenerator(context, sk) : new KeyGenerator(context);
+        this.sk = (sk != null) ? sk : keyGen.secretKey();
+        this.encryptor = new Encryptor(context, this.sk);
+        this.decryptor = new Decryptor(context, this.sk);
         this.evaluator = new Evaluator(context);
 
         // 用一条真实密文的数组长度反推"工作层"的素数个数，比猜 API 可靠：

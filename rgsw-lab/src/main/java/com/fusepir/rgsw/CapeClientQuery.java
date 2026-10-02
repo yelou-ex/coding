@@ -52,6 +52,19 @@ public final class CapeClientQuery {
         public boolean[] bQry;     // Bloom 查询向量（**只给客户端自己用**）
         public long tau;           // ‖b_qry‖₁（**不进 JSON**）
         public long[] bfSlots;     // q_BF 的批处理槽表示（D2 的接入口）
+
+        /**
+         * <b>P1-1：列选择子的密文流</b>（论文 A1 QUERY 4-5 {@code q^col_a}）。
+         *
+         * <p>布局 {@code k×C}、路优先（{@code a*C+cc}），每项前置小端 int32 长度。
+         * 第 {@code (a,cc)} 项的内容是「{@code e_cc}」这个标量的 RLWE 密文：
+         * {@code e_cc = 1} 当且仅当 {@code cc == c_a}，否则 0。
+         *
+         * <p><b>它才是论文里那份"不可区分的列选择子"</b>：{@code c_a} 不再作为明文
+         * 出现，服务器只拿到一串不透明字节。<b>为 {@code null} 时退回明文列号</b>
+         * （基线形式，服务器自己造 one-hot），此时 {@code D13} 的前半句仍然成立。
+         */
+        public byte[] selBlob;
     }
 
     private CapeClientQuery() {
@@ -69,16 +82,27 @@ public final class CapeClientQuery {
      * @param epsBf     公开 Bloom 参数 ε_BF
      * @param keywords  DB 里的关键词全集（用于复算公开哈希 H）
      * @param query     本次查询的关键词，第一个是锚
-     */
-    /**
-     * 构造一次查询。
-     *
      * @param bskBits 服务器的引导密钥 {@code bsk = {RGSW(s_i)}} 所对应的比特。
      *   <b>它必须与建 bk 用的那一组完全相同</b> —— 见下面那段不变量说明。
      */
     public static Sealed build(long ctxHandle, int n, int k, int r, int maxValues, int lBf,
                                int maxSetSize, double epsBf, int[] bskBits,
                                List<String> keywords, List<String> query) {
+        return build(ctxHandle, n, k, r, maxValues, lBf, maxSetSize, epsBf, bskBits,
+            keywords, query, false);
+    }
+
+    /**
+     * @param encryptSelectors <b>P1-1</b>：为真时把列选择子加密成 {@link Sealed#selBlob}
+     *   （论文 A1 QUERY 4-5 的 {@code q^col_a}）。为假时只算明文列号，
+     *   服务器自己造 one-hot —— 那是本实现原先的基线，也正是 {@code D13} 前半句。
+     *   <b>需要 {@code ctxHandle}</b>（选择子必须与累加器同上下文，见
+     *   {@link NativeBlindRotate#nativeEncryptSealedColumn}）。
+     */
+    public static Sealed build(long ctxHandle, int n, int k, int r, int maxValues, int lBf,
+                               int maxSetSize, double epsBf, int[] bskBits,
+                               List<String> keywords, List<String> query,
+                               boolean encryptSelectors) {
         if (query.isEmpty()) {
             throw new IllegalArgumentException("query must not be empty");
         }
@@ -109,6 +133,22 @@ public final class CapeClientQuery {
         for (int a = 0; a < k; a++) {
             q.colIdx[a] = slotOf[ai] / cellsPerCol;
             q.rowIdx[a] = (slotOf[ai] % cellsPerCol) * maxValues + a;
+        }
+
+        // ---- 列选择子（A1 QUERY 4-5）：{@code q^col_a = RLWE.Enc_{s_R}(e)} ----
+        // 论文的 e 是 {0,1}^C 里的 one-hot；本实现按「C 条独立标量密文」的读法落地
+        // （D3 已记录这条读法，它正是 CtPtMul(ct,pt) 能逐个相乘的原因）：
+        // 第 (a,cc) 项加密标量 e_cc = [cc == c_a]，**列号不再作为明文出现在线路上**。
+        //
+        // ⚠️ 代价必须一起报（实测）：N=8192 时一条选择子 524,401 字节，
+        //    k×C = 3×26 = 78 条 ⇒ **约 41 MB/查询**，而 q_BF 只有 211 KB。
+        //    这是「C 条独立密文」这条读法的直接后果，见 P1-1 报告。
+        if (encryptSelectors) {
+            if (ctxHandle == 0L) {
+                throw new IllegalArgumentException(
+                    "encryptSelectors 需要 native 上下文句柄：列选择子必须与累加器同上下文");
+            }
+            q.selBlob = encryptColumnSelectors(ctxHandle, k, c, q.colIdx);
         }
 
         // ---- 行选择子：LWE 形式（A1 L838 q^row_a = LWE.Enc_{s_L}(r_a)）----
@@ -145,6 +185,11 @@ public final class CapeClientQuery {
         //    β ≡ Σ_i a_i · s_i + r_a  (mod 2N)   —— 严格等式
         // 老路径 nativeCapeAnswer 也是这个形式（betav = (sum + ridx[a]) % 2N），
         // 所以两边在这一点上完全一致。真正的噪声只来自同态运算本身。
+        //
+        // ⚠️⚠️ 注意这条等式同时意味着：**服务器能从 beta 里解出 r_a** ——
+        //    a、sBits、beta 三样都在它手上，⟨a,sBits⟩ 一算就有。见
+        //    nativeCapeAnswerSealed 的 javadoc 与 CapeAlgorithm2Diag 的负对照 N5。
+        //    本轮**没有**修（加掩码会连带改动 Accumulator 的构造），据实记录。
         //
         // a_i 用**确定性序列**（与老路径相同的 XorShift 常量），不用 SecureRandom：
         // 这样「同一次查询」在同一台机器上可复现，排查时能把随机性排除掉。
@@ -190,6 +235,36 @@ public final class CapeClientQuery {
             slots[i] = bits[i] ? 1 : 0;
         }
         return slots;
+    }
+
+    /**
+     * <b>P1-1 的核心一步</b>：按 {@code colIdx} 造出 {@code e ∈ {0,1}^{k×C}} 并加密。
+     *
+     * <p>路优先（{@code a*C+cc}），与 {@code nativeCapeAnswerSealedC} 的解析顺序一致。
+     * 每一路里**恰好一项是 1**（{@code cc == c_a}），其余 C−1 项是 0
+     * —— 这正是论文 one-hot 的形态，也正是线路上「C 条密文里哪条非零」承载的信息。
+     *
+     * @return {@code k×C} 条选择子的长度前缀字节流（N=8192、C=26、k=3 时约 41 MB）
+     */
+    public static byte[] encryptColumnSelectors(long ctxHandle, int k, int c, long[] colIdx) {
+        long[] e = new long[k * c];
+        for (int a = 0; a < k; a++) {
+            for (int cc = 0; cc < c; cc++) {
+                e[a * c + cc] = (cc == colIdx[a]) ? 1L : 0L;
+            }
+        }
+        return NativeBlindRotate.nativeEncryptSealedColumns(ctxHandle, e);
+    }
+
+    /**
+     * 直接加密一个给出的 {0,1} 选择子向量（<b>负对照与探针用</b>）。
+     *
+     * <p>存在的理由：P1-1 的验收必须是「断言 + 负对照」两条腿。两条负对照
+     * （换成别的列 / 全零）都需要造出**违反协议**的选择子，而那不可能由
+     * {@link #encryptColumnSelectors} 从合法的 {@code colIdx} 产生。
+     */
+    public static byte[] encryptSelectorVector(long ctxHandle, long[] e) {
+        return NativeBlindRotate.nativeEncryptSealedColumns(ctxHandle, e);
     }
 
     /**
@@ -318,7 +393,19 @@ public final class CapeClientQuery {
      */
     public static String toJson(Sealed q) {
         Map<String, Object> m = new LinkedHashMap<>();
-        m.put("colIdx", q.colIdx);
+        // ---- P1-1：**基线与 P1-1 互斥地发列信息** ----
+        // 基线形式发 colIdx（服务器自己造 one-hot），P1-1 形式改发 colSel 密文流。
+        // 两者不同时出现，所以「这条线路上还有没有明文列号」是可观测的、不是个说法。
+        //
+        // 为什么列号值得关掉：本项目的 H 是公开哈希，关键词空间又小，
+        // 服务端可以像 CapeBfLeakProbe 反解 Bloom 位那样**穷举关键词反解位置**。
+        // 论文说"位置由公开参数定，不算泄露"只在 H 不可反查时成立。
+        if (q.selBlob != null) {
+            m.put("colSelLen", q.selBlob.length);
+            m.put("colSel", CapeScorerWire.bytesToPackedWire(q.selBlob));
+        } else {
+            m.put("colIdx", q.colIdx);
+        }
         m.put("rowIdx", q.rowIdx);
         // ⚠️ `a` 是二维的，而本项目的极简 JsonParser/CapeDemoData.JsonParser
         // **不支持嵌套数组**，所以这里扁平化 + 显式带上 d（维度）。服务器按 d 复原。
