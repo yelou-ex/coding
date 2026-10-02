@@ -62,6 +62,17 @@ public final class NativeBlindRotate {
     public static native Long[] nativeSecretBits(long h, int d);
 
     /**
+     * <b>诊断专用</b>：RLWE 秘密系数的**真实** {@code {-1, 0, +1}} 直方图。
+     *
+     * <p>为什么必须单独开一个入口：{@link #nativeSecretBits} 回的是
+     * {@code v == 1 || v == 0 ? v : 0} 的**指示函数**，它**分不清 −1 和真 0** ——
+     * 所以拿它回答"有多少轮是恒等"是**错的**（P1-3 正好问这个）。
+     *
+     * @return {@code {count(-1), count(0), count(+1), count(其它), 系数总数}}
+     */
+    public static native long[] nativeSecretHistogram(long h);
+
+    /**
      * 自包含：建 d 个引导密钥 + 累加器 + LWE 索引，跑 {@code reps} 次盲旋转，再解密验证。
      * 返回 {@code {0, 非零个数, 落点, 单位值个数}}。
      *
@@ -145,6 +156,47 @@ public final class NativeBlindRotate {
      */
     public static native long[] nativeCapeAnswerSealed(long h, int d, int C, int k, int bPay,
                                                         long[] tableFlat, long[] cIdx, long[] rIdx,
+                                                        long[][] a, long[] beta, int[] sBits);
+
+    /**
+     * <b>P1-1：把列选择子做成密文</b>（论文 A1 QUERY 4-5
+     * {@code e ← (0,…,0,1,0,…,0) ∈ {0,1}^C}、{@code q^col_a = RLWE.Enc_{s_R}(e)}，
+     * 以及 Appendix D.2 那句 "the <b>encrypted</b> column and row selectors"）。
+     *
+     * <p>为什么必须落在 native：列选择的积紧接着进的是 {@code blind_rotate}
+     * （d 轮 CMUX、用 RGSW 引导密钥），所以选择子必须与**累加器同上下文**。
+     * 打分信道（{@code Mpc4jRgsw}）的上下文与 {@code t} 都不同，用不了。
+     *
+     * <p><b>{@code value} 是论文那个 one-hot 向量 {@code e ∈ {0,1}^C} 里的标量
+     * {@code e_cc}，不是列号</b>：非零加密常数 1、零加密零多项式。
+     * 列的身份藏在「哪一项是 1」里 —— 这正是服务器不允许知道的东西。
+     *
+     * @return 一条已序列化、已在 NTT 域的密文（N=8192 时 524,401 字节）
+     */
+    public static native byte[] nativeEncryptSealedColumn(long h, long value);
+
+    /**
+     * 批量形式：<b>一次 JNI 调用</b>加密 {@code k×C} 个列选择子，
+     * 按 {@code a*C+cc} 路优先排列，每项前置小端 int32 长度。
+     *
+     * <p>为什么批量：N=8192 时一条选择子 ≈ 524 KB，C=26 × k=3 = 78 条 ≈ 41 MB，
+     * 78 次过界 + 78 次 Java 侧数组拷贝纯属开销。
+     */
+    public static native byte[] nativeEncryptSealedColumns(long h, long[] values);
+
+    /**
+     * <b>P1-1 的 ANSWER：列选择子由客户端以密文形式给出。</b>
+     *
+     * <p>与 {@link #nativeCapeAnswerSealed} 的关系：<b>两者共用同一段 native 循环体</b>
+     * （{@code cape_answer_core}），唯一差别是选择子从哪来 ——
+     * 一个是服务器按明文列号自己加密，一个是从密文字节流 load。
+     * 共用是刻意的：验收断言「密文选择子路径的载荷 == 明文列号路径的载荷」
+     * 只有在选择子到解码之间跑的是**同一份代码**时才有意义。
+     *
+     * @param selBlob {@link #nativeEncryptSealedColumns} 的输出（k×C 项，带长度前缀）
+     */
+    public static native long[] nativeCapeAnswerSealedC(long h, int d, int C, int k, int bPay,
+                                                        long[] tableFlat, byte[] selBlob,
                                                         long[][] a, long[] beta, int[] sBits);
 
     /**

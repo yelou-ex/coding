@@ -511,6 +511,193 @@ void blind_rotate(const NativeCtx *c, const std::vector<RgswKey> &bk,
     multiply_power_of_x(c, cur, (two_n - (beta % two_n)) % two_n, out);
 }
 
+// ---------------------------------------------------------------- CAPE ANSWER core
+
+// Little-endian uint32 read, for the length prefixes of the selector blob.
+std::uint32_t le32(const char *p) {
+    const auto *u = reinterpret_cast<const unsigned char *>(p);
+    return static_cast<std::uint32_t>(u[0])
+        | (static_cast<std::uint32_t>(u[1]) << 8)
+        | (static_cast<std::uint32_t>(u[2]) << 16)
+        | (static_cast<std::uint32_t>(u[3]) << 24);
+}
+
+// The CAPE ANSWER body, shared by the TWO selector forms:
+//   nativeCapeAnswerSealed   -- selectors built SERVER-side from a plaintext column
+//   nativeCapeAnswerSealedC  -- selectors supplied CLIENT-side as ciphertext bytes
+//
+// Sharing one body is deliberate, not tidiness.  The P1-1 acceptance test is
+// "the client-encrypted-selector path returns the same payload as the
+// plaintext-index path"; that claim is only meaningful if the arithmetic running
+// from the selectors to the decoded payload is literally the same code.
+//
+// `selAll[a][cc]` must already be the NTT-domain one-hot selector for column cc of
+// path a.  Returns the bPay decoded payload coefficients (the loopback "client"
+// side holds the secret key, so it decrypts here).
+//
+// !! The per-multiply output ciphertext MUST be declared inside the cc loop.  A
+// !! single `prod` declared outside and handed to std::move() makes the NEXT
+// !! multiply_plain resize (and free) a pointer that has already been transferred:
+// !! an access violation at the SECOND multiply_plain, not the first.
+// !! (ucrtbase memcpy to 0x0, len = one ciphertext.  See docs/reports/P1-1-*.)
+std::vector<std::uint64_t> cape_answer_core(
+    JNIEnv *env, NativeCtx *c, int d, int C, int k, int bPay,
+    jlongArray tableFlat, jobjectArray aArr, jlongArray betaArr, jintArray sBitsArr,
+    const std::vector<std::vector<Ciphertext>> &selAll) {
+    const std::size_t n = c->n;
+    const std::size_t uC = static_cast<std::size_t>(C);
+    const std::size_t uk = static_cast<std::size_t>(k);
+    const std::size_t ub = static_cast<std::size_t>(bPay);
+    const std::uint64_t two_n = 2 * static_cast<std::uint64_t>(n);
+
+    if (d <= 0 || C <= 0 || k <= 0 || bPay <= 0) {
+        throw std::runtime_error("cape_answer_core: d/C/k/bPay must all be positive");
+    }
+    if (selAll.size() != uk) {
+        throw std::runtime_error("cape_answer_core: selector array count mismatch");
+    }
+    for (std::size_t a = 0; a < uk; ++a) {
+        if (selAll[a].size() != uC) {
+            throw std::runtime_error("cape_answer_core: selector column count mismatch");
+        }
+    }
+
+    // ---- bootstrap key bsk = { RGSW(s_i) }, built from the CLIENT's bits ----
+    // Paper A1 L838 makes the row selector LWE.Enc_{s_L}(r_a) with s_L the CLIENT's
+    // key, while blind rotation needs {RGSW(s_i)}.  bsk is public evaluation material
+    // ("the secret bits, encrypted"), so the client publishes it and the server only
+    // does the homomorphic work -- that is what a two-party deployment looks like.
+    //
+    // !! sBitsArr IS A jintArray, NOT A jlongArray.  It used to be declared jlongArray
+    // !! here while every Java caller passes `int[]`, so GetLongArrayElements
+    // !! reinterpreted pairs of adjacent ints as one 64-bit value.  The bsk bits then
+    // !! silently stopped matching the bits the CLIENT used to compute beta, the net
+    // !! rotation came out wrong, and the whole sealed path returned an all-zero
+    // !! payload -- forever, and without an error.
+    // !! The {0,1} check below is the tripwire for that class of bug: a misread array
+    // !! cannot pass it.  (Found 2026-10-14 by the P1-1 negative control, which is
+    // !! exactly why an assertion always needs a negative control next to it.)
+    std::vector<int> sBits(static_cast<std::size_t>(d), 0);
+    {
+        jint *sb = env->GetIntArrayElements(sBitsArr, nullptr);
+        if (sb == nullptr) {
+            throw std::runtime_error("cape_answer_core: sBits is not an int[]");
+        }
+        const jsize len = env->GetArrayLength(sBitsArr);
+        const int take = (static_cast<int>(len) < d) ? static_cast<int>(len) : d;
+        for (int i = 0; i < take; ++i) {
+            const jint v = sb[i];
+            if (v != 0 && v != 1) {
+                env->ReleaseIntArrayElements(sBitsArr, sb, JNI_ABORT);
+                throw std::runtime_error("cape_answer_core: sBits[" + std::to_string(i) + "] = "
+                    + std::to_string(v) + " is not a bit (bsk bits must be 0/1)");
+            }
+            sBits[static_cast<std::size_t>(i)] = static_cast<int>(v);
+        }
+        env->ReleaseIntArrayElements(sBitsArr, sb, JNI_ABORT);
+    }
+    std::vector<RgswKey> bk;
+    bk.reserve(static_cast<std::size_t>(d));
+    for (int i = 0; i < d; ++i) {
+        bk.push_back(build_rgsw_constant(
+            c, static_cast<std::uint64_t>(sBits[static_cast<std::size_t>(i)])));
+    }
+
+    // ---- plaintext tables P_{c,b}(X): NTT once, reused for all k paths ----
+    // The flattened table's stride is (cc * bPay + b) * n, so bPay here is part of
+    // the caller's table layout -- shrinking bPay without rebuilding the table reads
+    // out of bounds (a real bug that was hit once; see the P1-1 report).
+    jlong *tab = env->GetLongArrayElements(tableFlat, nullptr);
+    const jsize tabLen = env->GetArrayLength(tableFlat);
+    if (static_cast<std::size_t>(tabLen) < uC * ub * n) {
+        env->ReleaseLongArrayElements(tableFlat, tab, JNI_ABORT);
+        throw std::runtime_error("cape_answer_core: table is shorter than C*B_pay*N");
+    }
+    auto parms_id = c->context->first_parms_id();
+    std::vector<std::vector<Plaintext>> tabNtt(uC, std::vector<Plaintext>(ub));
+    for (std::size_t cc = 0; cc < uC; ++cc) {
+        for (std::size_t b = 0; b < ub; ++b) {
+            Plaintext p;
+            p.resize(n);
+            const std::size_t base = (cc * ub + b) * n;
+            for (std::size_t i = 0; i < n; ++i) {
+                p[i] = static_cast<std::uint64_t>(tab[base + i]);
+            }
+            c->evaluator->transform_to_ntt_inplace(p, parms_id);
+            tabNtt[cc][b] = std::move(p);
+        }
+    }
+    env->ReleaseLongArrayElements(tableFlat, tab, JNI_ABORT);
+
+    // ---- per-path LWE a component and beta ----
+    // The server never sees r_a or s_L: it only gets {a_i} and
+    // beta = <a, s_L> + r_a (mod 2N).
+    std::vector<std::vector<std::uint64_t>> av(uk, std::vector<std::uint64_t>(static_cast<std::size_t>(d), 0));
+    std::vector<std::uint64_t> betav(uk, 0);
+    {
+        jlong *beta = env->GetLongArrayElements(betaArr, nullptr);
+        const jsize blen = env->GetArrayLength(betaArr);
+        for (std::size_t a = 0; a < uk && static_cast<jsize>(a) < blen; ++a) {
+            betav[a] = static_cast<std::uint64_t>(beta[a]) % two_n;
+        }
+        env->ReleaseLongArrayElements(betaArr, beta, JNI_ABORT);
+        for (std::size_t a = 0; a < uk; ++a) {
+            jlongArray row = static_cast<jlongArray>(env->GetObjectArrayElement(aArr, static_cast<jsize>(a)));
+            if (row == nullptr) {
+                throw std::runtime_error("cape_answer_core: a[" + std::to_string(a) + "] is null");
+            }
+            const jsize len = env->GetArrayLength(row);
+            jlong *raw = env->GetLongArrayElements(row, nullptr);
+            const int take = (static_cast<int>(len) < d) ? static_cast<int>(len) : d;
+            for (int i = 0; i < take; ++i) {
+                av[a][static_cast<std::size_t>(i)] = static_cast<std::uint64_t>(raw[i]) % two_n;
+            }
+            env->ReleaseLongArrayElements(row, raw, JNI_ABORT);
+            env->DeleteLocalRef(row);
+        }
+    }
+
+    // ---- accumulate the k-way sum in the CIPHERTEXT domain ----
+    // SampleExtract is linear, so summing the bPay samples equals summing the rotated
+    // ciphertexts and sampling once.  Doing it on the ciphertexts also lets SEAL's own
+    // Decryptor produce the payload coefficient directly, which removes any doubt about
+    // the reverse-convention signs.
+    std::vector<Ciphertext> sumCt(ub);
+    std::vector<bool> have(ub, false);
+    Ciphertext rot;
+    for (std::size_t a = 0; a < uk; ++a) {
+        for (std::size_t b = 0; b < ub; ++b) {
+            Ciphertext accCol;
+            for (std::size_t cc = 0; cc < uC; ++cc) {
+                Ciphertext prod;    // <- inside the loop; see the note above
+                c->evaluator->multiply_plain(selAll[a][cc], tabNtt[cc][b], prod);
+                if (cc == 0) {
+                    accCol = std::move(prod);
+                } else {
+                    c->evaluator->add_inplace(accCol, prod);
+                }
+            }
+            blind_rotate(c, bk, accCol, av[a], betav[a], rot);
+            if (!have[b]) {
+                sumCt[b] = rot;
+                have[b] = true;
+            } else {
+                c->evaluator->add_inplace(sumCt[b], rot);
+            }
+        }
+    }
+
+    std::vector<std::uint64_t> out(ub, 0);
+    for (std::size_t b = 0; b < ub; ++b) {
+        Ciphertext pf = sumCt[b];
+        if (pf.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(pf);
+        Plaintext res;
+        c->decryptor->decrypt(pf, res);
+        out[b] = res[0];
+    }
+    return out;
+}
+
 }  // namespace
 
 // ============================================================================
@@ -923,6 +1110,50 @@ JNIEXPORT jobjectArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nati
     JNI_END(env, nullptr)
 }
 
+// Diagnostic only: the TRUE {-1, 0, +1} histogram of the secret key's coefficients.
+//
+// Why this exists.  `secret_bits` maps `v == 1 || v == 0 ? v : 0`, so it silently
+// cannot tell -1 apart from a genuine 0 - which means it CANNOT be used to answer
+// "how many rounds are identity".  P1-3 turns on exactly that question, so measure
+// the real ternary histogram here instead of inferring it from a lossy projection.
+//
+// Returns {count(-1), count(0), count(+1), coeffCount}.
+JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeSecretHistogram(
+    JNIEnv *env, jclass, jlong h) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    const std::size_t n = c->n;
+    const auto &cm = c->context->first_context_data()->parms().coeff_modulus();
+    const auto &skp = c->sk.data();
+    std::vector<std::uint64_t> skc(skp.data(), skp.data() + skp.coeff_count());
+    auto tables = c->context->first_context_data()->small_ntt_tables();
+    // Inverse-NTT every prime's row, but tally only the FIRST prime's row: each row is
+    // the same ternary polynomial reduced modulo a different prime, so counting all of
+    // them would multiply the histogram by coeff_modulus_size.
+    for (std::size_t j = 0; j < cm.size(); ++j) {
+        util::inverse_ntt_negacyclic_harvey(skc.data() + j * n, tables[j]);
+    }
+    jlong neg = 0, zero = 0, pos = 0, other = 0;
+    const std::uint64_t p0 = cm[0].value();
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::uint64_t v = skc[i];
+        if (v == 0) {
+            ++zero;
+        } else if (v == 1) {
+            ++pos;
+        } else if (v == p0 - 1) {
+            ++neg;
+        } else {
+            ++other;
+        }
+    }
+    jlong vals[5] = {neg, zero, pos, other, static_cast<jlong>(n)};
+    jlongArray arr = env->NewLongArray(5);
+    env->SetLongArrayRegion(arr, 0, 5, vals);
+    return arr;
+    JNI_END(env, nullptr)
+}
+
 // ---------------------------------------------------------------------------
 //  Persistent rotation job.
 //
@@ -1072,6 +1303,103 @@ JNIEXPORT jlong JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeStore
 JNIEXPORT void JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeFreeCt(
     JNIEnv *, jclass, jlong handle) {
     (void)handle;   // store grows monotonically; the JVM side is short-lived
+}
+
+// ---------------------------------------------------------------------------
+//  P1-1: the COLUMN SELECTOR as a CLIENT-SIDE ciphertext.
+//
+//  Paper A1 QUERY 4-5:
+//      e <- (0,...,0, 1, 0,...,0) in {0,1}^C   with the 1 at index c_a
+//      q^col_a = RLWE.Enc_{s_R}(e)
+//  and Appendix D.2 argues indistinguishability of "the encrypted column and row
+//  selectors".  The point of these entry points is that the SERVER never sees c_a:
+//  it receives opaque bytes and only multiplies them into the plaintext table.
+//
+//  These live on the native side because the selector has to share a context with
+//  the accumulator.  The column product is followed immediately by blind_rotate
+//  (d CMUX rounds against the RGSW bootstrap key), so a selector encrypted in the
+//  Java scoring channel -- a different context, a different t -- cannot be used.
+//
+//  One selector = the ordinary SEAL serialization of a ciphertext, already in NTT
+//  form, i.e. exactly what nativeCapeAnswerSealed's multiply_plain consumes.
+//
+//  Semantics of the argument: it is the SCALAR e_cc from the paper's one-hot vector
+//  e in {0,1}^C, not a column index.  `value != 0` encrypts the constant 1,
+//  `value == 0` encrypts the zero polynomial -- the same two plaintexts the baseline
+//  builds as `p[0] = (cc == colIdx[a]) ? 1 : 0`.  Keeping the argument a bit rather
+//  than an index is the point: the column identity must live in WHICH entry carries
+//  the 1, because that is the only thing the server is not allowed to learn.
+// ---------------------------------------------------------------------------
+JNIEXPORT jbyteArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeEncryptSealedColumn(
+    JNIEnv *env, jclass, jlong h, jlong value) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    Plaintext p;
+    p.resize(c->n);
+    for (std::size_t i = 0; i < c->n; ++i) p[i] = 0;
+    if (value != 0) p[0] = 1;
+    Ciphertext ct;
+    c->encryptor->encrypt_symmetric(p, ct);
+    c->evaluator->transform_to_ntt_inplace(ct);
+    const std::string bytes = ct_to_bytes(ct);
+    const jsize len = static_cast<jsize>(bytes.size());
+    jbyteArray out = env->NewByteArray(len);
+    if (out == nullptr) {
+        throw std::runtime_error("nativeEncryptSealedColumn: NewByteArray failed");
+    }
+    env->SetByteArrayRegion(out, 0, len, reinterpret_cast<const jbyte *>(bytes.data()));
+    return out;
+    JNI_END(env, nullptr)
+}
+
+// Batch form: k*C selectors in ONE JNI call and ONE byte array, path-major,
+// each entry prefixed with its own little-endian int32 length.
+//
+// Why one call: at N=8192 a selector is ~524 KB, so C=26 selectors per path is
+// ~13.6 MB and three paths is ~41 MB -- 78 JNI crossings plus 78 Java-side byte
+// array copies is pure overhead.  The length prefixes are what make it a stream
+// instead of an array of fixed-size blobs (a future compressed mode would change
+// the size per entry).
+JNIEXPORT jbyteArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeEncryptSealedColumns(
+    JNIEnv *env, jclass, jlong h, jlongArray values) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    const jsize cnt = env->GetArrayLength(values);
+    jlong *raw = env->GetLongArrayElements(values, nullptr);
+    std::vector<std::string> blobs;
+    blobs.reserve(static_cast<std::size_t>(cnt));
+    std::size_t total = 0;
+    for (jsize i = 0; i < cnt; ++i) {
+        const jlong value = raw[i];
+        Plaintext p;
+        p.resize(c->n);
+        for (std::size_t j = 0; j < c->n; ++j) p[j] = 0;
+        if (value != 0) p[0] = 1;
+        Ciphertext ct;
+        c->encryptor->encrypt_symmetric(p, ct);
+        c->evaluator->transform_to_ntt_inplace(ct);
+        blobs.push_back(ct_to_bytes(ct));
+        total += 4 + blobs.back().size();
+    }
+    env->ReleaseLongArrayElements(values, raw, JNI_ABORT);
+
+    jbyteArray out = env->NewByteArray(static_cast<jsize>(total));
+    if (out == nullptr) {
+        throw std::runtime_error("nativeEncryptSealedColumns: NewByteArray failed");
+    }
+    std::vector<char> buf;
+    buf.reserve(total);
+    for (const std::string &b : blobs) {
+        const std::uint32_t len = static_cast<std::uint32_t>(b.size());
+        for (int sh = 0; sh < 4; ++sh) {
+            buf.push_back(static_cast<char>((len >> (8 * sh)) & 0xFFu));
+        }
+        buf.insert(buf.end(), b.begin(), b.end());
+    }
+    env->SetByteArrayRegion(out, 0, static_cast<jsize>(buf.size()),
+                            reinterpret_cast<const jbyte *>(buf.data()));
+    return out;
+    JNI_END(env, nullptr)
 }
 
 JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeExternalProductH(
@@ -1588,154 +1916,130 @@ JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_native
     JNI_END(env, nullptr)
 }
 
+// jlong[] helper shared by both entry points.
+static jlongArray core_to_jlongs(JNIEnv *env, const std::vector<std::uint64_t> &rec) {
+    jlongArray arr = env->NewLongArray(static_cast<jsize>(rec.size()));
+    if (arr == nullptr) return nullptr;
+    std::vector<jlong> out(rec.size());
+    for (std::size_t i = 0; i < rec.size(); ++i) {
+        out[i] = static_cast<jlong>(rec[i]);
+    }
+    if (!out.empty()) {
+        env->SetLongArrayRegion(arr, 0, static_cast<jsize>(out.size()), out.data());
+    }
+    return arr;
+}
+
+// BASELINE form: the server turns a PLAINTEXT column index into C one-hot selector
+// ciphertexts of its own.  Mathematically equivalent to the paper's q^col_a, but the
+// server learns c_a -- which is the first half of the (c_a, r_a) leak recorded as D13.
+// Kept as the reference the client-encrypted form is compared against.
 JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeCapeAnswerSealed(
     JNIEnv *env, jclass, jlong h, jint d, jint C, jint k, jint bPay,
     jlongArray tableFlat, jlongArray cIdx, jlongArray rIdx,
-    jobjectArray aArr, jlongArray betaArr, jlongArray sBitsArr) {
+    jobjectArray aArr, jlongArray betaArr, jintArray sBitsArr) {
     JNI_BEGIN
     NativeCtx *c = as_ctx(h);
     const std::size_t n = c->n;
-    const int L = c->working_prime_count;
-    const std::uint64_t two_n = 2 * static_cast<std::uint64_t>(n);
+    (void)rIdx;   // r_a is not a parameter of the algorithm: beta carries it, masked.
 
-    // ---- 引导密钥 bsk = { RGSW(s_i) }：按【客户端给的 s 比特】建 ----
-    // 论文 A1 L838 的行选择子是 LWE.Enc_{s_L}(r_a)，s_L 是客户端私钥；
-    // 而盲旋转要用的 bsk 是 {RGSW(s_i)} —— 这是**公开评估密钥**
-    // （bsk 的全部意义就是「加密了的秘密比特」，可以公开），所以客户端把它一并送来，
-    // 与真两方部署一致：客户端离线生成并发布 bsk，服务器只做同态运算。
-    // 服务器始终看不到 r_a（只在 beta 里被 ⟨a,s_L⟩ 掩掉）。
-    std::vector<int> sBits(static_cast<std::size_t>(d), 0);
-    {
-        jlong *sb = env->GetLongArrayElements(sBitsArr, nullptr);
-        const jsize len = env->GetArrayLength(sBitsArr);
-        const int take = (static_cast<int>(len) < d) ? static_cast<int>(len) : d;
-        for (int i = 0; i < take; ++i) {
-            sBits[static_cast<std::size_t>(i)] = (sb[i] != 0) ? 1 : 0;
-        }
-        env->ReleaseLongArrayElements(sBitsArr, sb, JNI_ABORT);
-    }
-    std::vector<RgswKey> bk;
-    bk.reserve(static_cast<std::size_t>(d));
-    for (int i = 0; i < d; ++i) {
-        bk.push_back(build_rgsw_constant(
-            c, static_cast<std::uint64_t>(sBits[static_cast<std::size_t>(i)])));
-    }
-
-    // ---- plaintext tables P_{c,b}(X): NTT once, reused for all k paths ----
-    jlong *tab = env->GetLongArrayElements(tableFlat, nullptr);
-    auto parms_id = c->context->first_parms_id();
-    std::vector<std::vector<Plaintext>> tabNtt(
-        static_cast<std::size_t>(C), std::vector<Plaintext>(static_cast<std::size_t>(bPay)));
-    for (int cc = 0; cc < C; ++cc) {
-        for (int b = 0; b < bPay; ++b) {
-            Plaintext p;
-            p.resize(n);
-            const std::size_t base = (static_cast<std::size_t>(cc) * bPay + b) * n;
-            for (std::size_t i = 0; i < n; ++i) {
-                p[i] = static_cast<std::uint64_t>(tab[base + i]);
-            }
-            c->evaluator->transform_to_ntt_inplace(p, parms_id);
-            tabNtt[static_cast<std::size_t>(cc)][static_cast<std::size_t>(b)] = std::move(p);
-        }
-    }
-    env->ReleaseLongArrayElements(tableFlat, tab, JNI_ABORT);
-
-    // ---- per-path column index, row index, LWE index ----
     jlong *cidx = env->GetLongArrayElements(cIdx, nullptr);
-    jlong *ridx = env->GetLongArrayElements(rIdx, nullptr);
-    std::vector<int> colIdx(static_cast<std::size_t>(k));
-    for (int a = 0; a < k; ++a) colIdx[static_cast<std::size_t>(a)] = static_cast<int>(cidx[a]);
-
-    // ---- 行选择子由【客户端】提供（论文 A1 L838 q^row_a = LWE.Enc_{s_L}(r_a)）----
-    // 服务器不再自己造 a，也不再借用自己那边的秘密多项式：
-    // 它只拿到 {a_i} 与 beta = <a, s_L> + r_a (mod 2N)，**看不到 r_a 也看不到 s_L**。
-    std::vector<std::vector<std::uint64_t>> av(static_cast<std::size_t>(k),
-                                               std::vector<std::uint64_t>(static_cast<std::size_t>(d), 0));
-    std::vector<std::uint64_t> betav(static_cast<std::size_t>(k), 0);
-    {
-        jlong *beta = env->GetLongArrayElements(betaArr, nullptr);
-        for (int a = 0; a < k; ++a) {
-            betav[static_cast<std::size_t>(a)] =
-                static_cast<std::uint64_t>(beta[a]) % two_n;
-        }
-        env->ReleaseLongArrayElements(betaArr, beta, JNI_ABORT);
-        for (int a = 0; a < k; ++a) {
-            jlongArray row = static_cast<jlongArray>(env->GetObjectArrayElement(aArr, a));
-            if (row == nullptr) {
-                throw std::runtime_error("nativeCapeAnswerSealed: a[" + std::to_string(a) + "] is null");
-            }
-            const jsize len = env->GetArrayLength(row);
-            jlong *raw = env->GetLongArrayElements(row, nullptr);
-            const int take = (static_cast<int>(len) < d) ? static_cast<int>(len) : d;
-            for (int i = 0; i < take; ++i) {
-                av[static_cast<std::size_t>(a)][static_cast<std::size_t>(i)] =
-                    static_cast<std::uint64_t>(raw[i]) % two_n;
-            }
-            env->ReleaseLongArrayElements(row, raw, JNI_ABORT);
-            env->DeleteLocalRef(row);
-        }
-    }
-    env->ReleaseLongArrayElements(cIdx, cidx, JNI_ABORT);
-    env->ReleaseLongArrayElements(rIdx, ridx, JNI_ABORT);
-
-    // ---- accumulate the 3-way sum in the CIPHERTEXT domain ----
-    // SampleExtract is linear, so summing the B_pay samples is identical to summing
-    // the rotated ciphertexts and sampling once.  Doing it on the ciphertexts also
-    // lets SEAL's own Decryptor produce the payload coefficient directly, which
-    // removes any doubt about the reverse-convention signs.
-    std::vector<Ciphertext> sumCt(static_cast<std::size_t>(bPay));
-    std::vector<bool> have(static_cast<std::size_t>(bPay), false);
-
-    std::vector<Ciphertext> sel(static_cast<std::size_t>(C));
-    Ciphertext accCol, rot;
+    const jsize clen = env->GetArrayLength(cIdx);
+    std::vector<std::vector<Ciphertext>> selAll(
+        static_cast<std::size_t>(k), std::vector<Ciphertext>(static_cast<std::size_t>(C)));
     for (int a = 0; a < k; ++a) {
-        // one-hot column selectors for this path (base CAPE form: C independent
-        // one-hot ciphertexts, no expansion, hence no alpha folding either)
+        const int col = (a < static_cast<int>(clen)) ? static_cast<int>(cidx[a]) : 0;
         for (int cc = 0; cc < C; ++cc) {
             Plaintext p;
             p.resize(n);
-            p[0] = (cc == colIdx[static_cast<std::size_t>(a)]) ? 1 : 0;
-            c->encryptor->encrypt_symmetric(p, sel[static_cast<std::size_t>(cc)]);
-            c->evaluator->transform_to_ntt_inplace(sel[static_cast<std::size_t>(cc)]);
+            for (std::size_t i = 0; i < n; ++i) p[i] = 0;
+            // p[0], NOT p[col]: entry cc encrypts the SCALAR e_cc of the paper's
+            // one-hot vector e in {0,1}^C.  The column identity lives in WHICH entry
+            // carries the 1, not in an exponent -- which is exactly why the
+            // client-encrypted form can hide c_a at all.
+            if (cc == col) p[0] = 1;
+            Ciphertext &ct = selAll[static_cast<std::size_t>(a)][static_cast<std::size_t>(cc)];
+            c->encryptor->encrypt_symmetric(p, ct);
+            c->evaluator->transform_to_ntt_inplace(ct);
         }
-        for (int b = 0; b < bPay; ++b) {
-            bool first = true;
-            for (int cc = 0; cc < C; ++cc) {
-                Ciphertext prod;
-                c->evaluator->multiply_plain(sel[static_cast<std::size_t>(cc)],
-                                             tabNtt[static_cast<std::size_t>(cc)][static_cast<std::size_t>(b)],
-                                             prod);
-                if (first) {
-                    accCol = std::move(prod);
-                    first = false;
-                } else {
-                    c->evaluator->add_inplace(accCol, prod);
-                }
-            }
-            blind_rotate(c, bk, accCol, av[static_cast<std::size_t>(a)],
-                         betav[static_cast<std::size_t>(a)], rot);
-            if (!have[static_cast<std::size_t>(b)]) {
-                sumCt[static_cast<std::size_t>(b)] = rot;
-                have[static_cast<std::size_t>(b)] = true;
-            } else {
-                c->evaluator->add_inplace(sumCt[static_cast<std::size_t>(b)], rot);
-            }
-        }
+    }
+    env->ReleaseLongArrayElements(cIdx, cidx, JNI_ABORT);
+
+    auto rec = cape_answer_core(env, c, d, C, k, bPay, tableFlat, aArr, betaArr, sBitsArr, selAll);
+    return core_to_jlongs(env, rec);
+    JNI_END(env, nullptr)
+}
+
+// P1-1 form: the column selectors arrive as CLIENT-ENCRYPTED bytes.  The server
+// never sees c_a; it parses opaque ciphertexts and multiplies them.
+//
+// selBlob = k*C entries, path-major (a*C + cc), each prefixed with a little-endian
+// int32 length.  Entry (a, cc) is RLWE.Enc(one-hot with the 1 at c_a).
+//
+// The two entry points share cape_answer_core, so "same payload as the baseline"
+// is a statement about the selectors only -- not about two copies of the loop.
+JNIEXPORT jlongArray JNICALL Java_com_fusepir_nativejni_NativeBlindRotate_nativeCapeAnswerSealedC(
+    JNIEnv *env, jclass, jlong h, jint d, jint C, jint k, jint bPay,
+    jlongArray tableFlat, jbyteArray selBlob,
+    jobjectArray aArr, jlongArray betaArr, jintArray sBitsArr) {
+    JNI_BEGIN
+    NativeCtx *c = as_ctx(h);
+    if (C <= 0 || k <= 0) {
+        throw std::runtime_error("nativeCapeAnswerSealedC: C and k must be positive");
     }
 
-    // ---- decode: single-process loopback, so the "client" side (which holds the
-    //      secret key) decodes here with SEAL's own Decryptor ----
-    std::vector<jlong> out(static_cast<std::size_t>(bPay), 0);
-    for (int b = 0; b < bPay; ++b) {
-        Ciphertext pf = sumCt[static_cast<std::size_t>(b)];
-        if (pf.is_ntt_form()) c->evaluator->transform_from_ntt_inplace(pf);
-        Plaintext res;
-        c->decryptor->decrypt(pf, res);
-        out[static_cast<std::size_t>(b)] = static_cast<jlong>(res[0]);
+    // ---- parse the selector stream ----
+    const jsize blobLen = env->GetArrayLength(selBlob);
+    std::vector<char> blob(static_cast<std::size_t>(blobLen));
+    if (blobLen > 0) {
+        env->GetByteArrayRegion(selBlob, 0, blobLen, reinterpret_cast<jbyte *>(blob.data()));
     }
-    jlongArray arr = env->NewLongArray(bPay);
-    env->SetLongArrayRegion(arr, 0, bPay, out.data());
-    return arr;
+    const std::size_t want = static_cast<std::size_t>(C) * static_cast<std::size_t>(k);
+    std::vector<std::vector<Ciphertext>> selAll(
+        static_cast<std::size_t>(k), std::vector<Ciphertext>(static_cast<std::size_t>(C)));
+    std::size_t pos = 0;
+    std::size_t seen = 0;
+    for (int a = 0; a < k; ++a) {
+        for (int cc = 0; cc < C; ++cc) {
+            if (pos + 4 > blob.size()) {
+                throw std::runtime_error("nativeCapeAnswerSealedC: selector blob truncated at "
+                    "entry " + std::to_string(seen) + " of " + std::to_string(want));
+            }
+            const std::uint32_t len = le32(blob.data() + pos);
+            pos += 4;
+            if (pos + len > blob.size()) {
+                throw std::runtime_error("nativeCapeAnswerSealedC: entry " + std::to_string(seen)
+                    + " claims " + std::to_string(len) + " bytes but only "
+                    + std::to_string(blob.size() - pos) + " remain");
+            }
+            Ciphertext &ct = selAll[static_cast<std::size_t>(a)][static_cast<std::size_t>(cc)];
+            ct = bytes_to_ct(c, blob.data() + pos, len);
+            pos += len;
+            ++seen;
+            // Defensive normalisation.  nativeEncryptSealedColumn(s) already emit NTT
+            // form, but a selector that arrives in the coefficient domain would make
+            // multiply_plain throw "NTT form mismatch", and that message reads like a
+            // parameter problem rather than a format one.
+            if (!ct.is_ntt_form()) {
+                c->evaluator->transform_to_ntt_inplace(ct);
+            }
+            // An explicit check beats SEAL's own error here: this mismatch was one of
+            // the bring-up bugs, and "wrong parms_id" is the real diagnosis.
+            if (ct.parms_id() != c->context->first_parms_id()) {
+                throw std::runtime_error("nativeCapeAnswerSealedC: entry " + std::to_string(seen - 1)
+                    + " is at a different parms_id than the table (the selector must be "
+                    "encrypted under the ANSWER context: N and the coefficient modulus "
+                    "are both part of the protocol)");
+            }
+        }
+    }
+    if (pos != blob.size()) {
+        throw std::runtime_error("nativeCapeAnswerSealedC: selector blob has "
+            + std::to_string(blob.size() - pos) + " trailing bytes");
+    }
+
+    auto rec = cape_answer_core(env, c, d, C, k, bPay, tableFlat, aArr, betaArr, sBitsArr, selAll);
+    return core_to_jlongs(env, rec);
     JNI_END(env, nullptr)
 }
 
