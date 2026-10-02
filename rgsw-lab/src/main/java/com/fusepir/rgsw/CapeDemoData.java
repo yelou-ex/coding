@@ -63,34 +63,52 @@ public final class CapeDemoData {
     }
 
     /**
-     * 公开哈希 {@code H: keyword → slot ∈ [0, n)}，论文的 {@code h_a(K)}（A1 L836）。
+     * 公开哈希 {@code H: keyword → u ∈ [0, RC)}，论文的 {@code h_a(K)}（A1 L836）。
      *
-     * <p><b>为什么必须无碰撞。</b>一个「槽」（cell）承载一个关键词的 k 个 BFF share；
-     * 两个关键词落在同一槽会互相污染，答案就错了。所以这里用
-     * 「确定性混合哈希 + 线性探测消解碰撞」，再按关键词顺序做局部交换使其稳定
-     * （同一份 DB 永远得到同一张表）。
+     * <p><b>⚠️ 这里有一个我踩了很久的坑，写清楚。</b>
      *
-     * <p><b>为什么它可以是公开的。</b>论文 A1 L831 把 {@code H} 放进公开参数
-     * {@code pp = (H, fp, R, C, N, d, t, q)}，所以「查这张表」不泄露任何东西。
+     * <p>论文的布局是：数组 {@code D} 长 {@code L_BFF}，补零到 {@code RC}，
+     * 再按 {@code P_{c,b}(X) ← Σ_r D[r + cR][b]·X^r} 切成 {@code C} 个多项式。
+     * 索引 {@code u} 决定 {@code c = ⌊u/R⌋}、{@code r = u mod R}。
+     *
+     * <p>第一版我把 {@code u} 取在 {@code [0, n)}（n = 关键词数），
+     * 于是**只有前 ⌈n/⌊R/maxValues⌋⌉ 列是"有货"的**，其余列对应的
+     * {@code D[r + cR]} 落在 {@code L_BFF} 之外（补零区）⇒ {@code P_{c,b} ≡ 0}
+     * ⇒ 载荷恒为 0。症状是「一切看起来都对，但答案是 0」。
+     *
+     * <p>所以 {@code u} 必须取在 {@code [0, span)} 上，其中
+     * <b>{@code span = cellsPerCol × C}</b>（{@code cellsPerCol = ⌊R/maxValues⌋}）。
+     * 注意**不是** {@code R×C} —— 我第一版就是这么写的，结果 {@code u = 408} 时
+     * {@code col = 408/5 = 81 > C = 26} 直接越界；而且每列只有 {@code cellsPerCol}
+     * 个 cell 可放（不是 {@code R} 个），摊到 {@code R×C} 会让同一列挤进
+     * {@code R/cellsPerCol} 倍的关键词 ⇒ `cell collision`。
+     *
+     * <p>映射：{@code col = u / cellsPerCol}、{@code cell = u % cellsPerCol}、
+     * {@code rowOf = cell × maxValues}。
+     *
+     * <p>无碰撞：关键词两两不同槽、槽两两不同 → {@code u} 两两不同 → 列/行对两两不同。
      */
-    private static int[] keywordHash(List<String> keywords) {
+    private static int[] keywordHash(List<String> keywords, int cellsPerCol, int c) {
         final int n = keywords.size();
-        int[] slot = new int[n];
+        final int span = Math.max(n, cellsPerCol * c);
+        int[] slot = new int[span];          // ⚠️ 必须是 span，不是 n（按 u ∈ [0,span) 索引）
         Arrays.fill(slot, -1);
         for (int i = 0; i < n; i++) {
-            int h = mix(keywords.get(i).hashCode()) % n;
+            int h = mix(keywords.get(i).hashCode()) % span;
             if (h < 0) {
-                h += n;
+                h += span;
             }
             while (slot[h] != -1) {          // 线性探测
-                h = (h + 1) % n;
+                h = (h + 1) % span;
             }
             slot[h] = i;
         }
-        // slot[h] = 关键词下标 ⇒ 反查成「关键词下标 → 槽号」
+        // slot[h] = 关键词下标 ⇒ 反查成「关键词下标 → 位置 u」
         int[] out = new int[n];
-        for (int h = 0; h < n; h++) {
-            out[slot[h]] = h;
+        for (int h = 0; h < span; h++) {
+            if (slot[h] >= 0) {
+                out[slot[h]] = h;
+            }
         }
         return out;
     }
@@ -229,20 +247,20 @@ public final class CapeDemoData {
         // 所以用一个必经查表的公开哈希：先算确定性混合哈希，再用线性探测消解碰撞，
         // 并按 keywords 的顺序做局部交换让它稳定（KEYWORD_HASH 是公开参数 pp 的一部分，
         // 论文 pp 里也含 H，所以这不是「偷偷藏状态」）。
-        int[] slotOf = keywordHash(keywords);
         int cellsPerCol = Math.max(1, r / maxValues);
         int colsNeeded = (kwCount + cellsPerCol - 1) / cellsPerCol;
         if (colsNeeded > c) {
             throw new IllegalStateException("need " + colsNeeded + " columns for "
                 + kwCount + " keywords (cells/col=" + cellsPerCol + ") but got c=" + c);
         }
+        int[] slotOf = keywordHash(keywords, cellsPerCol, c);
         int[] colOf = new int[kwCount];
         int[] rowOf = new int[kwCount];
         Map<String, Integer> kwIndex = new LinkedHashMap<>();
         for (int i = 0; i < kwCount; i++) {
-            // 同一份哈希值既决定列也决定行（论文 u_a 是单个整数）
+            // 同一份 u 既决定列也决定 cell（论文 u_a 是单个整数）
             colOf[i] = slotOf[i] / cellsPerCol;
-            // 行偏移**对齐到 maxValues 的整数倍**：这样任意两个关键词的行区间
+            // 行偏移**对齐到 maxValues 的整数倍**：任意两个关键词的行区间
             // 要么完全相同、要么完全不相交，BFF 的 k 个 share 不会被别人切进去。
             rowOf[i] = (slotOf[i] % cellsPerCol) * maxValues;
             kwIndex.put(keywords.get(i), i);

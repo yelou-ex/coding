@@ -85,12 +85,13 @@ public final class CapeClientQuery {
         int kwCount = keywords.size();
 
         // ---- 公开哈希 H：与 CapeDemoData.keywordHash 必须逐位一致 ----
-        int[] slotOf = keywordHash(keywords);
+        int cellsPerCol = Math.max(1, r / maxValues);
+        int c = Math.max(1, (kwCount + cellsPerCol - 1) / cellsPerCol);
+        int[] slotOf = keywordHash(keywords, cellsPerCol, c);
         Map<String, Integer> kwIndex = new LinkedHashMap<>();
         for (int i = 0; i < kwCount; i++) {
             kwIndex.put(keywords.get(i), i);
         }
-        int cellsPerCol = Math.max(1, r / maxValues);
 
         String anchor = query.get(0);
         Integer ai = kwIndex.get(anchor);
@@ -192,7 +193,9 @@ public final class CapeClientQuery {
      */
     public static Sealed buildIndicesOnly(int n, int k, int r, int maxValues,
                                           List<String> keywords, List<String> query) {
-        int[] slotOf = keywordHash(keywords);
+        int cellsPerCol = Math.max(1, r / maxValues);
+        int c = Math.max(1, (keywords.size() + cellsPerCol - 1) / cellsPerCol);
+        int[] slotOf = keywordHash(keywords, cellsPerCol, c);
         Map<String, Integer> kwIndex = new LinkedHashMap<>();
         for (int i = 0; i < keywords.size(); i++) {
             kwIndex.put(keywords.get(i), i);
@@ -201,7 +204,6 @@ public final class CapeClientQuery {
         if (ai == null) {
             throw new IllegalArgumentException("unknown keyword: " + query.get(0));
         }
-        int cellsPerCol = Math.max(1, r / maxValues);
         Sealed q = new Sealed();
         q.colIdx = new long[k];
         q.rowIdx = new long[k];
@@ -235,23 +237,26 @@ public final class CapeClientQuery {
     }
 
     /** 与 {@code CapeDemoData.keywordHash} 逐位一致的公开哈希。 */
-    static int[] keywordHash(List<String> keywords) {
+    static int[] keywordHash(List<String> keywords, int cellsPerCol, int c) {
         int n = keywords.size();
-        int[] slot = new int[n];
+        int span = Math.max(n, cellsPerCol * c);
+        int[] slot = new int[span];
         Arrays.fill(slot, -1);
         for (int i = 0; i < n; i++) {
-            int h = mix(keywords.get(i).hashCode()) % n;
+            int h = mix(keywords.get(i).hashCode()) % span;
             if (h < 0) {
-                h += n;
+                h += span;
             }
             while (slot[h] != -1) {
-                h = (h + 1) % n;
+                h = (h + 1) % span;
             }
             slot[h] = i;
         }
         int[] out = new int[n];
-        for (int h = 0; h < n; h++) {
-            out[slot[h]] = h;
+        for (int h = 0; h < span; h++) {
+            if (slot[h] >= 0) {
+                out[slot[h]] = h;
+            }
         }
         return out;
     }
