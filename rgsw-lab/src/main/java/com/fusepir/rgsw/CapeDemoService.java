@@ -564,7 +564,7 @@ public final class CapeDemoService {
         System.out.println("  查询（**不进 JSON**）: " + query);
 
         CapeClientQuery.Sealed q = CapeClientQuery.build(ctxHandle, n, K, R, tb.maxValues,
-            tb.lBf, db.intMeta("maxSetSize", 4), epsFromMeta(), db.keywords, query);
+            tb.lBf, db.intMeta("maxSetSize", 4), epsFromMeta(), bootstrapBits(), db.keywords, query);
         String json = CapeClientQuery.toJson(q);
 
         // 1. 出站隐私
@@ -631,6 +631,26 @@ public final class CapeDemoService {
         fail += match ? 1 : 0;
 
         System.out.println("  === " + pass + " PASS / " + fail + " FAIL ===");
+    }
+
+    /**
+     * 引导密钥 {@code bsk = {RGSW(s_i)}} 所对应的比特，取自**本上下文**的秘密密钥。
+     *
+     * <p>这是 {@code blind_rotate} 那条不变量的落点：{@code β = Σ a_i·s_i + r_a} 里的
+     * {@code s_i} 必须与建 {@code bk} 用的完全相同，否则净旋转量变成
+     * {@code Σa_i(s_i^server − s_i^client) − r} ⇒ 载荷恒 0。
+     *
+     * <p>注意 {@code nativeSecretBits} 给的是「系数 == 1 或 0」的指示函数
+     * （三元秘密的 −1 被归零），所以它**只能**用来生成 bk 的比特，
+     * 不能当作真秘密的多项式系数 —— 这一点在 `CapeClientQuery` 的注释里有完整说明。
+     */
+    private int[] bootstrapBits() {
+        Long[] b = NativeBlindRotate.nativeSecretBits(ctxHandle, d);
+        int[] bits = new int[d];
+        for (int i = 0; i < d && i < b.length; i++) {
+            bits[i] = b[i].intValue();
+        }
+        return bits;
     }
 
     /** 与 {@code CapeDemoData.epsFromMeta} 同源，供自检构造客户端查询用。 */

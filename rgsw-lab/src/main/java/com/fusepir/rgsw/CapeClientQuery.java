@@ -70,8 +70,14 @@ public final class CapeClientQuery {
      * @param keywords  DB 里的关键词全集（用于复算公开哈希 H）
      * @param query     本次查询的关键词，第一个是锚
      */
+    /**
+     * 构造一次查询。
+     *
+     * @param bskBits 服务器的引导密钥 {@code bsk = {RGSW(s_i)}} 所对应的比特。
+     *   <b>它必须与建 bk 用的那一组完全相同</b> —— 见下面那段不变量说明。
+     */
     public static Sealed build(long ctxHandle, int n, int k, int r, int maxValues, int lBf,
-                               int maxSetSize, double epsBf,
+                               int maxSetSize, double epsBf, int[] bskBits,
                                List<String> keywords, List<String> query) {
         if (query.isEmpty()) {
             throw new IllegalArgumentException("query must not be empty");
@@ -107,25 +113,31 @@ public final class CapeClientQuery {
         // ---- 行选择子：LWE 形式（A1 L838 q^row_a = LWE.Enc_{s_L}(r_a)）----
         // β = ⟨a, s_L⟩ + r_a (mod 2N)。
         //
-        // ⚠️ 密码学不变量（我在这里栽过三次，每次都写下来避免重犯）：
-        //   blind_rotate 要求 bsk = {RGSW(s_i)} 与**累加器所加密的那个秘密**是同一个。
-        //   累加器由服务器用 SEAL 上下文的秘密密钥加密（rgsw_blindrotate.cpp L532-533）。
+        // ⚠️⚠️ **最关键的一条不变量，我在这里栽了四轮 —— 写清楚：**
         //
-        //   错法 1：客户端新建自己的 SEALContext 取比特 ⇒ 拿到另一个随机秘密 ⇒ 载荷恒 0。
-        //   错法 2：把服务进程的 ctxHandle 跨进程传给测试 JVM ⇒ 句柄是裸指针 ⇒ 段错误。
-        //   错法 3（本版改掉的）：用 `nativeSecretBits` 的 {0,1} 约定。
-        //       它把「系数 == 1 或 0」映射成 1/0，其余（含 −1）**静默归零**，
-        //       而客户端无法从返回值区分「真 0」与「被归零的 −1」⇒ 双方可能用不同的 s。
+        //   blind_rotate 的每一轮做的是
+        //       cur ← CMUX(bk[i], cur, cur·X^{a_i})
+        //   即「s_i = 1 就转到 a_i，否则不动」，最后再逐步乘 X^{-β}。
+        //   净效果 = X^{ Σ a_i·s_i(bsk) - β }。
+        //   要它等于 X^{-r_a}，必须
+        //       β = Σ a_i · s_i(bsk) + r_a
+        //   ——**两边用的必须是同一组 s_i(bsk)**，也就是建 bk 时用的那组比特。
         //
-        //   现在改成：**客户端自己确定 s_L**（{0,1}^d，由种子派生），
-        //   β 与 bsk 都从这同一个 s_L 出发（bsk 比特随请求发给服务器）。
-        //   这样两侧用的是同一组比特，不再依赖任何「取比特」的约定。
-        //   密码学上这是对的：论文 A1 的 sk=(s_L,s_R) 里 s_L 本就用于生成 bsk，
-        //   而 bsk 是公开评估密钥。单进程回环下这仍是妥协 —— 真部署要客户端持有
-        //   上下文（缺陷总表 P0-4）。
-        int d = Integer.getInteger("cape.d", 16);
-        int[] sL = sampleBinarySecret(d);
-        q.sBits = sL;
+        //   我先后试过三种「客户端自选 s」的写法，全都失败（载荷恒 0）：
+        //     1) 新建自己的 SEALContext 取比特（另一随机秘密）；
+        //     2) 依赖 nativeSecretBits 的 {0,1} 约定（它把三元秘密的 −1 静默归零，
+        //        客户端无法区分"真 0"与"被归零的 −1"）；
+        //     3) SHA-256 派生的 {0,1}^d（与 bk 的比特毫无关系）。
+        //   三者都与 bk 不同源 ⇒ 旋转量变成 Σa_i(s_i^server − s_i^client) − r ⇒ 垃圾。
+        //
+        //   而且前面五轮"不变量核对"全都通过 —— 因为我**没有把这一条列进去**。
+        //   教训：核对清单缺一条，比核对不出来更危险。
+        //
+        //   现在把 bskBits 作为显式入参传进来，由调用方保证与 bk 同源。
+        //   密码学上这是对的：bsk = {RGSW(s_i)} 是**公开评估密钥**（"加密后的秘密比特"），
+        //   本来就要发布给服务器；真两方部署里客户端自己生成 sk 与 bsk 并发布 bsk。
+        int d = bskBits.length;
+        q.sBits = bskBits.clone();
         q.a = new long[k][d];
         q.beta = new long[k];
         SecureRandom rnd = new SecureRandom();
@@ -134,7 +146,7 @@ public final class CapeClientQuery {
             long sum = 0;
             for (int i = 0; i < d; i++) {
                 q.a[a][i] = Math.floorMod(rnd.nextLong(), twoN);
-                if (sL[i] == 1) {
+                if (q.sBits[i] == 1) {
                     sum = (sum + q.a[a][i]) % twoN;
                 }
             }
@@ -317,8 +329,13 @@ public final class CapeClientQuery {
         long ctxHandle = NativeBlindRotate.nativeCreateContext(n, 4294967296L,
             Integer.getInteger("cape.b", 32));
         try {
+            // bsk 比特必须与建 bk 用的同源：这里取服务端上下文的（与本类文档的不变量一致）
+            int dd = Integer.getInteger("cape.d", 16);
+            Long[] b = NativeBlindRotate.nativeSecretBits(ctxHandle, dd);
+            int[] bskBits = new int[dd];
+            for (int i = 0; i < dd; i++) { bskBits[i] = b[i].intValue(); }
             Sealed q = build(ctxHandle, n, k, r, maxValues, lBf,
-                maxSetSize, epsBf, kws, query);
+                maxSetSize, epsBf, bskBits, kws, query);
             System.out.println("=== 客户端构造的密文查询 ===");
             System.out.println("  关键词（**不进 JSON**）: " + query);
             System.out.println("  τ（**不进 JSON**）      : " + q.tau);
