@@ -7,6 +7,9 @@ import cape.he.LWESecretKey;
 import edu.alibaba.mpc4j.crypto.fhe.seal.Ciphertext;
 import edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext;
 import edu.alibaba.mpc4j.crypto.fhe.seal.SecretKey;
+import edu.alibaba.mpc4j.crypto.fhe.seal.context.ParmsId;
+import edu.alibaba.mpc4j.crypto.fhe.seal.ntt.NttTables;
+import edu.alibaba.mpc4j.crypto.fhe.seal.ntt.NttTool;
 
 import java.math.BigInteger;
 import java.util.Random;
@@ -99,9 +102,94 @@ public final class LweRlweConversion {
         return new LWESecretKey(s, qL);
     }
 
+    /**
+     * <b>把 LWE 私钥铺成 RLWE 私钥</b>（2026-10-15 新增）——
+     * 也就是《CAPE 数学规范》§0.5 的那一条：
+     *
+     * <pre>
+     *   s_L = (s_L[0], …, s_L[d−1]) ∈ {0,1}^d        LWE 私钥
+     *   s_R(X) = Σ_{j&lt;d} s_L[j]·X^j ∈ R_q            RLWE 私钥（同源）
+     * </pre>
+     *
+     * <p>规范原文：<b>"同源"是整条链能闭合的关键</b>；{@code s_R} 的第 {@code j} 个系数就是
+     * {@code s_L[j]}；全程只有一套秘密。C9 并注"<b>{@code s_R} 按 {@code s_L} 铺开</b>"，
+     * 且 {@code d = LWE 维数 ≤ N}。
+     *
+     * <h3>⚠️ 为什么需要它：它决定 Pack 的交换密钥有多大</h3>
+     * 本仓库此前用的是 {@code Mpc4jRgsw} 默认生成的<b>全 N 系数</b>三元秘密
+     * （{@code 缺陷总表:203} 的直方图注明"全 8192 系数"）。那种秘密下
+     * {@code SampleExtract_0} 得到的是 <b>N 维</b> LWE 样本，于是 Pack 的交换密钥要
+     * {@code nLwe = N} 行 ⇒ <b>12.0 GB</b>。
+     * 而按规范铺开之后 {@code s_R} <b>只在 {@code [0,d)} 上非零</b>
+     * ⇒ 样本的有效维数是 {@code d} ⇒ 交换密钥只要 {@code d × digits} 行
+     * （{@code d = 16} 时 48 条 ≈ 24 MB）。
+     *
+     * <h3>⚠️ 安全含义（不许当成纯优化）</h3>
+     * 若秘密的支撑是<b>已知</b>的 {@code d} 元子集，则
+     * {@code c_0 + c_1·s = c_0 + Σ_{j&lt;d} c_1[j]·s_j}，而 {@code c_1} 均匀
+     * ⇒ <b>这恰好是一个 {@code d} 维 LWE 实例</b>。所以<b>安全性完全由 {@code d} 决定</b>：
+     * {@code d = 16} 只是玩具（16 个未知量，线性代数即可解）。
+     * 真实参数下 {@code d} 必须取到安全级别（论文实验用 {@code d = 512}）。
+     *
+     * <h3>实现方式</h3>
+     * 与 {@link #inverseNttSecret} 对称：借一个 <b>size=2</b> 的密文把系数形态的
+     * RNS 表示写进两个分量（避免出现全零分量），正向 {@code transformToNttInplace}
+     * 之后把第 0 个分量的 {@code [L·N]} 个 long 抄进 {@code SecretKey.data()}。
+     * 秘密多项式在 NTT 域、布局是 {@code [pi·N + i]}（与 §2.2 的读法一致）。
+     *
+     * @param m  参照上下文（提供 {@code N}、工作素数、{@code firstParmsId}）
+     * @param sL LWE 私钥，元素必须是 {@code {0,1}}，长度 {@code = d ≤ N}
+     * @throws IllegalArgumentException 形状或取值不符
+     */
+    public static SecretKey liftLweSecretToRlwe(Mpc4jRgsw m, int[] sL) {
+        if (sL == null || sL.length == 0) {
+            throw new IllegalArgumentException("s_L 不能为空（规范 §0.5：s_L ∈ {0,1}^d）");
+        }
+        final int n = m.n;
+        final int L = m.workingPrimeCount;
+        if (sL.length > n) {
+            throw new IllegalArgumentException("s_L 长 " + sL.length + " > N = " + n
+                + "：C9 要求 d = LWE 维数 ≤ N，铺不开");
+        }
+        // ⚠️ 秘密的 data 要覆盖**全部声明素数**（含最后一个 special prime），
+        //    不是只覆盖 workingPrimeCount 个 —— 否则 `ValCheck.isValidFor` 直接判
+        //    "secret key is not valid for encryption parameters"（实测踩到）。
+        final int declared = m.primes.length;
+        long[] nttAll = new long[declared * n];
+        for (int pi = 0; pi < declared; pi++) {
+            final long p = m.primes[pi].value();
+            long[] coeff = new long[n];
+            for (int j = 0; j < sL.length; j++) {
+                if (sL[j] != 0 && sL[j] != 1) {
+                    throw new IllegalArgumentException("s_L[" + j + "] = " + sL[j]
+                        + " 不是 {0,1} —— 规范的 LWE 私钥是二进制");
+                }
+                coeff[j] = Math.floorMod(sL[j], p);
+            }
+            // 逐素数做负循环 NTT —— 这正是密文/密钥内部存的形式。
+            // ⚠️ `NttTables` 的第一个参数是 **log2(N)**，不是 N：
+            //    传 N 会建出一张长度 1 的表，然后 `NttHandler.transformToRev` 报
+            //    "Index 1 out of bounds for length 1"（实测踩到）。
+            NttTool.nttNegacyclicHarvey(coeff,
+                new NttTables(Integer.numberOfTrailingZeros(n), m.primes[pi]));
+            System.arraycopy(coeff, 0, nttAll, pi * n, n);
+        }
+
+        SecretKey sk = new SecretKey();
+        Plaintext data = sk.data();
+        data.set(nttAll);                       // 一次把长度与内容都设好（不用 resize+arraycopy）
+        // ⚠️ parmsId 必须用**库自己那把密钥身上那个对象**：
+        //    `context.firstParmsId()` 看起来 == 得通，但 `ValCheck.isMetaDataValidFor`
+        //    仍然判 false（实测：coeffCount / parmsId / isNttForm 三项都与库自带密钥相同，
+        //    只有它过、我方不过）。借 `m.sk.parmsId()` 就过。
+        final ParmsId pid = m.sk.parmsId();
+        data.setParmsId(pid);
+        sk.setParmsId(pid);
+        return sk;
+    }
+
     /** 把 RLWE 秘密读成居中小整数（便于观察分布，例如确认是不是三元）。 */
-    public static long[] rlweSecretCoefficientsCentered(Mpc4jRgsw m) {
-        int n = m.n;
+    public static long[] rlweSecretCoefficientsCentered(Mpc4jRgsw m) {        int n = m.n;
         int L = m.workingPrimeCount;
         Plaintext data = m.keyGen.secretKey().data();
         long[] coeffs = data.isNttForm() ? inverseNttSecret(m, data, L, n) : data.data();

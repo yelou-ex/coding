@@ -248,8 +248,35 @@ public final class FusePirPackSlot {
     public static Packed pack(Mpc4jRgsw m, BatchEncoder be, Ciphertext[][] swk,
                               int base, int digits, int mCount, int lBf,
                               long[][] as, long[] bs) {
+        return pack(m, be, swk, base, digits, mCount, lBf, m.t, as, bs);
+    }
+
+    /**
+     * <b>同一件事，但<b>槽位布局</b>按显式给出的 {@code tField} 算</b>（应答通道精度提升后的形态）。
+     *
+     * <h3>为什么需要把两个模数分开</h3>
+     * 本管线现在有<b>两个明文模数</b>：
+     * <ul>
+     *   <li>{@code m.t = tRing} —— <b>应答通道</b>的明文模数，比字段域大 {@code K} 倍，
+     *       用来装下"字段 × K"（{@link FusePirSetup#assemblePayload} 的精度倍率）；</li>
+     *   <li>{@code tField = T}（论文自己的 {@code t}）—— <b>字段域</b>，决定
+     *       {@code fpSlots} / {@code perValue} / {@code B_pay} / 段起点。</li>
+     * </ul>
+     * 布局<b>必须</b>按 {@code tField} 算：若按 {@code tRing} 算，{@code fpSlots} 会从 3 变成 2、
+     * {@code B_pay} 从 61 变成 60，于是建表侧与解析侧对不上（而 {@code y} 里的 limb 宽度
+     * 也确实是按 {@code T} 定的 16 bit）。<b>这两个数字混用是静默错，所以做成显式入参。</b>
+     *
+     * @param tField 字段域模数（论文的 {@code t}），必须 ≤ {@code m.t}
+     */
+    public static Packed pack(Mpc4jRgsw m, BatchEncoder be, Ciphertext[][] swk,
+                              int base, int digits, int mCount, int lBf, long tField,
+                              long[][] as, long[] bs) {
         if (m == null || be == null || swk == null) {
             throw new IllegalArgumentException("m / be / swk 都不能为 null");
+        }
+        if (tField < 2 || tField > m.t) {
+            throw new IllegalArgumentException("字段域模数 tField = " + tField
+                + " 必须落在 [2, 应答通道明文模数 " + m.t + "] 内");
         }
         if (as == null || bs == null) {
             throw new IllegalArgumentException("LWE 样本 (as, bs) 不能为 null");
@@ -260,13 +287,13 @@ public final class FusePirPackSlot {
                 + " 与环维度 " + m.n + " 不一致 —— 两者不是同一个上下文");
         }
 
-        final int fpSlots = FusePirSetup.fpSlots(m.t);
+        final int fpSlots = FusePirSetup.fpSlots(tField);
         final int perValue = FusePirSetup.perValue(lBf);
         final int bPay = FusePirSetup.payloadBpay(fpSlots, mCount, perValue);
 
         if (bs.length != bPay) {
             throw new IllegalArgumentException("b 分量有 " + bs.length + " 条，但布局要求 B_pay = "
-                + bPay + "（t=" + m.t + ", m=" + mCount + ", lBf=" + lBf
+                + bPay + "（tField=" + tField + ", m=" + mCount + ", lBf=" + lBf
                 + " ⇒ fpSlots=" + fpSlots + ", perValue=" + perValue + "）");
         }
         if (as.length != bPay) {
@@ -434,8 +461,16 @@ public final class FusePirPackSlot {
         return pack(m, be, swk, base, digits, mCount, lBf, as, bs);
     }
 
-    /** {@code x ∈ Z_{q_R}} → {@code Z_t}：四舍五入 {@code x·t/q_R} 后取模（口径同 {@code LweRlweConversion.scaleDown}）。 */
-    private static long scaleToT(BigInteger x, BigInteger qR, long t) {
+    /**
+     * {@code x ∈ Z_{q_R}} → {@code Z_t}：四舍五入 {@code x·t/q_R} 后取模（口径同 {@code LweRlweConversion.scaleDown}）。
+     *
+     * <p>⚠️ <b>公开是为了让"只做一次舍入"的诊断判据复用它</b>（{@code AnswerOps.phaseOfRns}）：
+     * {@link #rnsToT} 对 {@code β} 与 {@code N} 个 {@code a_k} <b>各自</b>舍入一次，
+     * 相位里因此多出 {@code Σ_k δ_k·s_k}（{@code |δ| ≤ ½}）—— 这是<b>桥的固有残差</b>，
+     * 不是 ANSWER 的算术错。要判"算术对不对"就得把相位<b>先算完再舍入一次</b>，
+     * 而那一步必须与这里口径完全一致，所以<b>不允许</b>在别处再手抄一遍这个公式。
+     */
+    public static long scaleToT(BigInteger x, BigInteger qR, long t) {
         BigInteger tB = BigInteger.valueOf(t);
         BigInteger num = x.multiply(tB);
         BigInteger half = qR.shiftRight(1);

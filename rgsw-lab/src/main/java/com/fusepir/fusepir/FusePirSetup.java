@@ -217,6 +217,31 @@ public final class FusePirSetup {
      */
     public static long[] assemblePayload(long[] fpDigits, int count, long[] values,
                                          long[][] bloom, int lBf) {
+        return assemblePayload(fpDigits, count, values, bloom, lBf, 1L);
+    }
+
+    /**
+     * <b>带上"精度倍率"的装配</b>：每个字段写成 {@code scale · field}（{@code scale = K}）。
+     *
+     * <h3>为什么需要 K —— 这是"q_R → Z_t 桥的缩放残差"的唯一解法</h3>
+     * ANSWER 12 要把 {@code SampleExtract_0} 的样本从 {@code Z_{q_R}} 缩放到应答通道的明文域，
+     * 而 {@code FusePirPackSlot.rnsToT} 是<b>逐分量</b>舍入的：{@code a_k} 的舍入误差
+     * {@code δ_k ∈ (−½,½]} 乘上 {@code s_k} 后累加，相位里因此多出 {@code E = Σ_k δ_k s_k}，
+     * <b>{@code |E| ≤ ones/2}（{@code ones} = 私钥的汉明重量）—— 这个绝对误差与明文模数<u>无关</u></b>，
+     * 所以"把 t 换大"救不了它；能救的只有<b>让字段本身带上 K 倍余量</b>：
+     * {@code K > ones} 时，收到 {@code K·field + E} 之后除以 K 一次舍入就<b>精确</b>恢复 {@code field}。
+     *
+     * <p>⇒ 调用方（{@code FusePirFourStep.setup}）必须用<b>应答通道的明文模数</b>
+     * {@code tRing > K·T}（{@code T} 是字段域 = 论文的 {@code t}），
+     * 而<b>槽位布局仍然按 {@code T} 算</b>（所以 {@code B_pay}、值域、limb 宽度全都不变）。
+     *
+     * @param scale {@code K ≥ 1}；{@code 1} 就是论文原样的 {@code y}
+     */
+    public static long[] assemblePayload(long[] fpDigits, int count, long[] values,
+                                         long[][] bloom, int lBf, long scale) {
+        if (scale < 1) {
+            throw new IllegalArgumentException("精度倍率 K 必须 ≥ 1，实得 " + scale);
+        }
         if (fpDigits == null || values == null) {
             throw new IllegalArgumentException("fpDigits / values 不能为 null");
         }
@@ -231,10 +256,12 @@ public final class FusePirSetup {
             throw new IllegalArgumentException("bloom 有 " + bloom.length + " 行，应为 m = " + m);
         }
         long[] y = new long[bPay];
-        System.arraycopy(fpDigits, 0, y, 0, fpSlots);
-        y[countOffset(fpSlots)] = count;
+        for (int i = 0; i < fpSlots; i++) {
+            y[i] = fpDigits[i] * scale;
+        }
+        y[countOffset(fpSlots)] = count * scale;
         for (int j = 0; j < m; j++) {
-            y[valueOffset(fpSlots, j, perValue)] = values[j];
+            y[valueOffset(fpSlots, j, perValue)] = values[j] * scale;
             final int bo = bloomOffset(fpSlots, j, perValue);
             if (bloom == null) {
                 continue;
@@ -249,7 +276,7 @@ public final class FusePirSetup {
                     throw new IllegalArgumentException("Bloom 位必须是 0/1，第 " + j + " 个值第 "
                         + i + " 位是 " + bit + " —— 非二进制位会让 ⟨B_qry,b_v⟩ 的判据失去意义");
                 }
-                y[bo + i] = bit;
+                y[bo + i] = bit * scale;
             }
         }
         return y;
@@ -272,6 +299,47 @@ public final class FusePirSetup {
             this.values = values;
             this.bloom = bloom;
         }
+    }
+
+    /**
+     * <b>{@link #assemblePayload}(…, scale) 的逆，并且顺手把"桥的缩放残差"一次消掉。</b>
+     *
+     * <pre>
+     *   收到：slot = K·field + E   （E 是 q_R→Z_t 的逐分量舍入残差，|E| ≤ ones/2）
+     *   返回：field                （四舍五入除以 K；K > ones 时 E 被完全吸收 ⇒ 精确）
+     * </pre>
+     *
+     * <p>⚠️ <b>必须"先除再解析"</b>：{@code parsePayload} 里的 {@code m_i} 校验
+     * （{@code 0 ≤ m_i ≤ m}）拿到 {@code K·m_i} 会直接判越界。
+     *
+     * <p>⚠️ <b>只把"贴近 {@code tRing} 的那一点点"当负残差</b>：{@code K·field} 本身可以<b>超过
+     * {@code tRing/2}</b>（只要 {@code field > tRing/(2K)} 就会），所以<b>不能</b>按"中心代表"整体
+     * 折叠 —— 那会把大的正字段误判成负数。本方法实测踩过这个坑：只有大的指纹 limb 出错、
+     * 小字段全对（症状是解码值偏一个常数）。
+     *
+     * @param y      {@link FusePirPackSlot#decodePayload} 的产物（值域 {@code Z_{tRing}}）
+     * @param scale  K
+     * @param tRing  应答通道的明文模数
+     * @param t      字段域模数（论文的 {@code t}），结果落在 {@code [0, t)}
+     */
+    public static long[] divideScale(long[] y, long scale, long tRing, long t) {
+        if (y == null) {
+            throw new IllegalArgumentException("y 为 null");
+        }
+        if (scale < 1) {
+            throw new IllegalArgumentException("精度倍率 K 必须 ≥ 1，实得 " + scale);
+        }
+        final long half = scale / 2;
+        final long[] out = new long[y.length];
+        for (int i = 0; i < y.length; i++) {
+            long c = Math.floorMod(y[i], tRing);
+            if (c > tRing - scale) {
+                c -= tRing;                        // 只有"离 tRing 不到 K"的那一点才是负残差
+            }
+            final long q = (c >= 0) ? (c + half) / scale : -((-c + half) / scale);
+            out[i] = Math.floorMod(q, t);
+        }
+        return out;
     }
 
     /**

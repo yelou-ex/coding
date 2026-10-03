@@ -138,15 +138,41 @@ public final class Mpc4jRgsw {
      * @param sk 复用的密钥；{@code null} 表示新生成一把
      */
     public Mpc4jRgsw(int n, long t, int unused, int base, SecretKey sk) {
+        this(n, t, unused, base, sk, null);
+    }
+
+    /**
+     * <b>【实验钩子】用指定的系数模数建上下文（{@code coeffBits == null} 时行为与上面完全一致）。</b>
+     *
+     * <h3>为什么需要它（2026-10-15 实测）</h3>
+     * A2 ANSWER 4 的 {@code CtCtMul(q^BF, ct^BF_j)} 要求候选密文在相乘之后仍可解。
+     * 本移植里 {@code bfvDefault(4096)} 的<b>工作模数只有 72 bit</b>，
+     * 于是新加密的噪声预算是 {@code 72 − log2(t)}（{@code t = tRing} 时 = 51 bit），
+     * 而 {@code RingPack} 的产物只剩 <b>2 bit</b>（见 {@code probe/ScoreMulDomainTest} 的噪声阶梯），
+     * 一次 {@code CtCtMul} 就归零 ⇒ 分数解出来是均匀随机值。
+     *
+     * <p>放宽 {@code q} 是唯一能让那一步在预算上成立的旋钮。SEAL 默认会因
+     * "不符合 HomomorphicEncryption.org 安全标准" 拒绝（实测 {@code isParametersSet=false}），
+     * 所以这里显式传 {@code SecLevelType.NONE} —— <b>这是玩具参数，不是 128-bit 安全参数</b>，
+     * 用它建的上下文只许出现在探针与可复现实验里。
+     *
+     * @param coeffBits 每个 RNS 素数的位宽（如 {@code {60,60,60}}）；
+     *                  {@code null} = 走 {@code bfvDefault}（原来的行为）
+     */
+    public Mpc4jRgsw(int n, long t, int unused, int base, SecretKey sk, int[] coeffBits) {
         this.n = n;
         this.t = t;
         this.base = base;
 
         this.parms = new EncryptionParameters(SchemeType.BFV);
         parms.setPolyModulusDegree(n);
-        parms.setCoeffModulus(CoeffModulus.bfvDefault(n)); // 自带符合 128-bit 安全标准的参数
+        parms.setCoeffModulus(coeffBits == null
+            ? CoeffModulus.bfvDefault(n)                  // 自带符合 128-bit 安全标准的参数
+            : CoeffModulus.create(n, coeffBits));         // 【实验】非标准参数
         parms.setPlainModulus(new Modulus(t));
-        this.context = new SealContext(parms);
+        this.context = (coeffBits == null)
+            ? new SealContext(parms)
+            : new SealContext(parms, true, CoeffModulus.SecLevelType.NONE);
         if (!context.isParametersSet()) {
             throw new IllegalStateException("SEAL 参数无效: " + context.parametersErrorMessage());
         }
