@@ -2315,3 +2315,644 @@ C9：`d = LWE 维数 ≤ N`，注"`s_R` 按 `s_L` 铺开"。
 | SETUP 6 `y_{K_i}` 装配 | ✅ **已补**（§25.2，含逆函数与互逆自检） |
 | SETUP 3 `sk = (s_L, s_R)` | ⚠️ **改判**：不是"生成两把密钥"，而是"把 `s_R` 按 `s_L` 铺开"（§25.3(1)）。**这是实现工作**（`Mpc4jRgsw` 接受 `SecretKey`），且有量化收益（`N/d` 倍密钥） |
 | QUERY 5 `LWE.Enc_{s_L}(r_a)` 带噪声 | ⚠️ **改判**：口径冲突（§25.3(2)）；且**判据已备、可行性已证**（§25.3(3)），只差"要不要做"的决定 |
+
+---
+
+## 26. ✅ 把 `s_L` 铺成 `s_R`（规范 §0.5）—— 实测落地，Pack 的密钥 **512×**
+
+（2026-10-15，承接 §25.3(1)；用户"继续"）
+
+### 26.1 交付物
+
+* **`prim/LweRlweConversion.liftLweSecretToRlwe(m, sL)`** —— 构造
+  `s_R(X) = Σ_{j<d} s_L[j]·X^j` 的 `SecretKey`（规范 §0.5 的"同源"）。
+* **`probe/FusePirSecretLiftTest`** —— **exit 0，P1–P5 全达成**。
+
+### 26.2 实测结果（N=8192、t=65537、d=16、ℓ_BF=18、B_pay=23）
+
+| 项 | 结果 |
+|---|---|
+| **P1 现状** | 默认秘密 **非零 5375–5508 / 8192**、最高非零下标 **8191** ⇒ **不 ⊆ [0,d)** |
+| **P2 铺开后** | 非零 **9** 个、最高下标 **15** ⇒ 支撑恰为 `[0,d)`；前 d 个系数**逐位 = `s_L`**；**密钥可用**（加密→解密往返 12345 正确）；且与默认密钥确实不同 |
+| **P3 负对照** | `s_L` 长于 N / 含 2 / 为空 ⇒ **全部抛** |
+| **P4.1 正例** | 铺开后 + **只带前 16 项** + **16 行**交换密钥 ⇒ 大值字段最大偏差 **1**（相对 0.002%） |
+| **P4.2 负对照** | **全支撑**秘密 + 同样只带前 16 项 ⇒ **解错**（超容差）⇒ 证明"解得回来"是**铺开**带来的，不是碰巧 |
+| **P5 成本** | **48 条 = 24.0 MB**（`nLwe=d=16`）vs **24,576 条 = 12,288 MB**（`nLwe=N=8192`）⇒ **512×** |
+
+> ⇒ **§18.4/§24.4 那个"8–12 GB"现在有了完整的因果链**：
+> 它**不是** Pack 的固有代价，而是 `s_R` 用了全 N 支撑（P1 实测 5375–5508 个非零）的后果；
+> 按规范铺开之后就是 `d × digits` 条。
+
+### 26.3 ⭐ 顺带发现：铺开**也把缩放残差压小了**（但不等于位精确）
+
+`P4.1b`：位/小值字段 **14/20 个恰好相等，最大偏差 1**。
+而 §24.4 在**全支撑**下实测的是**偏差 30–60、0 个恰好相等**。
+
+**原因**：缩放残差是 `Σ_j δ_j·s_j`，**只累加在秘密的非零支撑上**。
+全支撑 ⇒ ~5500 项 ⇒ `std ≈ 20`；铺开后 ⇒ `d=16` 项 ⇒ `std ≈ 1.3`。
+
+⚠️ **但不要过度解读**（这条很容易被说成"位精确问题解决了"）：
+* 残差随 **`√d`** 增长。论文的 `d = 512` ⇒ `std ≈ 5.3` ⇒ **又超过位值 1**；
+* 所以铺开是**密钥体积的大胜**（512×）+ **残差的顺带收益**，
+  **并不**使 `s_j == τ` 的精确判据成立。要那一条仍需 §25.3(3) 的块布局（`Δ/√d > 6σ`）。
+
+### 26.4 ⚠️ 安全含义（必须与 512× 一起说）
+
+若秘密的支撑是**已知**的 `d` 元子集，则 `c_0 + c_1·s = c_0 + Σ_{j<d} c_1[j]·s_j`，
+而 `c_1` 均匀 ⇒ **这恰好是一个 `d` 维 LWE 实例**。
+⇒ **安全性完全由 `d` 决定**：`d = 16` 只是玩具（16 个未知量，线性代数即可解）。
+`d = 512`（论文实验值）时密钥是 `512 × 3 × 524,288 B ≈ 768 MB`。
+**⇒ "24 MB"是 `d=16` 的数字，不能当作可用参数下的成本。**
+
+### 26.5 本 Java 移植的**三个库事实**（踩坑记录，别再重踩）
+
+| # | 事实 | 症状 |
+|---|---|---|
+| 1 | `SecretKey.data()` 必须覆盖**全部声明素数**（含最后一个 special prime），不是只覆盖 `workingPrimeCount` 个 | 否则 `ValCheck` 判 `secret key is not valid for encryption parameters` |
+| 2 | **`NttTables` 的第一个参数是 `log2(N)`，不是 `N`** | 传 `N` 会建出长度 1 的表 ⇒ `NttHandler.transformToRev` 报 `Index 1 out of bounds for length 1` |
+| 3 | `parmsId` 必须用**库自己那把密钥身上那个对象**（`m.sk.parmsId()`），不能用 `context.firstParmsId()` | 两者 `equals`/`==` 都为真，但 `ValCheck.isMetaDataValidFor` **仍然判 false**；换 `m.sk.parmsId()` 立刻通过 |
+
+> 第 3 条尤其阴：`coeffCount` 对、`isNttForm` 对、`parmsId ==` 为真，**只有 metaValid 是 false**。
+> 是靠直接调公开的 `ValCheck.isBufferValid/isMetaDataValidFor/isValidFor` 三项分别打印才定位到的
+> —— **"问校验器哪一项不过"比猜快得多，这条方法值得留。**
+> ⚠️ 本类里的 `m.sk` 是 `Mpc4jRgsw` 的公开字段，所以这条依赖是成立的。
+
+### 26.6 状态
+
+**这是"补齐"而不是"接线"**：`liftLweSecretToRlwe` 的调用方只有本探针；`Mpc4jRgsw` 与协议路径**一行未改**。
+
+---
+
+## 28. 📌 交接与长期规矩（2026-10-15）
+
+> **规矩（用户 2026-10-15 立）**：**只要会话的上下文开始压缩（compaction），就立刻写好
+> "交接单 + 开新对话提示词"**，不要等被切断再补。
+> 交接单要**写进工作区文件**（聊天会被压缩掉），并在聊天里给一段可复制的提示词。
+> 位置约定：`coding/rgsw-lab/HANDOFF-<主题>.md`。
+> （试过写进 Hindsight，服务没起：`ECONNREFUSED 127.0.0.1:9077` ⇒ 以工作区文件为准。）
+
+**当前交接单：`coding/rgsw-lab/HANDOFF-FusePIR四步.md`**（FusePIR 四步 / ANSWER 实现）。
+
+**开工读序**：本文件 §18–§28 → 交接单 → 才看源码。
+
+**本轮（§25–§27）留下的、交接单里逐条列了的要点**（细节见那两份，这里只留索引）：
+`DB^CAPE` 加宽口径（`B_pay=61`）· `Pack` 在 A1 的 65537 上成立、在 CAPE 演示的 `2^32` 上不可能 ·
+`sampleExtract` 维数盲必须截到 `d` · 铺开 `s_R` 使 Pack 密钥 512× · 四步的四个 CAPE 入口 ·
+**唯一卡点 ANSWER 6（盲旋转）**，其三个假设已被实测否掉两个半。
+**唯一的开新对话提示词在交接单 §7。**
+
+---
+
+## 27. FusePIR 四步做成 CAPE 可调用的入口（2026-10-15）—— 结构通、ANSWER 5-11 算术未通过
+
+用户指示："我要这四步的调用函数，对应 CAPE 中需要对 FusePIR 的调用"，
+随后"继续刚才对 FusePIR 四步的实现"。
+
+### 27.1 CAPE 到底调用 FusePIR 的哪几处（逐字来自 A2 原文，MAP §10）
+
+```
+A2 SETUP  11: (pp_F, st^F_S, sk) ← FusePIR.Setup(1^λ, DB^CAPE).
+A2 QUERY   1: (q_anc, st^anc_C) ← FusePIR.Query(pp_F, sk, K_1).
+A2 ANSWER  2: resp_anc ← FusePIR.Answer(st_S, q_anc).
+A2 ANSWER  3: Parse {(ct_{v_j}, ct^BF_j)}_{j=1}^m from resp_anc.   ← ★ 决定 resp 的类型
+A2 DECODE  2: V_{K_1} ← FusePIR.Decode(sk, st^anc_C, resp_anc).
+```
+⇒ **四处**，`fusepir/FusePirFourStep.java` 就是按这四个签名写的
+（`setup` / `query` / `answer` / `decode`），另有两条**已存在**的接线不重复造：
+`pp_C ← pp_F.extendBloom(…)`（A2 SETUP 12）与 `st^F_S` 直接当 `st_S`（A2 SETUP 13）。
+
+**⚠️ 两处按原文读出来的、容易把签名写错的地方：**
+1. **A2 SETUP 11 传进去的是 `DB^CAPE`，不是原始 DB** —— A2 SETUP 3-10 先把每个值配成
+   `(v, b_v)`，**然后**才调 `FusePIR.Setup` ⇒ A1 SETUP 6 的 `y` 在 CAPE 这条路上是
+   `fp‖m_i‖v‖b_v‖…` ⇒ **`perValue = 1+ℓ_BF`、`B_pay = 61`**（与 §18.5 的 CAPE 列一致）。
+   ⇒ 本类把"每个值带不带 Bloom 段"做成参数：{@code lBf=0} 就是纯 A1（A1 的 `y` 无 Bloom，§9.1）。
+2. **A2 ANSWER 3 要"parse 出每个候选的 `(ct_{v_j}, ct^BF_j)`"** —— 槽位域 Pack 把它们放进
+   **一条**密文的槽里 ⇒ "parse" 落成**槽对齐**（`Resp.valueCt(j)` / `Resp.bloomCt(j)`）。
+
+### 27.2 已通过的（有断言）
+
+| 项 | 结果 |
+|---|---|
+| **P1 Setup 形状** | `B_pay=61`（CAPE 加宽口径）、`R·C=48 ≥ L_BFF=48`、`st^F_S` 表宽 `=B_pay`；**铺开后的秘密非零 5 个、最高下标 13 < d=16** |
+| **P2 明文侧重构** | **16/16** 个关键词满足 `Σ_a D[h_a(K)] = y_K` |
+| **P3 Query 形状** | `(r_a,c_a)` 与 `h_a(K_1)` 一致、`recombine(R)` 回到 `u_a`、`q^row` 长 d、`q^col` 有 C 条、`st^anc_C` 只带关键词 |
+| **P4 Answer 跑通** | **26–28 s**，产出 `packed(S, t=65537, N=4096, B_pay=61, lBf=18, 段起点=[5,24,43], 最高参与槽=60)` —— **布局与 §19 预测逐项相符** |
+
+**⇒ `Pack` 那一层是忠实的**：P4.0 判出 ANSWER 的相位错误之后，**打包件解出来的值
+（24245）与相位检查算出来的错误值完全相同** ⇒ 错在 ANSWER 5-11，不在 Pack。
+
+### 27.3 ❌ 未通过的：ANSWER 5-11 的算术（这是当前唯一的 bug）
+
+**P4.0（与 Pack 完全无关的判据）** `β − Σ_{k<d} a_k·s_L[k] mod t` 对每个字段比对真值：
+**0/61 个字段相等**，例如字段 4 相位 24245 vs 真值 1007（偏差 23238）。
+⇒ **列选择 / 盲旋转 / SampleExtract 这条链的算术不对**，与 Pack 无关。
+
+**已排除的**：
+* BFF 那一步（P2 通过 ⇒ `D` 与位置函数自洽）；
+* Pack（上面那条"同一个错值"的对照）；
+* 形态问题（`NTT form mismatch` 已修，见 27.4）；
+* 维数问题（截断到 d 之后 Pack 不再要求 N 行密钥）。
+
+**下一步该做的最小实验**（写在这是为了别再从头发散）：
+在 `answerSamples` 里把 **列选择之后、盲旋转之前**的 `acc` 暴露出来，解密它的**整条多项式**，
+断言它等于 `P_{c_a,b}`（逐系数）。这一条能把"列选择错"与"旋转落点错"分开。
+
+### 27.3.1 ✅ 已做（2026-10-15）：三条硬结果把 bug 钉到 ANSWER 6
+
+| 实验 | 结果 | 排除掉什么 |
+|---|---|---|
+| **P4.00** 解密列选择后的 `acc`，与 `P_{c_a,b}` 逐系数比 | **0 / 4096 个系数不符**（`c_a=3, b=4`） | ⇒ **ANSWER 5 完全正确**（含"不跳过零分量"的 D3 读法） |
+| **P4.0b** 假设「常数项 = `Σ_a (−1)^{r_a+1}·D[u_a]`」 | **0 / 61 命中** ⇒ **假设被证伪** | ⇒ 旋转的**符号**不是 `X^{−r} = (−1)^r X^{N−r}` 那一种 |
+| **P4.0c** 暴力搜「每路贡献 `±P[k]` 或 `0`」的全部组合（`(2R+1)^3 = 729`），要求**同时**解释全部 61 个字段 | **0 个组合成立** | ⇒ 落点**根本不是 `P` 的某个系数**（任何下标、任何符号都不行）⇒ **问题在"旋转量本身"，不在落点** |
+
+三条合起来：**ANSWER 5 是对的；ANSWER 6 产生的相位不是 `P_{c_a,b}` 的任何系数**
+（`P` 的支撑只有 `[0,R)=[0,4)`，所以"转到别的系数"最多给出 `±P[k]` 或 0 —— 实测否掉了）。
+
+**⇒ 现在的怀疑集中在 `q_a^row` 的构造，而不是落点：**
+1. **`β` 里用的秘密与 `bk` 里加密的秘密是否同一个**：`bk[i] = encryptRgswConstant(s_L[i])`
+   （在 **`s_R`** 下加密 `s_L[i]`），而 `qRow` 用 `lweEncryptIndex(s_L, …)`。
+   盲旋转累的是 `X^{Σ a_i·(bk 里那个比特)}` —— 两者必须逐位同源，
+   而本仓库**反复**在这一点上出过事（`CapeQuery` 里那段最长的不变量注释、P1-1 的四轮教训）。
+   本探针的 `Db.synthetic` + `liftLweSecretToRlwe` 路径**没有**像 `CapeQuery` 那样做同源性对账。
+2. **`acc` 的形态标志不可靠**：`isNttForm()` 在本移植里默认 true（§27.4 #2），
+   而 `blindRotate` 用 `multiplyPowerOfX` —— **对 NTT 形态的密文乘 `X^k` 是错的**
+   （NTT 域的旋转不是乘单项式）。`columnSelect` 里那句
+   `if (acc.isNttForm()) transformFromNttInplace(acc)` **可能根本没执行**。
+   ⚠️ 这一条最像：P4.00 用 `decrypt`（它自己也查 `isNttForm`）验过，两边可能**同样地**被这个标志骗过。
+
+**下一步（最小的那个）**：把 `acc` 的形态**显式**统一 —— 在做列选择时就保证交给盲旋转的是
+**系数形态**（不要依赖 `isNttForm()`），然后重跑 P4.0。若还是不行，再查 `bk` 与 `qRow` 的同源性。
+
+### 27.3.2 旧的怀疑（保留，已被 P4.0b/4.0c 部分否掉）
+* **旋转方向**：规范 §3.3 明确写"常数项**不是** `P[r_a]`，而是 `±P[(−r_a) mod N]`；
+  要直接得到 `P[r_a]` 须把旋转量写成 `X^{N−r_a}` 或让累加器初值带 `X^{+r_a}`"。
+  而 `HashGenRhoTest` P-9 用同一个 `blindRotateRow` 得到的是 `P[r_a]` —— 两处口径需对齐；
+* **列选择的形态**：`qCol` 加密的是**常数** `e[c]`，`ctPtMul` 在 NTT 形态下是**环乘**
+  （不是槽位逐点乘）⇒ `e[c]·P_{c,b}` ✓ 这条推理成立，但**未经实测确认**。
+
+### 27.4 途中修掉的三处（都是我自己写错的，记下来防复发）
+
+| # | 错误 | 现象 / 修法 |
+|---|---|---|
+| 1 | 复用同一个 `Plaintext` 装 `P_{c,b}` | 第二轮起形态已被污染；改成每轮新建 |
+| 2 | 用 `isNttForm()` 判断"我准备的是不是系数形态" | **本移植里 `new Plaintext(n)` 的 `isNttForm()` 默认就是 true** ⇒ 判据恒真、只会误导。已删掉该守卫并写清原因（与 §26.5 第 3 条同源） |
+| 3 | `q^col` 的密文没转 NTT 形态 | `multiplyPlain` 要求**两侧同形态**；`Encryptor.encrypt` 给系数形态 ⇒ 抛 `NTT form mismatch`。改成**加密后立刻 `transformToNttInplace`**（一次/查询，而不是每次相乘都转） |
+
+### 27.5 状态
+
+**是"补齐 + 自检"，不是"接线"**：`FusePirFourStep` 没有生产调用方；
+`CapeDemoService` / native 路径一行未改。
+⇒ **结构（四个签名、DB^CAPE 加宽口径、A2 ANSWER 3 的 parse 形式）已经定下来并验过大半，
+剩下的是 ANSWER 5-11 的一处算术。**
+---
+
+## 29. 🔴 ANSWER 6 的"0/61"**已定位并修掉**（2026-10-15）—— 根因是**位置函数种子不同源**，不是盲旋转
+
+（本轮：`probe/FusePirAnswerBisectTest`（新，二分辨识）+ 修 `fusepir/FusePirFourStep.setup`）
+
+### 29.0 结论先行
+
+1. **ANSWER 5 / 6 从头到尾都是对的。** §27.3.1 那三条"硬结果"把 bug 钉在 ANSWER 6 上，
+   **钉错了方向** —— 它们全都建立在同一个错误前提上（见 29.2）。
+2. **真根因**：`FusePirFourStep.setup` 里建表用的位置函数种子与 `pp` 发布的 `ρ_H` **不是同一个**。
+   症状 = 协议**每一步都对**，但查询读到**别的格子** ⇒ 相位判据 0/61。
+3. 修法：`ρ_H` 同时当 `BffEncode.encode` 的首次尝试种子，`pp` 用**建表实际用的那个种子**
+   `tab.seed`（重试成功时它是 `ρ_H + attempt − 1`），并加**建库时就会抛**的守卫
+   `requirePositionsMatch`。
+
+### 29.1 根因：两处种子差 1，而类型系统拦不住
+
+| 位置 | 种子 |
+|---|---|
+| 建表（`BffEncode.encode:170`） | `seed0 + attempt − 1` = **20261016**（`seed0` 由探针传入） |
+| 查询（`pp.h()`，`FusePirParams.bffPositions(su.rhoH, …)`） | **20261015**（`rhoH` 由探针传入） |
+
+`BffHash.positions(K, seed, hg)` 的 `seed` 与 `hg.rhoH` 是**同一个量而该函数不校验一致**
+（`BffHash.java:490` 原文警告）⇒ 两边取不同常量时**类型合法、编译通过、运行期完全静默**。
+
+**实测证据（`probe/FusePirAnswerBisectTest` 的 Q2 组，修复前）**：
+
+```
+[info] 16/16 个关键词的两套位置**不一致**
+[info] 锚关键词 kw-0003：建表 [6, 25, 40]；pp [15, 30, 36]
+[info] 在 [20261012,20261020] 里搜到 1 个种子能复现建表位置：20261016
+[达成] Q2.3 [正对照] 建表那套 u_a 的和 == 真值：61/61 个字段
+[达成] Q2.4 [负对照] pp 那套 u_a 的和 == 真值：0/61 个字段
+```
+
+⇒ **"0/61"整个由种子不同源造成**，与列选择、旋转、形态都无关。
+
+### 29.2 ⚠️ 为什么 §27.3.1 的三条硬结果会把人带偏
+
+| 实验 | 它实际证明了什么 | 它**没有**证明什么 |
+|---|---|---|
+| P4.00（`acc` vs `P_{c_a,b}` 逐系数） | 列选择对 | —— |
+| P4.0b（带符号和 0/61） | 带符号和不是答案 | 因为**真值那 61 个数取自建表格子**，而相位取自查询格子；两边不同 ⇒ 这一条本来就不可能命中 |
+| **P4.0c（0/729 组合）** | **什么也没证明** | 它的候选列取自**建表**那套 `u`，相位来自**查询**那套 `u`；两列不同 ⇒ **组合空间里根本不含真解**。0/729 是**结构性的**，不是"落点不是 P 的系数" |
+
+**教训（值得留档）**：一条判据只要**同时**用到"真值"与"被测物"，就必须先证明
+**两者的输入同源**；否则它失败时给出的是"错的方向"，而不是"没有信息"。
+本轮为此把探针改成**两层判据**（见 29.4）。
+
+### 29.3 修法与守卫
+
+* `BffEncode.encode(…, rhoH, …)` —— `ρ_H` 按 A3 SETUP 8 的定义就是位置函数种子（原先错传 `seed0`）。
+* `pp` 用 `bp.hashGen(tab.seed)` + `bffPositions(tab.seed, …)`。
+* 新增 **`FusePirFourStep.requirePositionsMatch(pp, keywords, tab.pos)`**：
+  建库时逐关键词比对"查询侧 `pp.h()` 给出的位置"与"建表侧实际用的位置"，不等就抛。
+  守卫自己也有正/负对照（`Q2.5`：拿错种子的 `pp` 必须抛、拿对的必须不抛）。
+  （§18.6 那条纪律："守卫写在旁边没人用"等于没有守卫。）
+
+### 29.4 修复后的实测（`FusePirFourStepTest`，N=4096、d=16、ℓ_BF=18、B_pay=61）
+
+| 判据 | 修复前 | 修复后 |
+|---|---|---|
+| **P4.0a 算术层**（在 `Z_{q_R}` 上把相位算完、**只舍入一次**；无容差） | — | **61/61** ✅ |
+| **P4.0b 交付层**（过 `rnsToT` 逐分量舍入） | **0/61**，最大偏差 **32378** | **61/61 在残差上界内**，最大偏差 **2**（精确命中 25–35/61，逐次运行不同） |
+| P4.0b 正对照（不带符号的重构和） | — | **61/61** ✅ |
+| P4.0b2 负对照（`(−1)^{r_a+1}` 带符号和） | — | **0/61** ✅（既证伪 §27.3.1 的符号假设） |
+| **P4.0c 落点搜索** | 0/729（**结构性**，见 29.2） | **恰好 1 个组合**：`路0:+P[3] 路1:+P[2] 路2:+P[0]` = **每路 `+P[r_a]`**，与论文一致 ✅ |
+| §4.1③ `β ≡ ⟨a,s_L⟩ + r_a (mod 2N)` | — | **3/3 路成立** ✅ |
+| §4.1② `cmux` 分支方向 | — | `c=1` 返回**第二个**参数（旋转支）⇒ 方向正确，**不是 bug** ✅ |
+| §4.1① P-9 配方搬进本管线（铺开秘密 + N=4096） | — | **6/6 个 `r_a` 命中**（4 个精确、2 个偏差 1 = 残差）✅ |
+
+**⇒ 交接单 §4.1 的三步全部做完，结论是：三条嫌疑都不成立。**
+P-9 配方在本管线上就是对的；`cmux` 方向是对的；`β` 恒等式成立。
+
+### 29.5 新增的两层判据（`AnswerOps.phaseOfRns` + `FusePirFourStep.answerRnsSamples`）
+
+`rnsToT` 把 `β` 与 `N` 个 `a_k` **各自**从 `q_R` 舍入到 `Z_t`，相位里因此多出
+`Σ_k δ_k·s_k`（`δ_k ∈ (−½,½]`，上界 `#ones/2`）。**这是桥的固有残差，不是 ANSWER 的算术错**
+（§24.4 / §26.3 已登记）。所以判据必须分两层：
+
+| 层 | 入口 | 能不能要求精确相等 |
+|---|---|---|
+| **算术层** | `AnswerOps.phaseOfRns(m, rnsSample, sL)`（`Z_{q_R}` 上算完相位、**只舍入一次**） | ✅ **能**（这就是 P4.0a 的 61/61） |
+| **交付层** | `FusePirFourStep.answerRnsSamples`（三路相加后的 RNS 样本，未经桥）→ `toTruncatedZLwe` | ❌ 不能，只能要求 `|偏差| ≤ #ones/2` |
+
+**⚠️ 混着说就会把"桥的残差"误报成"盲旋转错" —— 本轮之前正是这么错的。**
+
+### 29.6 这段代码里的一个陷阱（我自己写的，值得留）
+
+`phaseOfRns` 第一版**忘了把 `a` 取反**（`FusePirPackSlot.rnsToT:368` 有 `.negate()`：
+SEAL 的相位是 `c0 + c1·s`，而本项目约定 `b ≡ ⟨a,s⟩ + m`，所以样本里的 `a` 就是 `−c1`）。
+漏掉这一次取反 ⇒ 相位差 `2·Σ c1_k s_k` ⇒ **每个字段都像随机数**（第一次跑 P4.0a 就是 0/61，
+而**同一时刻交付层是 61/61** —— 两层判据并存才让这个自伤立刻现形）。
+
+### 29.7 仍未闭合的，以及它们的**精确形态**
+
+| # | 卡点 | 精确症状（实测） | 与 ANSWER 5-6 有关吗 |
+|---|---|---|---|
+| **①** | **`q_R→Z_t` 桥的缩放残差（±1..2）** | 小字段被污染：`m_i` 解出 `4`（真值 3）⇒ `parsePayload` 抛；`decode` 判 `⊥`；bloom 的 0/1 位变成 `−1/0/1/2` | ❌ **无关**（是桥，已登记 §24.4/§26.3） |
+| **②** | **`Resp.bloomCt(j)` 的"掩码"那一步在打包件上不成立** | 掩码乘打包件 **0/4096**（解出均匀随机值 = 解密失败） | ❌ 无关（见 §29.8） |
+
+### 29.8 §4.2 的结果：旋转**做成了**，它后面那一步另有问题
+
+**§4.2 要求的"2 的幂组合"已实现并逐位验过**（`FusePirFourStep.rotateRowsByComposedBits`）：
+
+| 判据 | 结果 |
+|---|---|
+| `P5.0a` 值槽 `4 / 23 / 42`（都不是 2 的幂）转到槽 0 == 打包件对应槽 | **3/3 个候选** ✅ |
+| `P5.0c` 负对照：多转一格 ⇒ 必须对不上 | ✅ |
+| `P5.0d` 正对照：转 `s0` 再按 `N/2−s0` 转回 ⇒ 逐位还原 | **4096/4096** ✅（⇒ 组合是精确的，不是近似） |
+| `P5.0e` 只旋转（`base=5 = 4+1`）与打包件槽 `[5,11)` 逐位比 | **逐位相同** ✅ |
+
+**但 `bloomCt` 在旋转之后还要"掩码"（只留槽 `[0,ℓ_BF)`），那一步把密文解坏了**
+（`P5.0b` 0/3）。诊断过程（每一步都配正/负对照，全部实测）：
+
+| 实验 | 结果 | 排除了什么 |
+|---|---|---|
+| 同一条稠密掩码 × **新加密**密文（连乘**两次**） | **4096/4096** | 掩码机构本身、明文编码、明文复用 |
+| 打包件 × **常数**明文 1 | **4096/4096 还原** | 打包件"不可乘" |
+| 打包件 × `RingPack.slotSelector`（单槽选择子） | **0/4096** | "只是 18 位掩码太大" |
+| 结构：`size()` / `parmsId` / RNS 素数个数 | **两边完全相同** | 形态、层级、模数 |
+| 系数↔NTT 往返、旋转 | 都精确 | 形态与旋转 |
+
+⇒ **唯一剩下的解释是噪声预算**：槽掩码在**系数域稠密**（`l1 ≈ N·t/2`），
+而本管线的 `m.encrypt` 出**无噪声**密文（所以新加密连乘两次都精确）；
+`RingPack` 的产物是这条链上**第一条真带噪声的密文** ⇒ 一次稠密明文乘就过界。
+
+**给 `ct^BF_j` 找出路的三个选项（未选，等决定）**：
+① **不掩码**：只旋转，"置零"交给 CAPE 的 `q^BF`（客户端侧段外本来就是 0 ⇒ `CtCtMul` 的积在段外也是 0 ⇒ 折叠不带杂质）；
+② 在 **`Pack` 之前**按候选分别掩码（那时还是理想 `Z_t` 样本、无噪声）；
+③ 找出 `RingPack` 产物噪声的真正来处并压低它。
+
+### 29.9 本轮改动的文件
+
+| 文件 | 改动 |
+|---|---|
+| `fusepir/FusePirFourStep.java` | **修根因**（`rhoH` 当首次尝试种子 + `pp` 用 `tab.seed`）；新增 `requirePositionsMatch` 守卫、`rotateRowsByComposedBits`（§4.2）、`answerRnsSamples`、`packedSlots`/`packedCoeff`/`galoisKeys` 诊断；`bloomCt`/`maskFirstSlots` 写清实测警告 |
+| `fusepir/AnswerOps.java` | 新增 `phaseOfRns`（算术层判据）、`sumPaths`；`addPaths` 改为两步的复合（不再各自实现一遍算术） |
+| `fusepir/FusePirPackSlot.java` | `scaleToT` 由 private 改 public（让"只舍入一次"的判据复用同一口径，不许手抄公式） |
+| `probe/FusePirAnswerBisectTest.java` | **新建**：Q1（旋转本身：P-9 配方 / cmux 方向 / β 恒等式）、Q2（真值同源）、Q3（解释 P4.0c 为何 0 命中） |
+| `probe/FusePirFourStepTest.java` | P4.0 拆成算术层/交付层两层；P4.0b/4.0c 改用无残差的算术层相位；新增 P5.0a–P5.0g（§4.2 与掩码的诊断，含缺陷断言）；`decode` 经 `decodeSafe` 包一层，免得一次抛异常把 P5/P6/P7 全带走 |
+
+**未动**：`CapeDemoService` / native 路径（一行未改）。
+---
+
+## 30. ✅ FusePIR 四步**跑通**（2026-10-15 第三轮）—— 两个卡点都清掉，用的是"K 倍精度"这条路
+
+（本轮：改 `fusepir/FusePirFourStep.setup`/`answer`/`decode` + `fusepir/FusePirSetup` + `fusepir/FusePirPackSlot.pack`；
+新建/重建 `probe/FusePirFourStepTest`。判据命令：`.\run-mpc4j.ps1 -Class com.fusepir.probe.FusePirFourStepTest 16 4096 16 18`）
+
+### 30.0 结论先行
+
+**`FusePirFourStepTest` 现在 exit 0，全部判据达成**（P1/P2/P3/P4.00/P4.0d/P4.0a/P4.0b/P4.0b2/P4.0c/P4/P5/P6/P7）。
+
+| 判据 | 结果 |
+|---|---|
+| **P4.0a 算术层相位**（Z_{q_R} 上算完、只舍入一次，无容差） | **61/61** ✅ |
+| **P4.0b 交付层相位**（过桥 + 除 K） | **61/61，最大偏差 0** ✅ |
+| P4.0c 落点搜索 | **恰好 1 个组合** = 每路 `+P[r_a]` ✅ |
+| **P4 四步端到端**（SETUP→QUERY→ANSWER(真 Pack)→DECODE） | **恢复出 `[1007,1008,1009]`** ✅ |
+| **P5 A2 ANSWER 3 的 parse**（值槽 + Bloom 段对齐 + 字段域取值） | **全绿**，含 P5.0c/0d/0f/0g 正负对照 ✅ |
+| **P6 Decode** | ✅ |
+| P7 负对照与 4 关键词抽查 | ✅ |
+
+### 30.1 卡点 ①（`q_R→Z_t` 桥的缩放残差）—— 用 **K 倍精度**解决
+
+`FusePirPackSlot.rnsToT` 逐分量把 `β` 与 `a_k` 从 Z_{q_R} 舍入到应答通道明文域，相位里多出
+`E = Σ_k δ_k s_k`，**`|E| ≤ ones/2`（ones = 私钥汉明重量），且这个绝对误差与明文模数无关**
+⇒ 换更大的 `t` 救不了它（这一点本轮专门确认过）。
+
+**解法（本轮实现）**：把字段**乘上精度倍率 K** 存放，让残差落在"K 分之一"的余量里。
+
+```
+字段域 T = 65537（论文的 t，布局/limb/B_pay 全部按它算，所以 B_pay 仍是 61）
+应答通道 tRing ≡ 1 (mod 2N)、素数、tRing = K·T，K > ones（本组实测 K = 17、ones = 11）
+  setup   ：y 的每个字段写成 K·field；D 的算术模数也用 tRing（用 T 会把大字段取模毁掉）
+  answer  ：Pack 在 tRing 上跑（槽位布局仍按 T 算 ⇒ FusePirPackSlot.pack 新增 tField 参数）
+  decode  ：槽值除以 K（一次舍入）⇒ E 被完全吸收，field 精确
+```
+
+* `FusePirFourStep.ringModulusFor(n, ones, base, digits)`：在 `[tRing_min, base^digits)` 里搜
+  `≡1 (mod 2N)` 的素数，找不到就**抛**并说明该调哪个旋钮（§18.6 的守卫纪律）。
+* `FusePirSetup.assemblePayload(..., scale)` / `FusePirSetup.divideScale(y, K, tRing, T)`：一对互逆。
+* ⚠️ **这条路只因为"盲旋转不要噪声"才免费**：BFV 噪声随 `t` 增长，有噪声时换大 `t` 会吃噪声余量。
+  本实现 Δ=1、无噪声（§21 的工程决定）⇒ 精度可以这样买。
+
+**途中踩的三个坑（都是"两个模数混淆"这一类静默错，值得留档）**：
+
+| # | 坑 | 症状 |
+|---|---|---|
+| 1 | `BffEncode.encode(..., payload, T, ...)`：**建表 D 的算术模数**也必须换成 tRing | 表按 `mod T` 回填，`K·field > T` 被取模毁掉 ⇒ 相位全错但每一步单独看都对（P2 直接掉到 0/16） |
+| 2 | **判据的参考系**：`bffArray()` 里存的是 `K·field`，不能与"除过 K"的相位比 | P4.0b/P4.0c 显示 0/61，其实只差一个 K 倍 |
+| 3 | 🔴 `divideScale` **不能整体按中心代表折叠** | `K·field` 可以超过 `tRing/2`（`field > 32768` 时就会）⇒ 大的正字段被误判成负数。症状极隐蔽：**只有大的指纹 limb 错、小字段全对**，且偏差是个常数（实测 3854 ≈ T/K）。正确做法：只有"离 `tRing` 不到 K"的那一点才当负残差 |
+
+### 30.2 卡点 ②（`Resp.bloomCt` 的掩码）—— **不是噪声，是"稠密明文的系数域乘积越界"**
+
+§29.8 我把它归因成"噪声预算"，**那个归因是错的**（本轮更正）。真实判据：
+
+* 槽掩码在**系数域是稠密的**（l1 ≈ N·t/2），一次明文乘会让消息多项式的**系数**超过 `t/2`；
+* 一旦越界，取模后被 NTT **摊到每一个槽** ⇒ 解出来是均匀随机值；
+* **与密文来源无关**，只与"乘数的系数域范数"和"被乘槽值的大小"有关。
+
+实测（全部在探针里，配正/负对照，永久保留）：
+
+| 实验 | 结果 | 说明 |
+|---|---|---|
+| 掩码 × 新加密密文（槽值小） | **4096/4096** | 机制没错 |
+| 打包件 × **常数**明文 1（系数域稀疏） | **4096/4096 还原** | 打包件本身没问题 |
+| 掩码 × 打包件（槽值可达 t−1） | **0/4096**（`P5.0g` 缺陷断言） | 越界 |
+| 只旋转、不掩码 | **逐位相同**（`P5.0e`） | §4.2 的旋转部分是对的 |
+
+**⇒ `bloomCt` 现在只旋转、不掩码**：段外置零交给 CAPE 的 `q^BF`（客户端侧段外本来就是 0，
+`CtCtMul` 的积在段外也是 0 ⇒ 折叠不带杂质）。这条**改变了 `bloomCt` 的契约**，已写在它的 javadoc 里。
+
+### 30.3 本轮改动的文件
+
+| 文件 | 改动 |
+|---|---|
+| `fusepir/FusePirFourStep.java` | **应答通道明文模数 `tRing = K·T`**（`ringModulusFor` + 素数搜索）；`setup` 里顺序调整（s_L/tRing 先于装配 y）、`BffEncode` 用 tRing、`pp` 仍用 T；`answer` 传 `tField=T`；`decode` 加"除 K → 解析"；新增 `ringModulus()`/`scale()`；`Resp` 新增 `scale()`/`decodeFields()`/`packedSlots()`/`packedCoeff()`/`galoisKeys()`；`bloomCt` 去掉掩码；新增 `requirePositionsMatch`、`rotateRowsByComposedBits`、`answerRnsSamples` |
+| `fusepir/FusePirSetup.java` | `assemblePayload(..., scale)` 重载 + `divideScale(y, K, tRing, T)`（含"只在 tRing 附近当负残差"的修正） |
+| `fusepir/FusePirPackSlot.java` | `pack(..., long tField, ...)` 重载（槽位布局按字段域算，**不再按 m.t**）；`scaleToT` 转 public |
+| `fusepir/AnswerOps.java` | `phaseOfRns`（算术层判据）、`sumPaths`；`addPaths` 改为两步复合 |
+| `probe/FusePirAnswerBisectTest.java` | 二分辨识（Q1 旋转本身 / Q2 真值同源 / Q3 P4.0c 为何 0 命中）—— **全部达成** |
+| `probe/FusePirFourStepTest.java` | P4.0 拆两层 + 参考系统一；P5.0a–P5.0g；`decodeSafe`；本轮**重建过一次**（见 §30.4） |
+
+### 30.4 ⚠️ 一次自伤事故（必须留档）
+
+本轮我用 PowerShell 改探针时写错了脚本（`WriteAllLines` 只写了前半段），**把
+`probe/FusePirFourStepTest.java` 从 730 行截断成 248 行**；而该文件**未被 git 跟踪**
+（`coding/.git` 里没有它）⇒ 无法回滚，只能按记录重建。
+
+**教训**：①"整文件重写"型脚本必须先备份；②本项目大量探针**未入库**，`git` 并不是安全网；
+③改源码优先用 `edit`（按唯一片段替换）而不是"读整份→拼列表→整份写回"。
+
+**重建后已全绿（exit 0），且比截断前更整齐**（P4.0 的参考系统一了）—— 但这条流程缺陷本身要记。
+---
+
+## 31. 📌 CAPE 接线的硬约束 + 交接索引（2026-10-15 第四轮）
+
+**当前交接单：`coding/rgsw-lab/HANDOFF-CAPE接线.md`**（主题：把 FusePIR 四步接进 CAPE）。
+上一份 `HANDOFF-FusePIR四步.md` 保留（含"三条把 bug 钉错方向的硬结果"的教训）。
+**开工读序：§27 → §29 → §30 → 交接单 → 才看源码。**
+
+### 31.1 三个模数的账（**接线第一件要记住的事**）
+
+| 模数 | 值 | 谁用 |
+|---|---|---|
+| **字段域 `T`** | **65537** | 论文的 `t`：limb 宽度、`perValue`、`B_pay=61`、段起点 `[5,24,43]`、`parsePayload`、指纹比对 |
+| **应答通道 `tRing`** | **`K·T`**（实测 `K=17` ⇒ 1179649） | FusePIR 环上下文 / `D` / `P_{c,b}` / `q^col` / 盲旋转 / `Pack` / **应答密文** / **CAPE 的打分** |
+| native 载荷 | `2^32` | `CapeDemoService` 那条，**不动、不混** |
+
+### 31.2 五条硬约束
+
+1. **CAPE 的打分整体搬到 `tRing`**：`BloomScoring` / `BatchEncoder` / `galoisKeysFor` 都用
+   `fp.ring()`。用 65537 或 `CapeBloomScore.DEFAULT_T = 2^32` 会抛形态错、或**静默算错分**。
+2. **槽里是 `K·field`**（bloom 位是 `0/K`）⇒ 同态内积是 `K × 匹配位数` ⇒ **阈值 τ 也要乘 K**。
+3. **`Resp.bloomCt(j)` 不再掩码**（只旋转）：段外置零由 CAPE 的 `q^BF` 承担
+   ⇒ **`q^BF` 段外必须为 0**。这是"稠密明文掩码乘打包件会解坏密文"（§30.2）的直接代价。
+4. **折叠轮数走 `bloomScoreReaching(…, packed.highestSlot())`**：`B_pay=61` ⇒ 6 轮；
+   论文形状的 5 轮只够到槽 31 ⇒ **静默漏算**（§19.3）。
+5. **四个入口签名照 A2 原文，不要改**（§27.1）；`CapeDemoService` / native 路径**一行不动**。
+
+### 31.3 接线时的诊断入口（都在 §30 实现好了）
+
+`Resp.decodeSlots(ct)`（**槽值**，接打分用）/ `Resp.decodeFields(ct)`（**字段域**，判载荷用）/
+`Resp.scale()` / `FusePirFourStep.ringModulus()` / `answerRnsSamples` / `AnswerOps.phaseOfRns`。
+⚠️ 两个解码入口**不要混**：混了就是"差 K 倍"的静默错（§30.1 表里的第 2 条）。
+
+### 31.4 未闭合项（如实登记）
+
+| 项 | 状态 |
+|---|---|
+| `bloomCt` 去掩码后的契约变更 | ⚠️ **需要 CAPE 侧配合**（`q^BF` 段外为 0）；已在 `bloomCt` 的 javadoc 与交接单 §3-3 登记 |
+| 打分段的端到端（真候选 + 阈值 τ） | ❌ **未做**，这是接线的本体 |
+| `tRing` 对 BFV 噪声余量的影响 | ⚠️ 本实现无噪声（§21 的工程决定）⇒ 现在免费；**一旦加噪声，`K` 倍精度会吃噪声余量**，必须重算 |
+| 大 `d`（论文 `d=512`）下的 `K` | ⚠️ `K > ones ≈ d/2` ⇒ `tRing` 需要更大的 gadget（`base=2^16, digits=2` 覆盖 2^32）；`ringModulusFor` 会在搜不到时**抛**并说明该调哪个旋钮 |
+
+---
+## 32. ✅ CAPE（A2）接线**跑通**（2026-10-15 第五轮）—— 但打分那一步要**两个参数旋钮**才成立
+
+本轮：新建 `cape/CapeA2Wire.java`（A2 侧唯一的调用方）+ `probe/CapeA2WireTest.java`（验收）+
+`probe/ScoreMulDomainTest.java`（隔离实验）。**判据命令**：
+
+```powershell
+.\run-mpc4j.ps1 -Class com.fusepir.probe.CapeA2WireTest 16 4096 16 18   # → exit 0
+.\run-mpc4j.ps1 -Class com.fusepir.probe.ScoreMulDomainTest 4096        # → exit 0（含缺陷断言）
+```
+
+### 32.0 结论先行
+
+1. **A2 里那 4 处调用全部接上并实测**：SETUP 11（`FusePirFourStep.setup`）→ SETUP 12
+   （`pp_F.extendBloom`，原有）→ SETUP 13（`st_S ← st^F_S`，直传）→ QUERY 1-3 →
+   ANSWER 2（`answer`）→ ANSWER 3（`valueCt(j)` / `bloomCt(j)`）→ 打分（ANSWER 4-6）→
+   DECODE 2（`decode`）。**四个入口的签名一行未改**（§27.1 / §31.2-5）。
+2. **"打分直接吃 `resp_anc`" 在本移植里不是免费的**：`CoeffModulus.bfvDefault(4096)` 下
+   `RingPack` 产物的噪声预算只有 **2 bit**，而一次 `CtCtMul` 要 ~26 bit ⇒ 得分是均匀随机值。
+   放宽系数模数到 `3×60`（`SecLevelType.NONE`）后 Pack 产物 **50 bit**、`q^BF × Pack`
+   **逐槽完全正确**（0/4096 不符）。
+3. **判定规则必须从"等号"改成"取整"**：`K > ones` 只够读**单个**字段；打分把桥的残差在
+   `τ = ‖b_qry‖₁` 个字段上**累加**（上界 `τ·ones/2`）⇒ 要 `K > τ·ones`。本组 `K = 128 > 110`，
+   判定 = `round(s_j/K) == τ`，**不是** `s_j == K·τ`（实测 K=17 时命中候选得 172、`K·τ = 170`）。
+4. **§30.2 的归因被推翻（更正）**：掩码那堵墙也是**噪声预算**，不是"与噪声无关的系数域越界"。
+   实测：`bfvDefault` 下 Pack 产物 2 bit、掩码后 **0 bit / 0-4096 槽对**；
+   `q=3×60` 下掩码后 **4096/4096 槽对、余 25 bit**。两者的唯一差别就是预算。
+5. **`tRing ≠ K·T`（文字更正）**：`tRing` 是"最小的 `≡1 (mod 2N)` 且不落在搜索下界之下的素数"，
+   而 `K := ⌊tRing/T⌋`。本组 `tRing = 1179649 = 18T − 17`，而 `17T = 1114129`。
+   MAP §30.1/§31.1 与交接单 §3 写的 "`tRing = K·T`" 是**简化说法**（不影响任何算术：
+   存的是 `K·field`，除的也是 `K`）。
+
+### 32.1 实测账（`probe/ScoreMulDomainTest`，N=4096）
+
+| 参数 | 新加密 | `RingPack` 产物 | `q^BF × Pack` | 稠密掩码 × Pack |
+|---|---|---|---|---|
+| `bfvDefault(4096)`（工作 q = 72 bit） | 51 bit | **2 bit** | ❌ 4096/4096 槽不符 | ❌ 0/4096 |
+| `q = 3×60`（工作 120 bit，`SEC_LEVEL_NONE`） | 99 bit | **50 bit** | ✅ 0/4096 槽不符 | ✅ 4096/4096（余 25 bit） |
+
+* 一次 `CtCtMul` 的代价 ≈ **26 bit**（实测 51 → 25），与 `t` 基本无关；
+* `Pack` 的代价 ≈ **49 bit**，且**与 limb 数几乎无关**（k=1 时 17 bit、k=61 时 14 bit）
+  ⇒ 瓶颈是那些**稠密槽位选择子**（`multiplyPlain`，代价 ~`log2(N·t)`），不是 key switch 的条数；
+* **延迟重线性化不是出路**：`multiply` 那一步就把预算吃光（实测 E2 = 0 bit），
+  而且 size-3 密文**不能旋转**（`Evaluator` 抛 `encrypted size must be 2`）；
+* **自定义系数模数默认被拒**（`isParametersSet=false`：*not compliant with
+  HomomorphicEncryption.org security standard*），只能显式走 `SecLevelType.NONE`。
+
+### 32.2 本条路的两个参数旋钮（**都是玩具参数，必须一起说**）
+
+| 旋钮 | 值 | 为什么 |
+|---|---|---|
+| 系数模数 | `3×60 bit`（`Mpc4jRgsw` 新增的 6 参构造 + `FusePirFourStep.setup` 的 8 参重载） | 让 `Pack` 产物活得下一次 `CtCtMul`（2 bit → 50 bit） |
+| 精度倍率 `K` | `128`（`> τ·ones = 110`，`ringModulusFor` 的新增 `minScaleK`） | 让判定与"τ 个字段的桥残差之和"可比 |
+
+⚠️ `3×60` **不满足 128-bit 安全标准**（论文自己的参数集比这大得多）；纯 A1 的调用方
+（6 参 `setup`）**仍是原来的合规参数**，行为一行未变。
+
+### 32.3 本轮改动的文件
+
+| 文件 | 改动 |
+|---|---|
+| `cape/CapeA2Wire.java` | **新建**：A2 的四个调用 + 打分 + 判定（`query`/`answer`/`decode`、`A2_COEFF_BITS`、`A2_MIN_SCALE_K`、`nearestFieldScore`、`queryVector`、`plainInner`）；`query()` 里有 `K > τ·ones` 守卫 |
+| `fusepir/FusePirFourStep.java` | 两个**加法式**重载：`setup(..., coeffBits, minScaleK)`（原 6 参原样保留、委托）与 `ringModulusFor(..., minScaleK)`；`setup` 里的两处 `new Mpc4jRgsw` 改走新构造 |
+| `prim/Mpc4jRgsw.java` | 新增 6 参构造（`coeffBits != null` 时用 `CoeffModulus.create` + `SecLevelType.NONE`）；原 4/5 参构造行为一行未变 |
+| `probe/CapeA2WireTest.java` | **新建**：P1–P6，含"命中/漏位/换 q^BF/换 st^anc_C(⊥)/5 轮 vs 6 轮/破约"六组正负对照 |
+| `probe/ScoreMulDomainTest.java` | **新建**：隔离实验 + 噪声阶梯 + **缺陷断言**（`bfvDefault` 下那一组刻意期望它错，放宽 q 后它会变红） |
+| `probe/FusePirAnswerBisectTest.java` | 修一条**非确定性**断言：`Q1.3b` 原来同时要求"与错 100 格的差 > #ones"（认残差）和"逐位精确等于 `p[5]`"（不认残差）—— 自相矛盾，残差非零时就红（见 §32.6） |
+
+**未动**：`CapeDemoService` / native 路径（一行未改）。
+
+### 32.4 六个已实测、`CapeA2WireTest` 每次都会跑的判据
+
+| 判据 | 结果 |
+|---|---|
+| P1 SETUP 11-13（`pp_C` 由 `pp_F` 加宽、`st_S` 直传、`B_pay` 三方一致） | ✅ |
+| P2 QUERY 1-3（`q_anc` 形状、**`q^BF` 段外为 0**、`τ = ‖b_qry‖₁`、守卫） | ✅ |
+| P3 ANSWER 2-6（**得分取整 == 明文内积**、`bloomCt` 的段外杂质实测） | ✅ 3/3 候选 |
+| P4 DECODE（`V_{K_1}`、合取语义收下 `[1001]`、`⊥` 负对照、阈值不乘 K ⇒ 0 个） | ✅ |
+| P5 折叠轮数（5 轮与 6 轮等价；**破约后给出不同的错值**） | ✅ |
+| P6 三方对账（`payloadTruth` vs DB 0 处不符；`CtCtMul` 逐槽 0/4096 不符） | ✅ |
+
+### 32.5 未闭合项（如实登记）
+
+| 项 | 状态 |
+|---|---|
+| `3×60` 的参数是玩具 | ⚠️ 要让论文参数（大 q）成立，得换 native/更大的 N；本移植的 `bfvDefault(4096)` 装不下这一步 |
+| 判定规则的偏差 | ⚠️ 论文是 `s_j == τ` 的**等号**；我们改成 `round(s_j/K) == τ`，因为桥的残差是**本实现的**（§24.4/§26.3），不是论文的 |
+| `τ` 的上限 | ⚠️ `K > τ·ones` 且 `tRing = K·T < base^digits = 2^24` ⇒ 本组 `τ ≤ 23`；查询关键词集不能随便变大（有守卫会抛） |
+| `bloomCt` 不掩码的契约 | ⚠️ 仍需要 CAPE 侧保证 `q^BF` 段外为 0（本轮实测了破约的代价：6 轮得分 = τ + v₃） |
+
+### 32.6 ⚠️ 顺手查出的一条**非确定性**断言（`FusePirAnswerBisectTest` 的 Q1.3b）
+
+回归时 `Q1.3b` 变红。它**不是**本轮改出来的（本轮对 A1 路径只有加法式重载，6 参 `setup`
+与 4/5 参 `Mpc4jRgsw` 构造的行为逐位相同），而是**它自己写错了**：
+
+```java
+dev > ones && centered(got, t) == centered(p[5], t)   // 前半认残差、后半要求逐位精确
+```
+
+前半认了 `≤ #ones` 的残差，后半却要求"`got` 逐位等于 `p[5]`" —— 只要 `rnsToT` 的残差非 0
+就必然红。**实测它是每次运行都不同的**（`m.encrypt` 每次重新随机化 `a`）：
+
+| 同一条判据、三次运行 | r=5 读回 | 与 `p[5]=6` 的差 |
+|---|---|---|
+| 第一次 | 6 | 0（恰好过） |
+| 第二次 | 5 | 1（红） |
+| 第三次 | 8 | 2（红） |
+
+⇒ 修法：后半改成 `|got − p[5]| ≤ ones`（"是 r=5 的答案，在残差内"），负对照要证的
+"与错 100 格的差 ≫ ones" 原样保留（实测 98/101 ≫ 11）。
+**教训**：一条断言里不能既有"认残差的容差"又有"逐位精确"，否则它是一条**掷骰子**的判据。
+
+---
+## 33. ✅ CAPE 接入前端（2026-10-15 第六轮）—— 页面改走**默认密文路径**，并修掉 3 条缺陷
+
+### 33.0 结论先行
+
+1. **CAPE（native 那条）本身能用**：服务自带进程内端到端自检 **9 PASS / 0 FAIL**
+   （`Dec(ct_score) == τ`、指纹 ⊥、N1/N2/N3 负对照全绿），一次 ANSWER **75.1~75.8 s**
+   （锚检索占 99%：75.0 s；同态打分 0.6 s）。
+2. **但页面（前端）此前"不能用"**：它走的是**明文关键词**那条老路，且有一个
+   **off-by-one** 让合取判定**永不命中**（实测池内组合返回 `hit=false`）。
+   ⇒ 本轮把页面接到默认路径，并修掉这个 off-by-one。
+3. **浏览器做不了 BFV**（加密 `b_qry` / 解密 `ct_score`）⇒ 新增两个**显式标注**的
+   "客户端模拟器"出口，页面按 **seal → `/api/query` → decide** 三步走。
+4. **单进程回环**必须与结论一起说：模拟器与服务端同 JVM、共享打分密钥 ⇒
+   演示的是**协议形态与计时**，不是密钥分离。口径落在 `cape-demo/README.md`（已知边界）、
+   `/api/state.protocol.clientSimulator`、`/api/client/decide` 响应的 `note`
+   与线路面板的措辞里（⚠️ **页头不再写它** —— 用户 2026-10-15 要求把页头那段删掉）。
+
+### 33.1 实测（2026-10-15，N=8192）
+
+| 查询 | τ | 出站字段 | 体里含关键词 | 候选 `Dec(ct_score)` | 判定 |
+|---|---|---|---|---|---|
+| `Adam Sandler + family`（池内命中 1） | 5 | `[d,anchorColIdx,anchorRowIdx,qBFBytes]` | **无** | **5** / 3 / 2 | 收下 5706 ⇒ *Spanglish (2004)* ✓ |
+| `anime + golf`（负对照） | 3 | 同上 | **无** | 2 / 1 / 1 | 一条都不收 ✓ |
+
+服务端自检（`-Dcape.selftest=true`）：CAPE 端到端 **9/0**、sealed 合规路径 **4/0**（修前 3/1）、
+P1-3 **7/0**、P1-1 **3/0**。
+
+### 33.2 修掉的三条（都配了可跑判据，详见 `docs/缺陷总表.md` §四 2026-10-15）
+
+| # | 缺陷 | 症状 / 判据 |
+|---|---|---|
+| 1 | **载荷读取 off-by-one**：40-bit 指纹上线后 `fpSlots` 由 1 变 2（`B_pay` 59→60），两处读取仍写 `payload[1]` 与 `2 + j·(1+ℓ_BF)` ⇒ 候选数读成**指纹高位 limb** | 修前 `valueCount=171`、`接受=[]`、sealed 自检 3 PASS/1 FAIL、页面 `hit=false`；修后 `valueCount=3`、`接受=[5706]`、4 PASS/0 FAIL、页面命中。⚠️ 它能藏住是因为"整条载荷逐位比照"那条**不按下标读**。已改走 `FusePirSetup.countOffset/valueOffset` |
+| 2 | **`run-demo.ps1` 类名写错**（`com.fusepir.demo.CapeDemoService` 不存在，真名 `com.fusepir.cape.CapeDemoService`） | 一键启动永远 `service exited early`；全 classpath 无此类 |
+| 3 | **判定入口在 `V_K1` 为空时掐连接**：我第一版用"读 JSON 解析结果"的入口去读**进程内**的 `long[]` 载荷 ⇒ `valueIds` 空、`ct_score` 3 条 ⇒ `decodeWire` 里 `valueIds.get(j)` 抛 `IndexOutOfBounds`（在它的 `try` 之外）⇒ `HttpServer` 掐掉连接，前端只看到"服务器关闭了连接" | 修前原始响应＝连接被关闭；加 try/catch 后立刻现形为 `{"ok":false,"error":"…IndexOutOfBoundsException: Index 0 out of bounds for length 0"}`。已改用 `FusePirDecode.decodePayloadCoefficients(payload, t)` + 两个出口都包 try/catch + `|V_K1| != |ct_score|` 时报错不猜 |
+
+### 33.3 本轮改动的文件
+
+| 文件 | 改动 |
+|---|---|
+| `cape/CapeDemoService.java` | ① 修两处载荷 off-by-one；② 新增 `/api/client/seal` 与 `/api/client/decide` 两个出口（+ `ClientSeal`/`CapeRespForClient` 两个内部留档类）；③ `runQueryCapeSealed` 在返回前留档客户端判定要用的三样；④ `/api/state.protocol` 增两条自述；⑤ 两个新出口包 try/catch |
+| `cape-demo/web/index.html` | `doSearch()` 改成三步（seal → query → decide）；新增**线路面板**（客户端发了什么 / 服务器收到什么 / 谁判定）与**每候选得分**表；进度条刻度改读 `/api/state.expected.answerMs`（页头那段"走默认密文路径 + 单进程回环"的说明按用户要求已删） |
+| `cape-demo/run-demo.ps1` | 类名改正（`com.fusepir.cape.CapeDemoService`）+ 就地写明这条坑 |
+| `cape-demo/README.md` | 新增"页面走的是哪条路"（三步表 + 实测表 + 回环警告）、实测数据更新（ANSWER ≈75 s）、已知边界补"两方部署/payloadPlain"两行、文末登记本轮两条缺陷 |
+| `docs/缺陷总表.md` | 新增"### 2026-10-15 本轮"（前端接入 + 3 条缺陷，含判据与修前/修后实测） |
+
+**未动**：native C++（`blindrotate.dll` 一行未改）、A1/A2 的 MPC4J 纯 Java 那条路（§32）。
+
+### 33.4 仍未闭合（如实登记）
+
+| 项 | 状态 |
+|---|---|
+| **单进程回环** | ⚠️ 模拟器与服务端同 JVM、共享打分密钥 —— 演示"协议形态"，**不是**两方部署（与 `缺陷总表` 的 P0-4 同源） |
+| `payloadPlain` 是**明文** | ⚠️ 候选 id 就在这份载荷里；真修要发 `B_pay` 条密文（按实测单条 524,401 字节推算 ≈30.9 MB/响应） |
+| 41 MB 的列选择子流 | ⚠️ P1-1 那条读法的直接后果，未优化（见 `缺陷总表`） |
+| 页码上的进度条刻度 | ⚠️ 已改成读 `/api/state.expected.answerMs`（不再写死 150 s） |
+
+### 33.5 📌 查验单（给另一个 agent 用）
+
+`coding/rgsw-lab/VERIFY-CAPE接线与前端.md` —— **逐条 claim + 怎么独立判定 + 什么算没通过**，
+含 5 条**变异测试**（把缺陷放回去，看断言是否真的变红）与"我明确**没有**声称的"一节。
+新会话要动这两块之前，先跑它一遍。
