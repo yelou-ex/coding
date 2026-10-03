@@ -109,7 +109,7 @@ public final class CapeDecode {
      *
      * @param unusedMarker 历史参数，保留只为不动已有调用点
      */
-    public static DecodeResult decodeWire(CapeBloomScore.Scorer sc, List<long[]> ctScoreBytesWire,
+    public static DecodeResult decodeWire(BloomChannel.Scorer sc, List<long[]> ctScoreBytesWire,
                                           List<Integer> valueIds, long fpWant, long fGot, long tau,
                                           long unusedMarker) {
         if (fGot != fpWant) {
@@ -122,8 +122,8 @@ public final class CapeDecode {
         for (int j = 0; j < ctScoreBytesWire.size(); j++) {
             long sj;
             try {
-                Ciphertext ct = CapeScorerWire.deserialize(sc, ctScoreBytesWire.get(j));
-                sj = CapeBloomScore.decryptSlots(sc, ct)[0];
+                Ciphertext ct = ScorerWire.deserialize(sc, ctScoreBytesWire.get(j));
+                sj = BloomChannel.decryptSlots(sc, ct)[0];
             } catch (RuntimeException e) {
                 // 字节坏了 ⇒ 这条密文根本解不出来。按"拒绝"处理，并记下来。
                 loadFailed = true;
@@ -159,13 +159,22 @@ public final class CapeDecode {
         return FusePirDecode.decodePayload(resp);   // 实现已搬到 com.fusepir.fusepir.FusePirDecode
     }
     /**
-     * {@code fp(K) = inField(K.hashCode(), t)} —— 与 {@code CapeDemoData} 的载荷指纹同源。
+     * {@code fp(K)} —— A1 DECODE 6 里的 {@code fp}。
      *
-     * <p>它正是 D7 记录的那条偏差：论文是 40-bit 指纹，我们用的是 {@code String.hashCode}。
-     * 注意 {@code t} 必须取 <b>native 那条信道的</b>（载荷是在那个域里生成的），
-     * 不是打分信道的 65537 —— 取错会让所有查询都返回 bot。
+     * <p><b>实现已收口到 {@link com.fusepir.bff.BffSetup#fp(String)}</b>
+     * （{@code bff} 层是它唯一的家：{@code fp} 是 `BFF.Setup` 的产物之一）。
+     * 这里只做转发。
+     *
+     * <p>⚠️ <b>2026-10-14 深夜起 {@code fp} 是 40-bit</b>（论文 §5.1 μ=40），
+     * 不再是 32-bit {@code String.hashCode}（D7 那条偏差已修）。
+     * 它占 {@code FusePirSetup.fpSlots(t)} 个载荷槽，校验走
+     * {@link com.fusepir.fusepir.FusePirDecode#fingerprintOk}。
+     *
+     * <p>⚠️ {@code nativeT} 参数<b>保留但不再参与计算</b>：指纹值本身与 `t` 无关
+     * （`t` 只决定拆几个槽）。保留它是为了不改动调用点签名；
+     * 需要拆/拼槽的地方请显式传 `t` 给 {@code fpDigits}/{@code fpFromDigits}。
      */
     public static long fpOf(String kw, long nativeT) {
-        return FusePirDecode.fpOf(kw, nativeT);     // 实现已搬到 com.fusepir.fusepir.FusePirDecode
+        return FusePirDecode.fpOf(kw);
     }
 }

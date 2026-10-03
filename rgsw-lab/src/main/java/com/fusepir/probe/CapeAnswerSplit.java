@@ -54,7 +54,7 @@ public final class CapeAnswerSplit {
         int maxValues = db.intMeta("maxValues", 3);
         int lBf = db.intMeta("lBf", 35);
         int maxSet = db.intMeta("maxSetSize", 4);
-        int bPay = 2 + maxValues * (1 + lBf);
+        int bPay = FusePirSetup.payloadBpay(1, maxValues, 1 + lBf);   // 1 槽指纹夹具
 
         long h = NativeBlindRotate.nativeCreateContext(n, T, B);
         try {

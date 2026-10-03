@@ -1,9 +1,6 @@
-package com.fusepir.cape;
+package com.fusepir.bloom;
 
 
-import com.fusepir.bff.*;
-import com.fusepir.demo.*;
-import com.fusepir.probe.*;
 import edu.alibaba.mpc4j.crypto.fhe.seal.Ciphertext;
 import edu.alibaba.mpc4j.crypto.fhe.seal.serialization.SealSerializable;
 
@@ -44,9 +41,9 @@ import edu.alibaba.mpc4j.crypto.fhe.seal.serialization.SealSerializable;
  *   ct.load(m.context, wire);
  * </pre>
  */
-public final class CapeScorerWire {
+public final class ScorerWire {
 
-    private CapeScorerWire() {
+    private ScorerWire() {
     }
 
     /**
@@ -131,7 +128,7 @@ public final class CapeScorerWire {
      * {@code ciphertext data is invalid}。所以打分信道的参数是协议的一部分，
      * 不是实现细节；{@code /api/state} 的 {@code params.scoreT} 与 {@code N} 就是为它服务的。
      */
-    public static Ciphertext deserialize(CapeBloomScore.Scorer sc, long[] wire) {
+    public static Ciphertext deserialize(BloomChannel.Scorer sc, long[] wire) {
         Ciphertext ct = new Ciphertext();
         try {
             ct.load(sc.m.context, wireToBytes(wire));
@@ -159,7 +156,7 @@ public final class CapeScorerWire {
 
     /** {@link #serializeKey} 的逆。 */
     public static edu.alibaba.mpc4j.crypto.fhe.seal.SecretKey deserializeKey(
-        CapeBloomScore.Scorer sc, long[] wire) {
+        BloomChannel.Scorer sc, long[] wire) {
         edu.alibaba.mpc4j.crypto.fhe.seal.SecretKey sk =
             new edu.alibaba.mpc4j.crypto.fhe.seal.SecretKey();
         try {

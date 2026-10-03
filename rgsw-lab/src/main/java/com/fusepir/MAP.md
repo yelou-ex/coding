@@ -71,36 +71,52 @@
 | | 参数上下文 / 密钥 | ✅ | C++ `rgsw_blindrotate.cpp:727` `nativeCreateContext`；`prim/Mpc4jRgsw.java` |
 | | `LWE↔RLWE` 桥 / Ring Packing | ⚠️ 原型，未接主路径 | `prim/LweRlweBridge.java`、`prim/LweRlweConversion.java`、`prim/LweToRgswOps.java`、`prim/RingPack.java` |
 | **Bloom** | `BF.Gen(0,S)` | ✅ | `common/BfGen.java` |
-| | `ct_score = CtCtMul(q^BF, ct^BF_j)` | ✅ | `bloom/BloomScoring.java:92` `bloomScore` |
-| | 折叠 `Σ_r CtRotate(ct, 2^r)` | ⚠️ 机制同形、**轮数不同** | `bloom/BloomScoring.java:102` `foldAllSlots`（`rotateRows(1,2,4,…,N/4)` + 一次列旋转） |
-| **BFF** | `BFF.Setup(n,3)`：`s`、`L_BFF` 闭式 | ✅（仅对照，**我们不使用**） | `bff/BffSetup.java:44` `paperS`、`:67` `paperLBff` |
-| | `BFF.Encode`：位置函数 `H` | ⚠️ 无 `h_i`，用线性探测 | `bff/BffEncode.java:52` `keywordHash`、`:78` `mix` |
-| | 表 `D` / 分享 | ⚠️ 形态不同 | `bff/CapeDemoData.java:298` 3 路 share、`:353` 表 `P_{c,b}` |
+| | SETUP：`S_v`/`m_K`/`b_v` | ✅ | `bloom/BloomSetup.java:96`/`:57`+`:76`/`:130` |
+| | ANSWER：槽位编码 | ✅ 已收敛为 1 份 | `bloom/BloomChannel.java:113` `toSlotVector` |
+| | `q^BF = RLWE.Enc(b_qry)` | ✅ | `bloom/BloomChannel.java:143` `encryptQuery`、`:153` `encryptQueryWire` |
+| | `ct_score = CtCtMul(q^BF, ct^BF_j)` | ✅ | `bloom/BloomScoring.java:105` `bloomScore` |
+| | 折叠 `Σ_r CtRotate(ct, 2^r)` | ✅ **论文行是 floor 笔误**，我们 ⌈·⌉；**另有第二种入口**（候选是 Pack 产物时用） | `bloom/BloomScoring.java:156` `foldSlots`（⌈log2 ℓ_BF⌉ 轮）；`foldAllSlots`（折满 N/2，等价对照）；**`bloomScoreReaching`/`foldSlotsReaching`（按最高参与槽取轮数，§19.3/§19.4）** |
+| | `s_j = Dec(ct_score,j)` | ✅ | `bloom/BloomScoring.java:248` `decodeScore` |
+| **BFF** | `BFF.Setup(n,3)`：`s`、`L_BFF` 闭式 | ✅（仅对照，**我们不使用**） | `bff/BffSetup.java:124` `paperS`、`:147` `paperLBff` |
+| | `BFF.Setup` 的 `fp` / `D` 形状 | ✅ | `bff/BffSetup.java:88` `fp`、`:111` `newD` |
+| | `BFF.Encode`：位置函数 `H`（唯一实现） | ✅ **`h_a` 已实现**；**论文几何路径上是活的**（2026-10-15 更正：本行原写"⚠️ 无 `h_a`，用线性探测"，是旧口径） | `bff/BffHash.java`：`hashGen(L_BFF,s,k,ρ_H)` → `HashGen.positions(...)`。⚠️ 建表侧 **`CapeDemoData:453` 在 `buildTablesPaper`（`:399`）里** ⇒ 论文几何走真 `h_a`；**旧几何 `buildTables`（`:185`，`CapeDemoService` 默认仍调它）仍走替代品**（同一个未接线问题，见 §14.5/§15.7） |
+| | `BFF.Encode`：摆放 + 表 `D` + 分享 | ⚠️ 形态不同（k 路 = 同一列{k} 个相邻行） | `bff/BffEncode.java:137` `place`、`:195` `randomizeD`、`:219` `writeD`、`:276` `splitShares` |
 | **FusePIR** | SETUP：网格 `(R,C)`、`cellsPerCol` | ⚠️ 推导顺序与论文相反 | `fusepir/FusePirSetup.java:46` `cellsPerCol`、`:56` `columns`、`:65` `span` |
-| | SETUP：`P_{c,b}(X)` | ⚠️ | `bff/CapeDemoData.java:353` |
-| | QUERY：位置 `u_a = h_a(K)` | ⚠️ 一个位置 + 线性探测 | `bff/BffEncode.java:52`；调用点 `cape/CapeQuery.java:222/246` |
+| | SETUP：载荷布局 `B_pay`/偏移 | ✅ 布局公式唯一实现 | `fusepir/FusePirSetup.java` 的 `perValue`/`payloadBpay`/`valueOffset`/`bloomOffset` |
+| | SETUP：`P_{c,b}(X)` | ⚠️ | `bff/CapeDemoData.java`（表构造，属 demo 资产） |
+| | QUERY：位置 `u_a = h_a(K)` | ✅ **不是缺口了**（2026-10-15 更正：原写 ❌ 真缺口） | `bff/BffHash.positions`；`fusepir/FusePirParams.java:296` `bffPositions(rhoH,hg)` 把 `kw → h_a(K)` 装进 `pp`；`probe/FusePirStateTest:185` 断言 `pp` 的 `H` 与 `BffHash.positions` 逐位同一份 |
 | | QUERY：`q^col` 选择子 | ✅ **P1-1 已完成** | `cape/CapeQuery.java:257` `encryptColumnSelectors`；native `rgsw_blindrotate.cpp:1363` `nativeEncryptSealedColumns` |
 | | QUERY：`q^row = LWE.Enc_{s_L}(r_a)` | ⚠️ **无噪声** + `s_L` 必须等于 `s_R` | `cape/CapeQuery.java`（`q.beta[a] = (sum + rowIdx[a]) % twoN`） |
 | | ANSWER：列选择→盲旋转→提取→三路相加 | ✅ | C++ `rgsw_blindrotate.cpp:543` `cape_answer_core`；入口 `nativeCapeAnswer:1614` / `nativeCapeAnswerSealed:1937` / `nativeCapeAnswerSealedC:1981` |
-| | ANSWER：**`resp ← Pack(...)`（L13）** | ❌ **没有实现** | **没有文件** —— 见 §6 |
+| | ANSWER：**`resp ← Pack(...)`（L13）** | ⚠️ **原语有且已验；缺适配器与调用方**（2026-10-15 更正：原写 ❌ 没有实现） | `prim/RingPack.pack`；实测见 **§18/§19**。⚠️ 收的是明文 `(as,bs)` 而非 `{ct_{pay,b}}`，且**零个协议调用方** |
 | | DECODE：载荷切分 `Recover (f,m,v…)` | ✅ | `fusepir/FusePirDecode.java:57` `decodePayload` |
-| | DECODE：`fp(K)` | ⚠️ 用 `String.hashCode`，非论文 40-bit | `fusepir/FusePirDecode.java:91` `fpOf`；`bff/CapeDemoData.java:416` `inField` |
+| | DECODE：`fp(K)` | ✅ **40-bit，非 `hashCode`**（2026-10-15 更正：原写"用 String.hashCode"） | `fusepir/FusePirDecode.java:155` `fpOf` 委托到 `bff/BffSetup.fp`（`oracle40`，`FP_SEED=20261015`） |
 | **CAPE** | SETUP：`ℓ_BF`、`G`、`b_v`、`DB^CAPE` | ✅ | 见 `cape/CapeSetup.java` 的对照表（实现散在 `common/BfGen` 与 `bff/CapeDemoData`） |
-| | SETUP：`B_pay = 2+m(1+ℓ_BF)` | ⚠️ **这是我们的推断**（论文没重述） | `cape/CapeSetup.java:54` `bPay` |
-| | SETUP：打分信道（论文里没有这一步） | ⚠️ 口径差：**两个 `t`、两把 sk** | `cape/CapeBloomScore.java:168` `setup` |
+| | SETUP：`B_pay = 2+m(1+ℓ_BF)` | ⚠️ **这是我们的推断**（论文没重述） | `cape/CapeSetup.java:57` `bPay`（转发到 `FusePirSetup.payloadBpay`） |
+| | SETUP：打分信道（论文里没有这一步） | ⚠️ 口径差：**两个 `t`、两把 sk** | `bloom/BloomChannel.java:81` `setup` |
 | | QUERY：`b_qry`、`τ` | ✅ | `cape/CapeQuery.java:96` `build`（`τ` 只在客户端） |
-| | QUERY：`q^BF ← RLWE.Enc(b_qry)` | ✅ | `cape/CapeBloomScore.java:220` `encryptQueryWire` |
+| | QUERY：`q^BF ← RLWE.Enc(b_qry)` | ✅ | `bloom/BloomChannel.java:153` `encryptQueryWire` |
 | | QUERY：`q ← (q_anc, q^BF)` | ✅ | `cape/CapeQuery.java:379` `toJson` |
 | | ANSWER：`resp_anc ← FusePIR.Answer(st_S, q_anc)` | ✅ | `cape/CapeDemoService.java:309` `runQueryCapeSealed` → `:509` `runAnchorNative` |
-| | ANSWER：`Parse {(c_{v_j}, ct^BF_j)} from resp_anc`（L3） | ❌ **做不到**（需要 Pack） | 我们是**重新加密**（D2） |
-| | ANSWER：`ct_score,j = CtCtMul + 折叠`（L4-7） | ✅ | `cape/CapeAnswer.java:90` `answer` → `bloom/BloomScoring.java:92` |
+| | ANSWER：`Parse {(c_{v_j}, ct^BF_j)} from resp_anc`（L3） | ❌ **做不到**（需要 Pack） | 我们是**重新加密**（D2，调用点 `cape/CapeBloomScore.encryptCandidateBloom`） |
+| | ANSWER：`ct_score,j = CtCtMul + 折叠`（L4-7） | ✅ | `bloom/BloomScoring.java:105` `bloomScore`；调用点 `cape/CapeBloomScore.score` |
 | | ANSWER：`resp ← ({(c_{v_j}, ct_score,j)})`（L8） | ⚠️ | `cape/CapeDemoService.java:284` `answerCape`；响应字段 `payloadPlain`（**明文**）+ 每候选 `ctScoreBytes`（真密文） |
 | | DECODE：`V_{K_1} ← FusePIR.Decode` | ✅ | `cape/CapeDecode.java:158` → `fusepir/FusePirDecode.java:57` |
 | | DECODE：`f ≠ fp(K) ⇒ ⊥` | ✅ | `cape/CapeDecode.java:81` `decode` / `:112` `decodeWire` |
 | | DECODE：`s_j = τ ⇒ R ∪ {v_j}` | ✅ | 同上 |
 
-**一句话**：**算法骨架全在，缺的是 `Pack` 那一层**；
-另外三处形态差（`h_i`、独立 `s_L`、两方密钥隔离）是结构性的。
+**一句话**：**算法骨架全在**；`Pack` 那一层**原语已有且已验，缺的是适配器与调用方**（§18/§19）；
+另外三处形态差（独立 `s_L`、`q^row` 无噪声、两方密钥隔离）是结构性的。
+**完整的缺口总账见 §20。**
+
+> **`bloom/` 与 `bff/` 这一层现在是什么状态**（本轮结论，明细见 §11）：
+> - `bloom/` —— **契约完整，缺口 0**。论文里属于 Bloom 的每一行都有唯一实现，
+>   `cape/` 里只剩调用（§11.1 逐行核过）。
+> - `bff/` —— **`BFF.Setup` / `BFF.Encode` 的数据结构侧完整**（`H`、`fp`、`D`、摆放、
+>   三路分享、填充自检各自唯一一份），**但差两条真缺口**：`h_a`（A1 QUERY 3）
+>   与 `select R, C`（A1 SETUP 4）。这两条**会改变几何**（`L_BFF` 130 → 155、`C` 26 → 10），
+>   所以是**决定**而不是机械补齐 —— 见 §11.3 ①②。
+>   第三条 `D[u] ← 0, u ∈ [L_BFF, RC)` 在**我们这组定义下是空操作**，不是缺口（§11.3 ③）。
 
 ---
 
@@ -127,11 +143,29 @@
 
 **完整路径**：`coding/rgsw-lab/src/main/java/com/fusepir/bloom/`
 
+> 本轮把 Bloom 从 `cape/CapeBloomScore` 里拆出来，**4 个文件**，`cape/` 侧只留调用。
+> 完整的「论文行 → 函数 → 调用方」表在 **§11.1**。
+
+| 文件 | 行数 | 负责什么 |
+|---|---|---|
+| `bloom/BloomSetup.java` | 99 | `S_v`、`m_K`、`b_v` —— **SETUP 侧的纯逻辑，无同态** |
+| `bloom/BloomChannel.java` | 127 | 打分信道的**密钥/编码原语**：`Scorer`、`setup`、`toSlotVector`/`padToSlots`（槽位编码，**唯一实现**）、`encryptQuery`/`encryptQueryWire`、`decryptSlots` |
+| `bloom/BloomScoring.java` | 340 | QUERY/ANSWER 侧的同态运算：`encryptBloomVector`、`bloomScore`、`foldSlots`/`foldAllSlots`、`galoisKeysFor`、`decodeScore` |
+| `bloom/ScorerWire.java` | 133 | 打分信道的**线格式**（`q^BF` 与密钥的序列化） |
+
 | 论文里的东西 | 状态 | 位置 |
 |---|---|---|
 | `BF.Gen(0,S)` / `b_v` / `b_qry` | ✅ | `coding/common/src/main/java/com/fusepir/common/BfGen.java`（**独立模块**：客户端算 `b_qry`、服务端算 `b_v`，必须同一份实现） |
-| `ct_score ← CtCtMul(q^BF, ct^BF_j)` | ✅ | `bloom/BloomScoring.java:92` |
-| 折叠 `Σ_r CtRotate(ct, 2^r)` | ⚠️ | `bloom/BloomScoring.java:102`。机制同形；**我们折满 `N/2` 槽 = 13 轮，论文 `⌈log2 ℓ_BF⌉ = 5` 轮**。等价条件 `ℓ_BF ≤ N/2` + 高位补零，已验过 |
+| A2 SETUP 3-5　`S_v` / `m_K` / `b_v` | ✅ | `bloom/BloomSetup.java:96` / `:57`+`:76` / `:130` |
+| A2 QUERY 3　`τ ← ‖b_qry‖₁` | ✅ | `common/…/BfGen.java` 的 `hammingWeight` |
+| ANSWER 2　槽位编码（**4 份重复已收敛为 1 份**） | ✅ | `bloom/BloomChannel.java:113` `toSlotVector` / `:132` `padToSlots` |
+| ANSWER 3　`q^BF ← RLWE.Enc(b_qry)` | ✅ | `bloom/BloomChannel.java:143` `encryptQuery`、`:153` `encryptQueryWire` |
+| ANSWER 4　`ct_score ← CtCtMul(q^BF, ct^BF_j)` | ✅ | `bloom/BloomScoring.java:105` `bloomScore`（→ `:122` 论文形状的重载） |
+| ANSWER 5　折叠 | ✅ | `bloom/BloomScoring.java:155` `foldSlots` = **`⌈log2 ℓ_BF⌉` 轮**（论文这一行的 floor 是笔误，见 §10.3 ①）；`:192` `foldAllSlots` 是折满 `N/2` 的等价对照 |
+| ANSWER 6　`s_j ← Dec(ct_score)` | ✅ | `bloom/BloomScoring.java:248` `decodeScore` |
+| 打分信道线格式 | ✅ | `bloom/ScorerWire.java`（原 `cape/CapeScorerWire` 已删） |
+
+**Bloom 侧缺口：无**（§11.1 逐行核过）。
 
 ---
 
@@ -139,18 +173,33 @@
 
 **完整路径**：`coding/rgsw-lab/src/main/java/com/fusepir/bff/`
 
+> 本轮把 BFF 收敛到 **3 个文件**。完整的「论文行 → 函数 → 调用方」表在 **§11.2**，
+> 三个缺口的性质判定在 **§11.3**。
+
+| 文件 | 行数 | 负责什么 |
+|---|---|---|
+| `bff/BffSetup.java` | 163 | `BFF.Setup`：段大小 `s` 与 `L_BFF` 的**论文闭式**、指纹 `fp`、`D` 的形状 `newD` |
+| `bff/BffEncode.java` | 296 | `BFF.Encode`：公开哈希 `H`（`keywordHash`/`mix`）、摆放 `place`、`randomizeD`/`writeD`/`checkDataRadius`、k 路分享 `splitShares` |
+| `bff/CapeDemoData.java` | 561 | **样例数据库的装载与建表**（JSON 解析、`colOf`/`rowOf` 表、验算）——是 demo 资产，不是协议层 |
+
 | 步骤 | 状态 | 位置 |
 |---|---|---|
-| `BFF.Setup(n,3)`：`s`、`L_BFF` 闭式 | ✅ 但**仅作对照** | `bff/BffSetup.java:44` `paperS`、`:67` `paperLBff` |
-| `BFF.Encode`：位置函数 `H` | ⚠️ **`h_i` 未实现** | `bff/BffEncode.java:52` `keywordHash`、`:78` `mix` |
-| 表 `D`、3 路分享、`P_{c,b}` | ⚠️ 形态不同 | `bff/CapeDemoData.java:298`（share）、`:353`（表）、`:222`/`:246`（`colOf`/`rowOf`） |
-| 填充 | ✅ | `bff/CapeDemoData.java` 的 `dataRadius` 自检；按附录 Alg 3 L6 对 `[0,L_BFF)` 均匀随机 |
+| `BFF.Setup(n,3)`：`s`、`L_BFF` 闭式 | ✅ 但**仅作对照** | `bff/BffSetup.java:124` `paperS`、`:147` `paperLBff` |
+| `BFF.Setup(n,3)` 的产物 / `fp` / `D` 形状 | ✅ | `bff/BffSetup.java:76` `setup`、`:88` `fp`、`:111` `newD` |
+| `BFF.Encode`：位置函数 `H`（**唯一**实现） | ✅ | `bff/BffEncode.java:66` `keywordHash`、`:92` `mix` |
+| `BFF.Encode`：摆放 `place` | ✅ | `bff/BffEncode.java:137` |
+| 表 `D` 的填充 | ✅ | `bff/BffEncode.java:195` `randomizeD`、`:219` `writeD`、`:247` `checkDataRadius` |
+| 3 路加性分享 | ✅ | `bff/BffEncode.java:276` `splitShares` |
+| A1 QUERY 3　`u_a ← h_a(K)` | ❌ **缺口（真）** | 见 §11.3 ① |
+| A1 SETUP 4　`select R, C` | ❌ **缺口（真，且循环依赖）** | 见 §11.3 ② |
+| A1 SETUP 9-11　尾部补零 | ✅ **空操作** | 我们 `L_BFF ≡ RC`，见 §11.3 ③ |
+| `P_{c,b}`（列选择子 / 行掩码） | ✅ 在 `fusepir/` | 按 A1 它属于 FusePIR 的 ANSWER，不属于 BFF |
 
 **⚠️ 三处形态差**
 1. **`h_i` 没实现**：论文一个关键词有 `k=3` 个**分散**位置；我们是**同一列的 3 个相邻行**。
    ⇒ 我们的"BFF"实际是**槽表 + 线性探测**，3 路拆分只是加性分享，**不带过滤语义**。
 2. **推导顺序反了**：论文 `Setup → L_BFF → 选 (R,C)`；我们**先按 n 定 `C`**，
-   再声明 `L_BFF = cellsPerCol·C`。
+   再声明 `L_BFF = cellsPerCol·C`。⇒ **我们的 `L_BFF`（130）不是论文的 `L_BFF`（闭式 155）**。
 3. **代价**：3 条路列号相同 ⇒ `Acc_{a,b}` 对 a=0,1,2 是同一个值，同一份列选择算了 3 遍
    （白做约 5–6.5%）。**不建议顺手优化** —— 那会离论文更远。
 
@@ -207,8 +256,8 @@
 | L3-6 `b_v ← BF.Gen(0,S_v)` | ✅ | `bff/CapeDemoData.java`（载荷构造时逐值算） |
 | L7-10 `DB^CAPE` | ✅ | 同上（值占 `1+ℓ_BF` 项） |
 | L11 `FusePIR.Setup` | ✅ | `bff/CapeDemoData` |
-| `B_pay = 2+m(1+ℓ_BF)` | ⚠️ **推断，非原文** | `cape/CapeSetup.java:54` `bPay` |
-| 打分信道（论文没有） | ⚠️ 两个 `t` | `cape/CapeBloomScore.java:168` `setup` |
+| `B_pay = 2+m(1+ℓ_BF)` | ⚠️ **推断，非原文** | `cape/CapeSetup.java:57` `bPay`（转发到 `FusePirSetup.payloadBpay`） |
+| 打分信道（论文没有） | ⚠️ 两个 `t` | `bloom/BloomChannel.java:81` `setup`（线格式 `bloom/ScorerWire`） |
 | — | — | `cape/CapeSetup.java` 本身只放**入口与口径说明**，不复制运算 |
 
 ### QUERY —— `cape/CapeQuery.java`
@@ -216,7 +265,7 @@
 |---|---|---|
 | L1 `q_anc ← FusePIR.Query(...)` | ⚠️ | `:96` `build`（位置与选择子在同一类里，见 §7） |
 | L2-3 `b_qry`、`τ` | ✅ | `:96`；`τ` **只在客户端** |
-| L4 `q^BF ← RLWE.Enc(b_qry)` | ✅ | `cape/CapeBloomScore.java:220` `encryptQueryWire` |
+| L4 `q^BF ← RLWE.Enc(b_qry)` | ✅ | `bloom/BloomChannel.java:153` `encryptQueryWire` |
 | L5-6 `q ← (q_anc, q^BF)` | ✅ | `:379` `toJson`（`colSel`/`colIdx` 互斥发出） |
 
 ### ANSWER —— `cape/CapeAnswer.java` + `cape/CapeDemoService.java`
@@ -224,7 +273,7 @@
 |---|---|---|
 | L2 `resp_anc ← FusePIR.Answer(st_S, q_anc)` | ✅ | `CapeDemoService.java:309` `runQueryCapeSealed` → `:509` `runAnchorNative` |
 | L3 `Parse {(c_{v_j}, ct^BF_j)}` | ❌ **需要 Pack** | 我们重新加密（D2） |
-| L4-7 `ct_score,j` | ✅ | `cape/CapeAnswer.java:90` `answer` |
+| L4-7 `ct_score,j` | ✅ | `cape/CapeAnswer.java:90` `answer` → `bloom/BloomScoring.java:105` `bloomScore` |
 | L8 `resp` | ⚠️ | `CapeDemoService.java:284` `answerCape`；`payloadPlain` **是明文** |
 
 ### DECODE —— `cape/CapeDecode.java`
@@ -243,8 +292,9 @@
 
 | 论文位置 | 缺什么 | 为什么没做 |
 |---|---|---|
-| **A1 ANSWER 13**：`resp ← Pack({ct_{pay,b}})` | **`Pack` 整个没有** | **唯一"完全没做"的一步**。它同时是 A2 ANSWER 3 能"解析出 `ct^BF_j`"的前提 ⇒ **D2 不是独立 bug，是 Pack 缺失的症状**。真做要 ≈**12 GB** 切换密钥（`n=N=8192`），是**架构决定** |
-| **BFF 的 `h_i`** | 3 个分散位置 | 我们用"同一列 3 个相邻行"代替 ⇒ BFF 退化成槽表 |
+| **A1 ANSWER 13**：`resp ← Pack({ct_{pay,b}})` | **原语已实现并验过；缺的是"收密文"的适配器 + 任何调用方** | ⚠️ **2026-10-15 更正**：本行原写"`Pack` 整个没有 / 唯一完全没做的一步"，**不准**。真实现是 `prim/RingPack.pack`（真 ring packing，`PackGoalCheck:151` 自己就这么写）。**准确说法**：它收明文 `(as,bs)`，**不是** `{ct_{pay,b}}` 这组密文，且**零个协议调用方**。新实测：搬运在 `B_pay=61`/16-bit limb 上逐槽精确、可算性已界定、折叠轮数已修（**§18/§19**）。⚠️ 原写的"≈12 GB 切换密钥"也偏了：实测 **8.0 GB**（`n=N`）/ **16 MB**（`n=d=16`），且**真正的墙是模数不是体积**（§18.2） |
+| **BFF 的 `h_i`** | 3 个分散位置 | 我们用"同一列 3 个相邻行"代替 ⇒ BFF 退化成槽表。**缺口性质见 §11.3 ①** |
+| **BFF 的 `select R, C`** | `R` 的选取策略 | 论文只写约束 `RC ≥ L_BFF, R ≤ N`，**没给策略**；而我们的 `L_BFF` 又依赖 `R` ⇒ **循环依赖**，见 §11.3 ② |
 | **独立的 `s_L`** | 第二把密钥 | 净旋转 `= Σa_i(s_R,i−s_L,i) − r_a`，差 1 位就偏 5767 行 ⇒ **与当前盲旋转口径不兼容** |
 | **`q^row` 的噪声 `Δ·m + e`** | P1-2 | 判据已算出（`Δ/√d > 6σ`，`R < N/(6σ√d)`），**前置是先定 `R`，而论文没给 `R`** |
 | **两方密钥隔离** | —— | 单 JVM 回环。⚠️ P1-1 后仍有一条同源边界：**选择子必须与「解码者」同一把秘密** |
@@ -254,11 +304,18 @@
 
 ## 7. ⚠️ 还差的东西（下一步）
 
+> **本轮已完成**：`bloom/` 与 `bff/` 的拆分与去重（Bloom 侧缺口归零，见 §11.1）；
+> 槽位编码 4 份 → 1 份；`keywordHash` 明文哈希 2 份 → 1 份（含 `CapeDemoData` 里那个转发）；
+> `CapeScorerWire` → `bloom/ScorerWire`；`FusePirSetup` 的 4 个布局公式（24 处重复调用点收敛）。
+> 重构后**离线验收全绿**（§8 前 5 条；后 3 条需要服务在跑，按"先不用总体链接"未跑）。
+
 | 项 | 现状 | 建议 |
 |---|---|---|
+| **BFF 的 `h_a` 与 `select R, C`** | 两个真缺口，**且会改变几何**（`L_BFF` 130 → 闭式 155、`C` 26 → 10） | **这是一个决定，不是机械修复**：见 §11.3 ①②。真做了就要重验「假阴性 0」和全部探针 |
 | **`fusepir/FusePirQuery.java` 还不存在** | 位置公式与 `q^col`/`q^row` 构造都在 `cape/CapeQuery.java` | 抽一个 `FusePirQuery`，让 `CapeQuery` 只做 A2 的那两步（`b_qry`/`τ`、`q^BF`）。**这一步要动 `Sealed` 的形状**（约 10 个调用点直接读它的字段），风险高于前面几次，所以单独一轮做 |
-| **`CapeDemoData` 仍是 1 个大类（≈700 行）** | 同时装：JSON 解析、DB 加载、BFF.Encode 的表构造、`Tables` holder | 可把"表构造"（≈150 行）抽到 `bff/BffEncode` 的第二个方法。**同样是改逻辑归属，建议单独一轮** |
-| **验收套件未在重构后重跑** | —— | §8 的命令可以直接跑 |
+| **`CapeDemoData` 仍是 1 个大类（561 行）** | 同时装：JSON 解析、DB 加载、BFF.Encode 的表构造、`Tables` holder | 可把"表构造"抽到 `bff/BffEncode` 的第二个方法。**同样是改逻辑归属，建议单独一轮** |
+| **`probe/` 里还有 4 份 `S_v` 与 2 份 `τ`** | `CapeAnswerFull:65`、`CapeColumnPacked:87`、`CapeEndToEnd4:177`、`CapeEndToEndNative:90`（`S_v`）；`CapeEndToEndNative`、`CapeQFairBench`（`τ`） | 探针是**一次性诊断件**，重复不构成生产风险；要不要收敛由你定 |
+| **验收套件未在重构后全部重跑** | 离线 5 条已全绿 | 服务那 3 条按"先不用总体链接"暂不跑 |
 
 ---
 
@@ -269,6 +326,7 @@ cd coding\rgsw-lab
 
 # 离线
 .\run-mpc4j.ps1 -Class com.fusepir.probe.CapeBffParamDiag
+.\run-mpc4j.ps1 -Class com.fusepir.bloom.BloomScoring 8192
 .\run-mpc4j.ps1 -Class com.fusepir.probe.CapeTableDiag "E:\学习\密码赛\coding\cape-demo\db\keywords.json" 8192
 .\run-mpc4j.ps1 -Class com.fusepir.cape.CapeBloomScore 8192 18
 .\run-mpc4j.ps1 -Class com.fusepir.probe.CapeWireFormatProbe 8192 18
@@ -282,3 +340,1978 @@ cd coding\rgsw-lab
 $env:DSH_JVM_OPTS = "-Dcape.selftest=true -Dcape.web=E:\学习\密码赛\coding\cape-demo\web"
 .\run-mpc4j.ps1 -Class com.fusepir.cape.CapeDemoService 8756 8192 16 "E:\学习\密码赛\coding\cape-demo\db\keywords.json"
 ```
+
+---
+
+## 9. Algorithm 1（FusePIR）原文 + BFF / Bloom 逐行对照
+
+> **来源**：用户 2026-10-14 深夜提供的全文转录。
+> ⚠️ 用户**贴了两遍同一份 Algorithm 1**（内容逐字相同），这里按一份收录。
+> Algorithm 2 的原文见本文件 §5 的引用。
+>
+> **对照只问一件事：这一行需要 BFF 或 Bloom 的哪个函数？我们有没有？**
+
+```
+Algorithm 1  FusePIR
+SETUP(1^λ, DB = {K_i ↦ V_{K_i} = {v_{i,1},…,v_{i,m_i}}}_{i=1}^n)
+ 1: (D, H, fp) ← BFF.Setup(n, 3).
+ 2: L_BFF ← |D|,  m ← max_{i∈[n]} |V_{K_i}|.
+ 3: Select public parameters (N, d, t, q), and generate HE keys sk = (s_L, s_R).
+ 4: Select R, C such that RC ≥ L_BFF, R ≤ N.
+ 5: for i = 1 to n do
+ 6:     Pad V_{K_i} to m values and set
+        y_{K_i} ← fp(K_i) ‖ m_i ‖ v_{i,1} ‖ ··· ‖ v_{i,m} ∈ Z_t^{B_pay}
+ 7: end for
+ 8: (D, H) ← BFF.Encode(D, H, {(K_i, y_{K_i})}_{i=1}^n).
+ 9: for u = L_BFF to RC − 1 do
+10:     D[u] ← 0 ∈ Z_t^{B_pay}.
+11: end for
+12: for c = 0 to C − 1 do
+13:     for b = 1 to B_pay do
+14:         P_{c,b}(X) ← Σ_{r=0}^{R−1} D[r + cR][b]·X^r.
+15:     end for
+16: end for
+17: pp ← (H, fp, R, C, N, d, t, q).
+18: st_S ← ({P_{c,b}}_{c,b}, pp).
+19: return (pp, st_S, sk).
+
+QUERY(pp, sk, K)
+1: q ← [].
+2: for a = 0 to 2 do
+3:     u_a ← h_a(K),  r_a ← u_a mod R,  c_a ← ⌊u_a/R⌋.
+4:     e_{c_a} ← (0,…,0,1,0,…,0) ∈ {0,1}^C, with the 1 at index c_a.
+5:     q_a = (q_a^col, q_a^row) = (RLWE.Enc_{s_R}(e_{c_a}), LWE.Enc_{s_L}(r_a)).
+6: end for
+7: q := (q_0, q_1, q_2),  st_C ← K.
+8: return (q, st_C).
+
+ANSWER(st_S, q)
+ 1: Parse st_S = ({P_{c,b}}_{c,b}, pp).
+ 2: for a = 0 to 2 do
+ 3:     Parse (q_a^col, q_a^row) from q.
+ 4:     for b = 1 to B_pay do
+ 5:         Acc_{a,b} ← Σ_{c=0}^{C−1} CtPtMul(q_a^col[c], P_{c,b}(X)).
+ 6:         Acc'_{a,b} ← BlindRotate(q_a^row, Acc_{a,b}).
+ 7:         ct_{a,b} ← SampleExtract_0(Acc'_{a,b}).
+ 8:     end for
+ 9: end for
+10: for b = 1 to B_pay do
+11:     ct_{pay,b} ← CtCtAdd(CtCtAdd(ct_{0,b}, ct_{1,b}), ct_{2,b}).
+12: end for
+13: resp ← Pack({ct_{pay,b}}_{b=1}^{B_pay}).
+14: return resp.
+
+DECODE(sk, st_C, resp)
+1: K ← st_C.
+2: for each packed ciphertext ct_{pay,β} ∈ resp do
+3:     y[β] ← Dec_{s_R}(ct_{pay,β}).
+4: end for
+5: Recover (f, m_K, v_1, …, v_m) ← y.
+6: if f ≠ fp(K) then
+7:     return ⊥.
+8: end if
+9: return {v_1, …, v_{m_K}}.
+```
+
+### 9.1 结论先说：**Algorithm 1 里没有 Bloom**
+
+Algorithm 1 的 "BFF" 是 **Binary Fuse Filter**（位置/桶结构）；
+`BF.Gen` / `b_v`（Bloom **Filter**）只出现在 **Algorithm 2 的 SETUP**。
+两者缩写像，**完全无关**。所以：
+
+* 拿 Algorithm 1 对照，**不会**新增任何 `bloom/` 函数；
+* `bloom/` 该照 **Algorithm 2** 的 ANSWER 4-7 对照（已做完：`encryptBloomVector` /
+  `bloomScore` / `foldSlots` / `foldAllSlots` / `decodeScore` / `galoisKeysFor`）。
+  **唯一的缺口是 `Pack`** —— 没有它，`ct^{BF}_j` 无法从协议里产生（D2）。
+
+### 9.2 BFF 逐行对照
+
+| 行 | 论文要求 | 状态 | 位置 / 说明 |
+|---|---|---|---|
+| L1 | `(D, H, fp) ← BFF.Setup(n, 3)` | ⚠️ **三件套齐了，但顺序反了** | `BffSetup.setup(n,k)`（`s`/`L_BFF`）、`BffSetup.newD(lBff,bPay)`（**D 的形状**）、`BffEncode.keywordHash`（**H**）、`BffSetup.fp`（**fp**） |
+| L2 | `L_BFF ← |D|`；`m ← max_i |V_{K_i}|` | ⚠️ | `BffSetup.Params.lBff`；`m` 取 `meta.maxValues`。⚠️ **我们的 `L_BFF` 依赖 R**（`= cellsPerCol·C`），而论文的 `R` 依赖 `L_BFF` ⇒ **循环依赖**，见 L4 |
+| L4 | `Select R, C such that RC ≥ L_BFF, R ≤ N` | ❌ **没有这个函数** | 我们是反着走：`C = ⌈n/cellsPerCol⌉` 再得 `L_BFF`。**要按论文做，必须先定 `R` 的选取策略 —— 而论文没给 `R`**（这正是 P1-2 卡住的那个缺口）。⇒ **需要实现，但前置是一个设计决定** |
+| L6 | `y ← fp(K_i) ‖ m_i ‖ v_1 ‖ ··· ‖ v_m` | ✅ **本轮补的函数** | `FusePirSetup.perValue/payloadBpay/valueOffset/bloomOffset`。⚠️ 此前这组算式在**全项目 24 处**各写一遍（构造侧 + 解析侧 + 探针），**本轮收口成一份** |
+| L8 | `(D, H) ← BFF.Encode(D, H, {(K_i, y_{K_i})})` | ✅ | `BffEncode.place(...)`（摆放 + 三条自检）、`BffEncode.splitShares(...)`（k 路分享） |
+| **L9-11** | `for u = L_BFF to RC−1: D[u] ← 0` | ❌ **没有这个函数** | 我们既不选 `(R,C)`，也就没有 `RC` 这个上界。**补上 L4 之后这条才有意义** |
+| L12-16 | `P_{c,b}(X) ← Σ_r D[r + cR][b]·X^r` | ⚠️ | `bff/CapeDemoData` 写表。⚠️ 行下标是 `rowOf + a`，**不是论文的 `r + cR`** |
+| QUERY L3 | `u_a ← h_a(K)`；`r_a = u_a mod R`；`c_a = ⌊u_a/R⌋` | ⚠️ | `BffEncode.keywordHash` 给**一个**位置（论文 k=3 个分散位置）；`colOf/rowOf` 公式是我们的网格式 |
+| QUERY L4 | `e_{c_a} ← one-hot ∈ {0,1}^C` | ⚠️ 无独立函数 | 内联在 `CapeQuery.encryptColumnSelectors` 里（`e[a*C+cc] = (cc==colIdx[a])?1:0`）。**可以抽成一个 `oneHot(C, c_a)`** —— 但它是 QUERY 的，不是 BFF/Bloom 的 |
+
+### 9.3 本轮为此实现的函数（都是 Algorithm 1 直接要求的）
+
+| 新函数 | 对应行 | 为什么需要 |
+|---|---|---|
+| `BffSetup.newD(lBff, bPay)` | L1 的 `D` | `BFF.Setup` 的产物里有 `D`，此前我们只给了 `s`/`L_BFF`，**没给 D 的形状**。顺带把 `D` 的形状钉死为 `[L_BFF][B_pay]`（**不是** `[n][B_pay]`） |
+| `BffSetup.setup(n, k)` → `Params` | L1 | 把 `(s, L_BFF)` 作为一次调用的产物返回（此前是两条裸公式） |
+| `BffSetup.fp(K, t)` | L1 的 `fp` | 指纹函数有了单一入口（此前 `inField` 在 `CapeDemoData` 里） |
+| `BffEncode.place(...)` | L8 | 摆放 + 三条自检（含**新增的 `k ≤ maxValues`**，见 §6） |
+| `BffEncode.splitShares(...)` | L8 | k 路加性分享（`Σ_a D[u_a] = y_K` 的前提） |
+| `FusePirSetup.perValue/payloadBpay/valueOffset/bloomOffset` | L6 | `y` 的布局。**收口 24 处重复** —— 这是本轮最有价值的一处 |
+
+### 9.4 仍然缺的（Algorithm 1 要求、我们确实没有）
+
+| 行 | 缺什么 | 前置 |
+|---|---|---|
+| **L4** | `Select R, C such that RC ≥ L_BFF, R ≤ N` | ✅ **已决定**：`R = C = √L_BFF = 16`（用户 2026-10-14 决定，§12.7）。**不再是缺口** |
+| **L9-11** | `D[u] ← 0` for `u ∈ [L_BFF, RC)` | ✅ **在我们这组定义下是空操作**，不是缺口（§11.3 ③） |
+| **ANSWER L13** | `Pack` | ⚠️ **原语已实现并验过**；缺"收密文"的适配器 + 调用方。**实测见 §18/§19**。⚠️ 原写"架构决定：切换密钥 ≈ 12 GB"**已更正**：真的成本是 **8.0 GB**（`n=N`）/ **16 MB**（`n=d=16`），而**不可逾越的那一条是 `t=2^32` 上不存在槽位选择子**（§18.2），所以 `Pack` 只能闭在 65537 通道 |
+| **QUERY L5 的 `LWE.Enc_{s_L}(r_a)`** | 带噪声的 LWE 加密 | ⚠️ **仍缺**（P1-2）：`q.beta[a] = (sum + rowIdx[a]) % twoN` 无噪声。解药已找到：`coding/lwe-java/…/cape/he/LWE.java:101 encrypt(LWESecretKey,long)` **自带 `Δ=q/t` 与噪声**（§17.3） |
+| **QUERY L3 的 `h_a`** | 3 个分散位置 | ✅ **已有**：`bff/BffHash.positions`，且是活路径（`FusePirParams.bffPositions` → `pp`）——**不再是缺口** |
+---
+
+## 10. Algorithm 2（CAPE）原文 + **Bloom / BFF** 逐行对照
+
+> **来源**：用户 2026-10-14 深夜提供的全文转录（这一份是干净的，只贴了一遍）。
+> Algorithm 1 的原文见本文件 §9。
+>
+> **这一节才是 Bloom 的归属地** —— Algorithm 1 里的 "BFF" 是 Binary Fuse Filter，
+> 而 **Bloom Filter（`BF.Gen` / `b_v`）只在 Algorithm 2 里出现**（见 §9.1）。
+
+```
+Algorithm 2  CAPE
+SETUP(1^λ, DB = {K_i ↦ V_{K_i} = {v_{i,1},…,v_{i,m_i}}}_{i=1}^n)
+ 1: Select public Bloom-filter parameters ℓ_BF and G = {g_1,…,g_h}.
+ 2: m ← max_{i∈[n]} |V_{K_i}|.
+ 3: for each v ∈ ∪_{i=1}^n V_{K_i} do
+ 4:     S_v ← {K_i : v ∈ V_{K_i}}.
+ 5:     b_v ← BF.Gen(0, S_v).
+ 6: end for
+ 7: for i = 1 to n do
+ 8:     V^CAPE_{K_i} ← {(v_{i,j}, b_{v_{i,j}})}_{j=1}^{m_i}
+ 9: end for
+10: DB^CAPE ← {K_i ↦ V^CAPE_{K_i}}_{i=1}^n.
+11: (pp_F, st^F_S, sk) ← FusePIR.Setup(1^λ, DB^CAPE).
+12: pp ← (pp_F, ℓ_BF, G, m).
+13: st_S ← st^F_S.
+14: return (pp, st_S, sk).
+
+QUERY(pp, sk, K = (K_1,…,K_Q))
+1: (q_anc, st^anc_C) ← FusePIR.Query(pp_F, sk, K_1).
+2: b_qry ← BF.Gen(0, {K_2,…,K_Q}).
+3: τ ← ‖b_qry‖₁.
+4: q^BF ← RLWE.Enc_{s_R}(b_qry).
+5: q ← (q_anc, q^BF).
+6: st_C ← (st^anc_C, τ).
+7: return (q, st_C).
+
+ANSWER(st_S, q)
+1: Parse (q_anc, q^BF) from q.
+2: resp_anc ← FusePIR.Answer(st_S, q_anc).
+3: Parse {(ct_{v_j}, ct^BF_j)}_{j=1}^m from resp_anc.
+4: ct_score,j ← CtCtMul(q^BF, ct^BF_j).
+5: for r = 0 to log2 ℓ_BF − 1 do
+6:     ct_score,j ← CtCtAdd(ct_score,j, CtRotate(ct_score,j, 2^r)).
+7: end for
+8: resp ← {ct_{v_j}, ct_score,j}_{j=1}^m.
+9: return resp.
+
+DECODE(sk, st_C, resp)
+ 1: Parse (st^anc_C, τ) from st_C, (resp_anc, {ct_score,j}_{j=1}^m) from resp.
+ 2: V_{K_1} ← FusePIR.Decode(sk, st^anc_C, resp_anc).
+ 3: if V_{K_1} = ⊥ then
+ 4:     return ⊥.
+ 5: end if
+ 6: R ← ∅.
+ 7: for j = 1 to |V_{K_1}| do
+ 8:     s_j ← Dec_{s_R}(ct_score,j).
+ 9:     if s_j = τ then
+10:         R ← R ∪ {v_j}.
+11:     end if
+12: end for
+13: return R.
+```
+
+### 10.1 结论：**BFF 在 Algorithm 2 里没有新增需求**
+
+Algorithm 2 里唯一碰到 BFF 的地方是 SETUP 11（`FusePIR.Setup(1^λ, DB^CAPE)`）——
+它把加宽后的 `DB^CAPE` 交给 FusePIR，**BFF 的全部需求仍在 Algorithm 1**（§9 已逐行对照）。
+⇒ **拿 Algorithm 2 对照，不需要新增任何 `bff/` 函数。**
+
+### 10.2 Bloom 逐行对照（这才是本算法的主场）
+
+| 行 | 论文要求 | 状态 | 位置 / 说明 |
+|---|---|---|---|
+| SETUP 1 | `Select public Bloom-filter parameters ℓ_BF and G = {g_1..g_h}` | ✅ | `common/BfGen.choose(maxSetSize, ε_BF, n)` —— 由 ε_BF 反选 ℓ_BF 与 h |
+| SETUP 3-4 | `S_v ← {K_i : v ∈ V_{K_i}}` | ⚠️ **两份实现** | `bff/CapeDemoData`（`kwOfValue`）与 `cape/CapeQueryDecode`（`kwOfValue`）**各写一遍**。**见 §10.4** |
+| SETUP 5 | `b_v ← BF.Gen(0, S_v)` | ✅ | `BfGen.bits(Collection<String>)` / `bitsAsLong` |
+| SETUP 7-10 | `V^CAPE_{K_i} ← {(v, b_v)}`；`DB^CAPE` | ✅ | `bff/CapeDemoData` 建载荷时逐值写入 |
+| SETUP 11 | `FusePIR.Setup(DB^CAPE)` | ✅ | `bff/CapeDemoData` + `bff/BffEncode` |
+| SETUP 12 | `pp ← (pp_F, ℓ_BF, G, m)` | ✅ | 数据集 meta |
+| QUERY 2 | `b_qry ← BF.Gen(0,{K_2..K_Q})` | ✅ | `cape/CapeQuery`（`bf.bits(others)`） |
+| **QUERY 3** | **`τ ← ‖b_qry‖₁`** | ✅ **本轮补的函数** | **`BfGen.hammingWeight(boolean[])`**。⚠️ 这条算式此前在**全项目 10 处**各写一遍（循环变量有的叫 `b` 有的叫 `bit`）；本轮收口 **8 处**，**剩 2 处未动**：`probe/CapeEndToEndNative`、`probe/CapeQFairBench`（按你的要求先只登记不改动） |
+| QUERY 4 | `q^BF ← RLWE.Enc_{s_R}(b_qry)` | ✅ | **`bloom/BloomChannel.encryptQuery` / `encryptQueryWire`**（本轮已从 `cape/` 搬出） |
+| **ANSWER 3** | **`Parse {(ct_{v_j}, ct^BF_j)}_{j=1}^m from resp_anc`** | ❌ **做不到** | 需要 **`Pack`**。我们的替代**本轮有了名字**：`cape/CapeBloomScore.encryptCandidateBloom(sc, bits, lBf)`（它把"这是一处替代"标在调用点上，而不是让它看起来像论文本来就这么做）。**这就是 D2** |
+| ANSWER 4-7 | `ct_score,j ← CtCtMul(q^BF, ct^BF_j)` + 折叠 | ✅ | `bloom/BloomScoring.bloomScore(..., lBf)` → `foldSlots`（⌈log2 ℓ_BF⌉ 轮，见 §6 与 `foldSlots` 的注释） |
+| ANSWER 8 | `resp ← {ct_{v_j}, ct_score,j}_{j=1}^m` | ⚠️ | 我们发 `payloadPlain`（**明文**，不是 `ct_{v_j}`）+ 每候选 `ctScoreBytes`（真密文）。**见 §10.3 的第二条** |
+| DECODE 1-2 | `Parse (resp_anc, {ct_score,j}) from resp`；`V_{K_1} ← FusePIR.Decode(sk, st^anc_C, resp_anc)` | ⚠️ | `cape/CapeDecode.decodePayload` → `fusepir/FusePirDecode.decodePayload`（布局已收口到 `FusePirSetup.valueOffset`，见 §9.3） |
+| DECODE 3-4 | `V_{K_1} = ⊥ ⇒ ⊥` | ✅ | `cape/CapeDecode`（负对照 N2） |
+| DECODE 8-9 | `s_j ← Dec_{s_R}(ct_score,j)`；`s_j = τ ⇒ R ∪ {v_j}` | ✅ | `cape/CapeDecode`（负对照 N1/N1b/N3） |
+| DECODE 6/13 | `R ← ∅` / `return R` | ✅ | 同上 |
+
+### 10.3 ⚠️ 这一份原文暴露的**两处论文自身写得不严**（都要记，别当成我们的 bug）
+
+**① ANSWER 5 的 `log2 ℓ_BF` 应为 `⌈log2 ℓ_BF⌉`。**
+原文就是 `for r = 0 to log2 ℓ_BF − 1`，用的是 **floor**。
+`ℓ_BF = 18` 时 `log2(18) = 4.17` ⇒ 只折 4 轮 ⇒ 只覆盖槽 `[0,16)`，
+**漏掉槽 16、17** ⇒ `s_j` 偏小 2 ⇒ 本该接受的候选被拒。
+**照抄这一行会算错。** 我们的 `foldSlots` 用的是 ⌈·⌉（见 §6 与 `bloom/BloomScoring.foldSlots` 的注释）。
+
+**② ANSWER 8 的 `resp` 字段清单不完整。**
+ANSWER 8 写的是 `resp ← {ct_{v_j}, ct_score,j}_{j=1}^m`（**没有 `resp_anc`**），
+但 DECODE 1 要从 `resp` 里 **parse 出 `resp_anc`**，DECODE 2 又用它算 `V_{K_1}`，
+而 DECODE 7 的循环上界 `|V_{K_1}|` 就来自它。
+⇒ **`resp` 必须也带上 `resp_anc`**（或带上足够的 `ct_{v_j}` 让客户端重建）。
+
+> 另一条相关的观察：`{(ct_{v_j}, ct^BF_j)}_{j=1}^m` 里**没有 `f`（指纹）与 `m_K`（候选数）**
+> —— 它们是载荷系数 0 与 1。所以 `Pack` 的输出必须**同时**能让客户端拿到
+> `f`/`m_K`（否则 `FusePIR.Decode` 第 6 行的 `f ≠ fp(K)` 无从判起）。
+> ⇒ **`Pack` 必须做"结构性打包"，不只是压缩**：它要产出
+> **每个候选两条密文**（`ct_{v_j}` 与 `ct^BF_j`，共 2m 条，其中 `ct^BF_j` 必须是
+> ℓ_BF 槽位密文，才喂得进 `CtCtMul(q^BF, ·)`），**外加**指纹与候选数那可解的部分。
+> 这比之前"Pack 就是把 B_pay 条压成几条"的说法精确得多。
+
+### 10.4 对照后**需要实现、但按你的要求先只登记不改动**的
+
+| # | 项 | 现状 | 说明 |
+|---|---|---|---|
+| 1 | **`S_v` 的两份实现**（SETUP 3-4） | `bff/CapeDemoData` 的 `kwOfValue`（`Map<Integer,Set_>`）与 `cape/CapeQueryDecode` 的 `kwOfValue`（`Map<Integer,Set<String>>`）**各写一遍** | 论文里 `S_v` 只定义一次。两份实现的危险是**它们可以悄悄不一致**（比如一边 TreeSet 一边 HashSet、一边含空值一边不含），而后果是 `b_v` 算错 → 假阴性 → **违背论文"假阴性必须为 0"的前提**。⇒ 该抽成一个共享函数。<b>注意层次：`bff` 不能依赖 `cape`（`cape` 已经依赖 `bff`），所以正确的落点是把它从 `CapeDemoData` 里拿出去 —— 也就是 §7 那条"CapeDemoData 仍是 1 个大类"的同一件事。** |
+| 2 | **`Pack`**（ANSWER 3 / A1 ANSWER 13） | 完全没做，用 `encryptCandidateBloom` 重新加密代替 | 架构决定（切换密钥 ≈ 12 GB）。本轮把它的**输出形状**钉清楚了，见 §10.3 ② |
+| 3 | **`ct_{v_j}` 作为密文返回**（ANSWER 8） | 我们发的是**明文** `payloadPlain` | 真修要发 B_pay 条密文（≈ 30.9 MB/响应），**要等 Pack 的决定** |
+
+---
+
+## 11. `bloom/` 与 `bff/` 的**对外契约表**（"上层只许调用，不许自己实现"）
+
+### 11.0 这一节在回答什么问题
+
+`bloom/` 和 `bff/` 必须**把论文里属于 Bloom 与 BFF 的全部函数都实现掉**，
+让 `fusepir/` 与 `cape/` 里剩下的只是**调用**。所以这一节按「论文行 → 函数 → 谁调用」列表，
+**并明确标出还没实现的那些行**——标出来的就是缺口，不要靠读代码猜。
+
+层次（箭头 = 依赖方向，**不许有环**）：
+
+```
+prim/  ←  bloom/  ←  bff/  ←  fusepir/  ←  cape/
+                              ↑
+                     common/BfGen（独立模块，client 与 server 共用）
+```
+
+`bff` 依赖 `bloom` 是**不可避免**的：载荷 `y_{K_i}` 里的 Bloom 位串由 Bloom 侧定义。
+反过来 `bloom` **不能**依赖 `bff` —— `BloomSetup.valueToKeywords` 只需要 `kwToValues`，
+不需要任何 BFF 概念，这条已经成立。
+
+### 11.1 Bloom —— 论文行 → 函数 → 调用方
+
+| 论文行 | 函数 | 文件 | 调用方 |
+|---|---|---|---|
+| A2 SETUP 3　`S_v`（值 → 关键词集） | `BloomSetup.valueToKeywords` | `bloom/BloomSetup.java` | `bff/CapeDemoData`、`cape/CapeDemoService` |
+| A2 SETUP 4　`m_K`（关键词 → 候选值数） | `BloomSetup.maxValues` + `BloomSetup.reconcile` | `bloom/BloomSetup.java` | `bff/CapeDemoData`（`reconcile` 在 DB 与 meta 不一致时**抛异常**） |
+| A2 SETUP 3-5　`b_v`（值 → ℓ_BF 位串） | `BloomSetup.valueBloomBits` | `bloom/BloomSetup.java` | `bff/CapeDemoData` |
+| A2 QUERY 2　`b_qry` | —（客户端直接由 `S_{K}` 算出，无独立函数） | — | `cape/CapeQuery` |
+| A2 QUERY 3　`τ ← ‖b_qry‖₁` | `BfGen.hammingWeight` | `common/…/BfGen.java` | `cape/CapeQuery` |
+| ANSWER 2　槽位编码 `b ← (b[0], …, b[ℓ_BF−1], ␣…)` | `BloomChannel.toSlotVector` / `padToSlots` | `bloom/BloomChannel.java` | `bloom/BloomChannel.encryptQuery`、`cape/CapeQuery` |
+| ANSWER 3　`q^BF ← RLWE.Enc(b_qry)` | `BloomChannel.encryptQuery` / `encryptQueryWire` | `bloom/BloomChannel.java` | `cape/CapeQuery.build` |
+| ANSWER 4　`ct_score,j ← CtCtMul(q^BF, ct^BF_j)` | `BloomScoring.bloomScore` | `bloom/BloomScoring.java` | `cape/CapeBloomScore.score` |
+| ANSWER 5　**折叠**（`⌈log2 ℓ_BF⌉` 轮，见 §10.3 ①） | `BloomScoring.foldSlots` / `foldAllSlots` | `bloom/BloomScoring.java` | `BloomScoring.bloomScore` |
+| ANSWER 6　`s_j ← Dec(ct_score,j)` | `BloomScoring.decodeScore` | `bloom/BloomScoring.java` | `cape/CapeBloomScore.score` |
+| ANSWER 3　`b_v` 摆成密文槽向量 | `BloomScoring.encryptBloomVector` | `bloom/BloomScoring.java` | `cape/CapeBloomScore.encryptCandidateBloom` |
+| 打分信道的 Setup（密钥 / Galois 键） | `BloomChannel.Scorer`、`BloomChannel.setup`、`BloomScoring.galoisKeysFor` | `bloom/BloomChannel.java`、`bloom/BloomScoring.java` | `cape/CapeSetup`、`cape/CapeDemoService` |
+| 打分信道**线格式** | `ScorerWire.serialize/deserialize/serializeKey/deserializeKey/bytesToWire/…` | `bloom/ScorerWire.java` | `cape/CapeQuery`（HTTP）、`cape/CapeDemoService` |
+
+**Bloom 侧缺口：无。** 上面每一行都有唯一实现，且 `cape/` 里已经只剩调用
+（`CapeBloomScore` 保留的只有「按候选分组载荷 + 塑形响应」——那是 CAPE 的职责，
+不是 Bloom 的）。
+
+### 11.2 BFF —— 论文行 → 函数 → 调用方
+
+> ⚠️ **本小节 2026-10-14 深夜第二次修订**：原文（CAPE 附录 Alg 3）已全文收进 **§12**，
+> 参数证据收进 **§13**。修订推翻了我此前在这个位置写的**两条判断**，见 §11.3。
+
+| 论文行 | 函数 | 文件 | 状态 |
+|---|---|---|---|
+| A3 SETUP 2/5　段大小 `s` | `BffSetup.paperS(k, n)` | `bff/BffSetup.java` | ✅ 与原文逐字一致 |
+| A3 SETUP 3/6　`L_BFF` 闭式 | `BffSetup.paperLBff(k, n, useCeil)` | `bff/BffSetup.java` | ⚠️ **两篇出处不一致**（CAPE 用 `⌈·⌉`、ChalametPIR 用 `⌊·⌋`），见 §12.3 |
+| A3 SETUP 8-9　`ρ_H`、`H = {h_j} ← BFF.HashGen(ρ_H, L_BFF, s, k)` | **`BffHash.allocate` + `BffHash.positions`** | `bff/BffHash.java` | ✅ **本轮实现**（按四份参考实现，见 §12.4） |
+| A3 SETUP 10　`fp_{ρ_fp} : K → {0,1}^μ`（μ = 40） | `BffSetup.fp` | `bff/BffSetup.java` | ⚠️ D7：我们 32-bit `hashCode`，论文 40-bit |
+| A3 SETUP 11-12　`D[u] ← ⊥` | `BffSetup.newD(lBff, bPay)` | `bff/BffSetup.java` | ✅ |
+| A3 MAPPINGSTEP 1-9　按 `h_0(K)` 排序、建 `T[u]` | `BffMapping.mappingStep` | `bff/BffMapping.java` | ✅ **本轮实现** |
+| A3 MAPPINGSTEP 10-33　剥皮取 `S`，含**回推单例**与 `\|S\| ≠ n ⇒ fail` | 同上 | `bff/BffMapping.java` | ✅ **本轮实现**（第 24 行的回推是散文补的，伪代码漏了 —— 见该类注释） |
+| A3 ENCODE 2-3　mapping 失败 ⇒ **换新种子重来** | `BffEncode.encode` 的重试循环 | `bff/BffEncode.java` | ✅ **本轮实现**（`attempts` 如实报出） |
+| A3 ENCODE 5-6　`D[u] ←$ Z_t^B` | `BffEncode.encode` | `bff/BffEncode.java` | ✅ |
+| A3 ENCODE 8-17　LIFO 写 `D[p] ← y_K − Σ_{j≠p} D[h_j(K)]` | `BffEncode.encode` | `bff/BffEncode.java` | ✅ **本轮实现**。⚠️ 旧的 `splitShares`（随机拆 k 路）**保不了**"每槽一写"，只在旧几何下靠断言挡住 |
+| A3 CHECK / RECONSTRUCT | `BffEncode.reconstruct` | `bff/BffEncode.java` | ✅ 并有探针逐个关键词验 |
+| A1 SETUP 4　`select R, C s.t. RC ≥ L_BFF, R ≤ N` | `BffSetup.layout` / `selectRC` / `fromBff` | `bff/BffSetup.java` | ⚠️ **策略是我们的**（论文只给约束），见 §12.7 |
+| A1 SETUP 9-11　`D[u] ← 0, u ∈ [L_BFF, RC)` | `BffEncode.zeroTail` + `encode` 里的分配 | `bff/BffEncode.java` | ✅ **本轮实现**。⚠️ 默认 `R` 策略下 `tail = 0`（空循环），见 §12.7 |
+| A1 QUERY 3　`u_a ← h_a(K)`；`r_a = u_a mod R`；`c_a = ⌊u_a/R⌋` | `BffHash.positions` + `Layout.r` | `bff/BffHash.java` | ✅ **本轮实现**（`c_a`/`r_a` 的导出在探针里反查验过） |
+| A1 SETUP 14　`P_{c,b}(X) ← Σ_r D[r+cR][b]·X^r` | `BffEncode.embed` | `bff/BffEncode.java` | ✅ **本轮实现** |
+| 旧几何的一套（`place`/`randomizeD`/`writeD`/`splitShares`/`keywordHash`） | —— | `bff/BffEncode.java` | ⚠️ **保留但已非默认路径**：旧 demo 仍经过它们，等接线时替换 |
+
+### 11.3 BFF 缺口（第三次修订 —— 前两次我各错了一条）
+
+**① `h_a` —— 已实现（`bff/BffHash.java`），并顺带推翻了两条判断。**
+A1 QUERY 3 的 `h_a` 由 A3 SETUP 9 的 `BFF.HashGen` 给出，定义在 BFF 原论文/参考实现里。
+落地后验到：**`h_a` 三个位置全部在值域内、互异、且落在 k 个连续段**；
+用真实 `h_a` 时**剥皮 1 个种子就成功**（中性夹具要 10 个种子 —— 这个对比就是分段余量的证据）。
+细节与两条被推翻的判断见 §12.4。
+
+**② `select R, C` —— 已实现，但策略是我们定的。**
+⚠️ **更正**：此前我写"我们的 `L_BFF` 依赖 `R`、论文的 `R` 依赖 `L_BFF` ⇒ 循环依赖"。
+**在论文的路径上不存在循环** —— `L_BFF` 只含 `n`，与 `R` 无关。
+循环是**我们自己**那套 `L_BFF = cellsPerCol·C` 造成的自造问题。
+论文的 `R ≤ N` 是唯一约束，策略见 §12.7。
+
+**③ `D[u] ← 0, u ∈ [L_BFF, RC)` —— 已实现；而且它到底是不是"空操作"取决于 `R`。**
+⚠️ **更正**：此前我说它是"空操作"，理由是 `L_BFF ≡ RC`。
+**那个理由是错的** —— 我把 `cellsPerCol·C = 5·26 = 130` 当成了 `R·C = 16·26 = 416`。
+它是**假恒等式**。
+现在的正确说法分两种：
+- 论文几何 + 默认 `R` 策略（`R = L_BFF = 256`）⇒ `RC = L_BFF` ⇒ **空循环**；
+- 论文几何 + `R = N` ⇒ `RC = 8192 ≫ 256` ⇒ **尾部 7936 个槽，必须清零**。
+两种都实现了（`zeroTail`），由 `R` 决定走哪种。
+
+### 11.4 为何"随机化 + 覆写"不等于论文的 `BFF.Encode`
+
+论文的 `ENCODE` 是 **LIFO 逆序回填**：剥皮栈 `S` 里最后被剥出的键
+对应的槽是"当时唯一的占位者"，所以它在**回填时最先写**，且写的时候
+它那 k−1 个伙伴槽**已经写过**了；于是 `D[p] = y_K − Σ_{j≠p} D[h_j(K)]` 里的每个
+`D[h_j(K)]` 都是**终值**。剥皮的单调性保证这一性质。
+
+我们的"随机拆 k 路 + 全部覆写"在**算术结果上等价**
+（`Σ_a share_a = y_K`），但**不保证**论文那条"每个槽只被写一次"的性质 ——
+在"一个槽被两个关键词共用"的情况下：
+- 论文：剥皮保证不会发生（每个键有一个独占的写槽）；
+- 我们：靠 `place` 的"cell 不碰撞"断言挡住，而那条断言是旧的 1 位置几何的产物。
+
+⇒ 换成论文几何后，**必须**改成真正的 MAPPINGSTEP + LIFO 回填，
+否则 `Σ_a D[h_a(K)] = y_K` 不再有保证（会出现静默假阴性）。
+
+---
+
+## 12. Algorithm 3（BinaryFuseFilter）原文 —— BFF 的**权威定义**
+
+> **来源**：`coding/pdf-extract/out_cape.txt`（用户提供的 CAPE PDF 抽出文本），
+> 第 1770-1930 行附录 A + 第 2372-2475 行（ChalametPIR 附录 B，用户先前提供）。
+> 这一段是 `BFF.Setup` / `BFF.Encode` 的**定义处** ——
+> Algorithm 1 只是**调用** `BFF.Setup(n,3)` / `BFF.Encode(...)`。
+
+### 12.1 CAPE 附录 Algorithm 3（`out_cape.txt:1883-2011`）
+
+```
+Algorithm 3  BinaryFuseFilter
+SETUP(n, k, B, t, µ)
+ 1: if k = 3 then
+ 2:     s ← 2^⌊log_3.33(n) + 2.25⌋.
+ 3:     L_BFF ← max( ⌈(0.875 + 0.25·max{1, log10(n/6)})·n⌉ , ⌈1.125n⌉ ).
+ 4: elseif k = 4 then
+ 5:     s ← 2^⌊log_2.91(n) − 0.5⌋.
+ 6:     L_BFF ← max( ⌈(0.77 + 0.305·max{1, log10(n/(6·10^5))})·n⌉ , ⌈1.075n⌉ ).
+ 7: endif
+ 8: Sample independent public seeds ρ_H, ρ_fp ←$ {0,1}^λ.
+ 9: Derive H = {h_j : K → [L_BFF]}_{j=0}^{k−1} ← BFF.HashGen(ρ_H, L_BFF, s, k).
+10: Derive a fingerprint function fp_{ρ_fp} : K → {0,1}^µ.
+11: for u = 0 to L_BFF − 1 do
+12:     D[u] ← ⊥.
+13: end for
+14: return (D, H, fp_{ρ_fp}, L_BFF, s).
+
+MAPPINGSTEP({K_i}_{i=1}^n, H, L_BFF)
+ 1: Order K_1, …, K_n by h_0(K_i) and denote the resulting sequence by L.
+ 2: for u = 0 to L_BFF − 1 do
+ 3:     T[u] ← ∅.
+ 4: end for
+ 5: for each K ∈ L do
+ 6:     for j = 0 to k − 1 do
+ 7:         T[h_j(K)] ← T[h_j(K)] ∪ {K}.
+ 8:     end for
+ 9: end for
+10: Initialize an empty stack Q and an empty stack S.
+11: for u = 0 to L_BFF − 1 do
+12:     if |T[u]| = 1 then
+13:         Push u into Q.
+14:     end if
+15: end for
+16: while Q ≠ ∅ do
+17:     Pop a location u from Q.
+18:     if |T[u]| = 1 then
+19:         K ← the unique keyword in T[u].
+20:         Push (K, u) onto S.
+21:         for j = 0 to k − 1 do
+22:             v ← h_j(K).
+23:             T[v] ← T[v] \ {K}.
+24:             if |T[v]| = 1 then
+25:                 Push v into Q.
+26:             end if
+27:         end for
+28:     end if
+29: end while
+30: if |S| ≠ n then
+31:     return fail.
+32: end if
+33: return S.
+
+ENCODE(D, H, {(K_i, y_{K_i})}_{i=1}^n)
+ 1: S ← MappingStep({K_i}, H, L_BFF).
+ 2: if S = fail then
+ 3:     return fail.
+ 4: end if
+ 5: for u = 0 to L_BFF − 1 do
+ 6:     D[u] ←$ Z_t^B.
+ 7: end for
+ 8: while S ≠ ∅ do
+ 9:     Pop (K, p) from S.
+10:     Retrieve the payload y_K associated with K.
+11:     D[p] ← y_K.
+12:     for j = 0 to k − 1 do
+13:         if h_j(K) ≠ p then
+14:             D[p] ← D[p] − D[h_j(K)]  (mod t).
+15:         end if
+16:     end for
+17: end while
+18: return D.
+
+CHECK(D, H, K)
+ 1: for j = 0 to k − 1 do
+ 2:     d_j ← D[h_j(K)].
+ 3: end for
+ 4: return (d_0, …, d_{k−1}).
+
+RECONSTRUCT(D, H, K)
+ 5: (d_0, …, d_{k−1}) ← Check(D, H, K).
+ 6: y ← 0^B.
+ 7: for j = 0 to k − 1 do
+ 8:     y ← y + d_j  (mod t).
+ 9: end for
+10: return y.
+```
+
+### 12.2 CAPE 正文对 BFF 的**散文描述**（`out_cape.txt:1770-1805`，逐字）
+
+- `"During setup, the parameter s determines the segment size of the BFF layout.
+  The position functions generated by BFF.HashGen map each keyword to
+  **k distinct locations distributed across k consecutive segments**."`
+- `"The concrete finite-size choices of s and L_BFF follow the parameterization
+  of BFF used in ChalametPIR [8]. For large n, the resulting array lengths
+  approach 1.125n and 1.075n for k = 3 and k = 4, respectively."`
+- `"The seeds ρ_H and ρ_fp are sampled independently. The former determines the
+  BFF locations, whereas the latter is used to detect queries for keywords that
+  were not encoded."`
+- `"The temporary set T[u] contains all remaining keys mapped to location u.
+  Whenever T[u] contains exactly one key K, location u is designated as the write
+  location of K. The pair (K, u) is recorded in S, and K is removed from all of
+  its k locations. **This may create new singleton locations, which are added to Q.**
+  The mapping succeeds if all n keys are eventually placed in S."`
+- `"If the mapping fails, the current construction attempt is discarded, and
+  **Setup is repeated with a fresh position-function seed**."`
+- `"The Encode procedure first invokes MappingStep to obtain the peeling stack S.
+  … After a successful mapping, **all array entries are initialized uniformly in Z_t^B**.
+  The procedure then processes S in last-in-first-out order."`
+
+### 12.3 两篇在 `L_BFF` 上**确实不一致**（不是我们的问题）
+
+| 出处 | 形状 |
+|---|---|
+| **CAPE** 附录 Alg 3 L3 | `max( ⌈(0.875+0.25·max{1,log10(n/6)})·n⌉ , ⌈1.125n⌉ )` |
+| **ChalametPIR** 附录 B Alg 1 L3 | `N = ⌊c·m⌋`, `c = max( ⌊(0.875+0.25·max{1,log10(m/6)})·m⌋ , ⌊1.125m⌋ )` |
+
+`n = 128` 时：**CAPE 给 155，ChalametPIR 给 154**。差 1。
+我们的 `BffSetup.paperLBff(k, n, useCeil)` 把两者都留着，`useCeil` 就是开关。
+
+### 12.4 ✅ 已解决：读法 B 正确，ChalametPIR Alg 1 L9 的字面公式是错的
+
+**溯源结果**（完整报告：`coding/docs/reports/BFF位置函数溯源-HashGen原始定义-2026-10-14.md`）：
+
+**BFF 原论文（Graf & Lemire 2022, arXiv:2201.01174 / JEA 27）只给结构约束，不给闭式：**
+> *"Pick hash functions h0, h1, h2 from U to array locations in H so that
+> h0(x), h1(x), h2(x) occupy **three distinct and consecutive segments**."*
+
+**四份参考实现逐字一致**（C `FastFilter/xor_singleheader`、Java `XorBinaryFuse8`、
+Rust `xorf`、**以及 ChalametPIR 自己的参考实现 `itzmeanjan/ChalametPIR`**）：
+
+```c
+h0 = mulhi(hash, SegmentCountLength)
+h1 = (h0 + SegmentLength) ^ ((hash >> 18) & SegmentLengthMask)
+h2 = (h1 + SegmentLength) ^ ( hash        & SegmentLengthMask)
+```
+
+⇒ **段号随 `a` 前进**（读法 B）。读法 A（ChalametPIR Alg 1 L9 字面）被三条独立证据否定：
+① 与 BFF 原论文的 "distinct and consecutive" 冲突；
+② 与 ChalametPIR **自己的**参考实现冲突；
+③ 若 k 个位置同段，剥皮的机制就不成立。
+（诚实边界：没有拿到 ChalametPIR 论文 PDF 的原始排版，所以只能断定
+"字面读法与两处权威来源冲突，因此照字面实现是错的"，不能断定它是排版问题还是真错。）
+
+### 12.5 ✅ 已实现：`bff/BffHash.java`
+
+| 论文行 | 函数 |
+|---|---|
+| A3 SETUP 2/5　`s` | `BffHash.allocate(n,k).segmentLength`（= `BffSetup.paperS`，两者一致） |
+| A3 SETUP 9　`HashGen(ρ_H, L_BFF, s, k)` | `BffHash.allocate` + `BffHash.positions(K, ρ_H, bp, k)` |
+| A3 SETUP 10　`fp` | `BffSetup.fp`（μ=40 → 我们 32，D7） |
+
+### 12.6 ⚠️⚠️ **论文的 `L_BFF` 闭式与它自己委托的 `HashGen` 互相不自洽**
+
+`n = 128`、`k = 3`，**三个长度全都不一样**：
+
+| 数 | 值 | 含义 |
+|---|---|---|
+| CAPE Alg 3 L3 闭式 | **155** | CAPE 自己写的 `L_BFF`（ChalametPIR 的 `⌊⌋` 版是 154） |
+| `segmentCountLength` | **128** | `h_0` 的取值模数（只决定落到哪个段） |
+| `arrayLength` | **256** | `h_a` 的**值域** `[0,256)` ⇒ `D` 最少要这么长 |
+
+**两条硬冲突**（`probe/BffLayerTest` 里做成了可执行检查，都 PASS 即"冲突成立"）：
+1. `155 < 256` ⇒ **`L_BFF = 155` 装不下 `h_a`**（`h_2` 能到 255）。
+2. `155` 写不成 `(segmentCount + k − 1)·s` 的形状（`155/64 − 2 = 0.42` 不是整数）
+   ⇒ **CAPE 给的 `(L_BFF, s) = (155, 64)` 根本描述不出一个 BFF 布局。**
+
+**第三条独立矛盾**：CAPE Alg 3 L3 的公式在 `n = 10^6` 给 **2.18·n**，
+而 CAPE 正文自称 *"the resulting array lengths **approach 1.125n**"*。
+BFF 原论文表 1 写的是 `0.875 + 0.25·max(1, log(10^6)/log(n))`，在 `n=10^6` 正好给 **1.125**。
+⇒ **CAPE 正文描述的是 BFF 原论文的公式，Alg 3 里那条 `log10(n/6)` 是抄错的。**
+
+**我们的取舍**：按 CAPE 正文的指示
+*"The concrete finite-size choices of s and L_BFF **follow the parameterization of
+BFF used in ChalametPIR**"* —— 它**委托**给 BFF 的参数化，
+所以 `BffSetup.fromBff(...)` 用 `BffHash.allocate(...).arrayLength = 256` 作为 `L_BFF`，
+而不是 Alg 3 L3 的 155。**155 这个值仍然保留在 `BffSetup.paperLBff` 里**，
+并在探针里与 128 / 256 一起打印，便于随时对照。
+
+### 12.7 ✅ `R` 已定：**`R = C = √L_BFF`**（用户 2026-10-14 决定）
+
+`A1 SETUP 4` 只写 `RC ≥ L_BFF, R ≤ N`，**没有给策略**。定为：
+
+```
+R = 2^⌊log2 √L_BFF⌋        （不超过 √L_BFF 的最大 2 的幂）
+C = ⌈ L_BFF / R ⌉
+```
+
+**为什么根号开在 `L_BFF` 上、而不是 `N` 上**：
+FusePIR 属于 SealPIR/OnionPIR 一系，那一系的经典做法是把数据库切成
+**`√D × √D` 的方格**、查询发 `√D` 条密文。FusePIR 的 `R×C` + `C` 条列选择子
+**就是这个结构**，作用在 **BFF 数组（长度 `L_BFF`）** 上。
+⇒ 同一条思路给的根号是 `√L_BFF`。
+⚠️ **论文里没有任何式子把 `R` 与 `N` 挂钩** —— 唯一提到 `N` 的地方就是上界 `R ≤ N`。
+`R = √N` 可以跑（`√8192 ≈ 90`）但**没有依据**，而且 `√N ≈ 90 < L_BFF = 256`，
+落进 `C > 1` 那侧却并不是最平衡的点。 ⇒ **不取 `√N`。**
+
+**三条依据**：
+1. `R` 取 2 的幂 —— FusePIR-C 附录 B：*"the row bits drive the bitwise evaluation of
+   BlindRotate"*，且 `ℓ_r = ⌈log2 R⌉` 是**位长**，只有 2 的幂时按位分解无损。
+2. 根号开在 `L_BFF` 上（上面那段）。
+3. `R` 与 `C` 是同一个代价的两头：`C` ⇒ `C` 次 `CtPtMul` + `C` 条上传密文；
+   `R` ⇒ `ℓ_r = ⌈log2 R⌉` 轮盲旋转。方格把两者平衡。
+
+**实测（`probe/BffLayerTest`，30/30 通过）**：
+
+| 路径 | `L_BFF` | `s` | `R` | `C` | `RC` | `tail` | `ℓ_r` |
+|---|---|---|---|---|---|---|---|
+| **BFF 参数化（默认）** | 256 | 64 | **16** | **16** | 256 | 0 | 4 |
+| CAPE Alg3 闭式（仅对照） | 155 | 64 | 8 | 20 | 160 | 5 | 3 |
+| 强制 `R = N` | 256 | 64 | 8192 | 1 | 8192 | **8037** | 13 |
+
+**论文评估的全部三档规模都验过**（`n ∈ {128,256,512}`，`probe/BffLayerTest` 各 30/30 通过）：
+
+| `n` | `s` | `segmentCount` | `segmentCountLength` | `L_BFF` | `R` | `C` | `RC` | `tail` |
+|---|---|---|---|---|---|---|---|---|
+| 128 | 64 | 2 | 128 | **256** | 16 | 16 | 256 | 0 |
+| 256 | 64 | 4 | 256 | **384** | 16 | 24 | 384 | 0 |
+| 512 | 128 | 4 | 512 | **768** | 16 | 48 | 768 | 0 |
+
+`R = 16` 在三档相同（`2^⌊log2 √L_BFF⌋`：`√256=16`、`√384≈19.6→16`、`√768≈27.7→16`），
+且三档都 `R | L_BFF` ⇒ `tail = 0`。**真实 `h_a` 下剥皮都在 1 个种子内成功。**
+
+位置怎么落到 `(c, r)` 上的实例（关键词 #0，`u = 102 / 144 / 234`）：
+
+| `(R, C)` | `u_0=102` | `u_1=144` | `u_2=234` |
+|---|---|---|---|
+| **`R=16, C=16`** | `(c=6, r=6)` | `(c=9, r=0)` | `(c=14, r=10)` |
+| `R=64, C=4` | `(1, 38)` | `(2, 16)` | `(3, 42)` |
+| `R=256, C=1` | `(0, 102)` | `(0, 144)` | `(0, 234)` |
+
+⇒ `C = 1` 时三条路**都在第 0 列**，列选择子是 `RLWE.Enc([1])`，
+**"同态选列"那一半完全空转**。取方格布局就是为了让这一半真的在挑（本例挑 16 列里的第 6/9/14 列）。
+这也把 P1-1（列选择子密文化）留在默认路径上。
+
+**⚠️ 这条策略的副作用**：`L_BFF` 是 2 的幂时 `R | L_BFF` ⇒ **`RC = L_BFF` ⇒ `tail = 0`
+⇒ `A1 SETUP 9-11` 是空循环**。这是合法的（论文只要求 `RC ≥ L_BFF`）。
+要让那一步真的清槽，只能 `R > L_BFF`，而那时 `C = 1`
+—— **二者在 `L_BFF` 为 2 的幂时互斥**（`tail = 0 ⟺ R | L_BFF`，`C > 1 ⟺ R < L_BFF`）。
+探针里用 `forceR = N` 把这个非空尾部逼出来验过（8037 个槽，`zeroTail` 全部清 0）。
+
+**⚠️ 与论文自己那组实测的差**：论文在 `n ∈ {128,256,512}` 上是 **`C = 1`**（§13.3），
+我们取方格布局 ⇒ `C = 16`。**两者都满足论文给出的唯一约束**；
+我们取方格是因为它让"同态选列"真的在做事。**这是我们主动选的一条偏离，如实登记。**
+
+---
+
+## 13. 论文的数值参数（逐条抄自原文，附行号）
+
+> 来源同 §12。**这一节只抄论文写了的东西**；论文没写的明确标 "未给出"。
+
+### 13.1 HE 参数（`out_cape.txt:1152-1161`，逐字）
+
+```
+1152: Our implementation uses Microsoft SEAL [40] with the BFV
+1153: homomorphic encryption scheme. We set the plaintext modu-
+1154: lus to t = 65537 and use the default configuration in SEAL to
+1155: achieve 128-bit security. The degree of the polynomial mod-
+1156: ulus is N = 16384. The BFF uses three hash positions per
+1157: keyword and the fingerprint length is 40 bits.
+```
+
+| 参数 | 论文 | 我们 | 差 |
+|---|---|---|---|
+| 方案 | Microsoft SEAL / **BFV** | SEAL(BFV) 打分信道 + 自建 RGSW native 信道 | 结构差 D11（两个 `t`） |
+| `t` | **65537** | native 信道 `2^32`；打分信道 65537 | ⚠️ D11 |
+| 安全 | 128-bit，「SEAL 默认配置」 | 自定 | 未核 |
+| `N` | **16384** | **8192** | ⚠️ 差一倍（见 §13.4） |
+| BFF 位置数 | **3** | 3（但形态不对，见 §11.3 ①） | ⚠️ |
+| 指纹长度 | **40 bit** | 32 bit（`String.hashCode`） | ⚠️ D7 |
+| `ε_BF` | **2^−20** | 2^−6 | ⚠️ D5c（已登记） |
+
+**未给出**：log q / 系数模数链、LWE 维数 `d` 的数值、`B_pay` 的数值与定义、
+`ℓ(n, ε_BF)` 的展开式、Bloom 哈希个数 `h` 的数值。原文第 157 行明说
+*"parameters and ciphertext dimensions are omitted"*。
+
+### 13.2 论文实验规模（`out_cape.txt:1179-1180`、`1217-1219`）
+
+- 单关键词：`n ∈ {128, 256, 512}`、`m ∈ {2^13, 2^14, 2^15}`、值长 16/64/256/1024 bit。
+- 合取：`n ∈ {128, 256, 512}`、`m ∈ {2^9, 2^10, 2^11}`、`Q ∈ {3,5,10,20,30}`、值长 16 bit。
+
+⇒ **论文自己就在 n = 128 这一档做实验**，与我们的 demo 同一规模。
+
+### 13.3 ⭐ 证据：论文那组实验里 **`C = 1`**
+
+三条独立证据：
+
+**① 每查询 3 条 RLWE 密文**（`out_cape.txt:2278-2279`，安全性证明逐字）：
+```
+2278: Hence, the only challenge-dependent part of the adversary's
+2279: view is the collection of the 3ℓ RLWE ciphertexts and the 3ℓ
+2280: LWE ciphertexts contained in the challenge queries.
+```
+`ℓ` 是 ℓ-query 实验里的**查询次数** ⇒ **每查询 3 条 RLWE + 3 条 LWE**。
+A1 ANSWER 5 是 `Σ_{c=0}^{C−1} CtPtMul(q_a^col[c], P_{c,b})`，`q_a^col` 是 **C 条**密文的向量；
+乘上 3 个 BFF 位置 ⇒ 每查询 `3C` 条 RLWE。`3C = 3` ⇒ **`C = 1`**。
+
+**② 查询大小 2304.97 KiB 正好是 3 条 SEAL 密文**（`out_cape.txt:1211`）：
+SEAL 序列化时每个系数按**一个 `uint64` × 模数个数**存。
+`N = 16384` + **3 个 60-bit 素数**（`log q = 180`）⇒ 单条
+`2 × 16384 × 3 × 8 = 786432 B = 768 KiB`。
+`2304.97 KiB ÷ 768 KiB = 3.0013` ⇒ **3 条**。
+（旁证：MMK 的查询大小是 **768.25 KiB** = 正好 1 条；MMK 只发 1 条。）
+
+**③ 查询大小与 `n`、`m` 无关**（Table 2 里全部 2304.97 KiB）：
+`n` 从 128 涨到 512、`m` 从 2^13 涨到 2^15，`C` 不变 ⇒ `C = 1` 在三档都成立。
+
+⇒ **`R` 只需满足 `R ≥ L_BFF`**（这样 `C = ⌈L_BFF/R⌉ = 1`）。
+论文的 `R ≤ N` 上界（`N = 16384`）非常宽松，说明论文在这个规模上
+**根本没触发多列**，`R` 的具体取值对他们也不敏感。
+
+> ⚠️ **一条与之张力相反的线索，必须一起记**：同一条证明接着说
+> *"We first replace, one at a time, each RLWE encryption RLWE.Enc(e_{c(r,0)})
+> with RLWE.Enc(e_{c(r,1)})"* —— 若 `C = 1` 则 `e_{c_a}` 恒为 `[1]`，
+> 这步 hybrid 就是空的，证明会退化。**⇒ 论文在这一点上内部不自洽**
+> （要么 `C > 1` 与查询大小矛盾，要么这句 hybrid 写法不严谨）。
+> **这是论文的问题，不是我们的 bug**；我们按 ①②③ 这三条**可算**的证据取 `C = 1`，
+> 并把这条张力登记在这里。
+
+### 13.4 我们与论文的参数差（要一起说的）
+
+| 项 | 论文 | 我们 | 影响 |
+|---|---|---|---|
+| `N` | 16384 | 8192 | native 上下文、RGSW 键、密文大小全部差一倍。**改它要重跑全部性能数字** |
+| `m`（每关键词值数） | 2^9…2^15 | **3** | 我们的 demo 是**迷你实例**：`B_pay = 60`（论文推断下会是 2+m(1+ℓ_BF)，m=512 时上千） |
+| `ℓ_V` | 16 bit | 值 id 为小整数 | demo 简化 |
+| 响应大小 | CAPE 3/6/12 MiB（∝ m，与 n、Q 无关，`out_cape.txt:1444-1462`） | `B_pay` 条密文 | ⚠️ 论文响应**只随 m 增长**，这给 `Pack` 的输出规模提供了硬约束（§10.3 ② 那条推断可以据此收紧） |
+---
+
+## 14. ✅ 论文几何已接进 FusePIR/CAPE（2026-10-14 深夜，本轮）
+
+### 14.1 新老几何的对照（这是本轮改动的全部内容）
+
+| | 旧几何（仍在，作对照） | **新几何（论文几何，默认路径）** |
+|---|---|---|
+| 位置函数 | `BffEncode.keywordHash`：哈希 + **线性探测**，**1 个位置** | **`BffHash.positions`**：`h_a`，**k 个分散位置** |
+| `u → (列, 行)` | `c = u / cellsPerCol`、`r = (u % cellsPerCol)·maxValues + a` | **`c = ⌊u/R⌋`、`r = u mod R`** |
+| k 路 | 一个 cell 的 **k 个连续行** | 三个**独立的 `h_a` 位置** |
+| `L_BFF` | `cellsPerCol·C = 130`（几何副产品） | **256** = `(segmentCount+k−1)·s`（BFF 参数化） |
+| `R` / `C` | `R = 16`（环内行数）、`C = 26` | **`R = 16`、`C = 16`**（`R = C = √L_BFF`） |
+| 写表 | 随机拆 k 路 + 全部覆写 | **剥皮 MAPPINGSTEP + LIFO 回填** |
+| 表形状 | `[26][59][8192]` = 12 M long | **`[16][59][8192]` = 7 M long** |
+| `dataRadius` | 15 = `(cellsPerCol−1)·maxValues + k` | **16 = `R`** |
+| 尾部补零 | 空区间（Σ 见 §11.3③） | `RC = L_BFF` ⇒ 也是空（`R \| L_BFF`） |
+
+### 14.2 新增的代码
+
+| 文件 | 内容 |
+|---|---|
+| `bff/BffHash.java` | `allocate()` + `h_a` |
+| `bff/BffMapping.java` | MAPPINGSTEP |
+| `bff/BffEncode.java` | `encode`（LIFO 回填 + 换种子重试）、`zeroTail`、`embed`、`reconstruct` |
+| `bff/BffSetup.java` | `Layout`、`layout`（方格策略）、`selectRC`、`fromBff` |
+| `bff/CapeDemoData.java` | **`buildTablesPaper(ringDim, k, t, seed, forceR, hashSeed)`** + 抽出的 `buildPayload`（两条几何共用 A1 SETUP 6） |
+| `cape/CapeQuery.java` | **`buildPaper(...)`** + `buildWithIndices(...)`：把"几何→索引"与"索引→密文"拆开，**两条几何共用同一份密文构造** |
+| `bff/CapeDemoData.Tables` | 新增 `pos[kwCount][k]`、`layout`、`colRow(i, a)` |
+
+**native 侧一行未改** —— `nativeCapeAnswer(ctx, d, C, k, bPay, flat, cIdx, rIdx)` 的 `cIdx`/`rIdx` 本来就是**按路**传的数组，两套几何只是喂不同的值。
+
+### 14.3 验收（全部离线，**不含任何 HTTP 往返**）
+
+| 探针 | 结果 | 验的是 |
+|---|---|---|
+| `probe/BffLayerTest 128 8192` | **30/30 PASS** | A3 MAPPINGSTEP/ENCODE/CHECK/RECONSTRUCT、A1 SETUP 4/9-11/12-16、`h_a` 三条性质 |
+| `probe/BffLayerTest 256 8192` | **30/30 PASS** | 同上（论文第二档规模） |
+| `probe/BffLayerTest 512 8192` | **30/30 PASS** | 同上（论文第三档规模） |
+| `probe/CapePaperGeometryTest <db> 8192` | **15/15 PASS** | 建表 + 跨端索引一致性 + **旧几何分支的等价性回归** |
+| `probe/CapePaperNativeTest <db> 8192 16 2` | **3/3 PASS** | **真实盲旋转**下的密文侧假阴性 0 |
+| `bloom/BloomScoring 8192` | PASS | Bloom 侧（与几何无关） |
+| `probe/CapeBffParamDiag` / `CapeTableDiag` | ALL PASS | 旧几何未回归（旧路径仍可用） |
+
+关键数字：
+* **`Σ_a P_{c_a,b}[r_a] = y_K[b]` 对 128 关键词 × 59 载荷位 = 7552 项全部成立**（明文侧）
+* `CapeQuery.buildPaper` 的 `(c_a, r_a)` 与建表的 `colRow` 对 **128 关键词 × 3 路 = 384 项**逐位一致
+* **`CapeQuery.build` 重构后与旧建表逐位一致**（128 × 3 = 384 项）——
+  这条是必需的，因为服务默认路径用的就是它，而"编译通过"**不是**等价性的证据（见 §14.6）
+* **真实盲旋转**：2 个关键词载荷 **0/59 失配**；两条负对照（行号挪一格 / 列号挪一格）都是 **59/59 失配**
+* 负对照：改一个被读到的系数 → 3 个关键词失配；用错的行/列公式反算 → **128/128 全失配**
+* 负对照：回填顺序从 LIFO 改成正序 → **125/128 全失配**（LIFO 是语义不是风格）
+
+### 14.4 ⚠️ 被推翻的旧数字（要一起说）
+
+| 项 | 旧值 | 新值 | 说明 |
+|---|---|---|---|
+| `C` | 26 | **16** | 列选择子密文数 3×26=78 → **3×16=48** |
+| 查询里列选择子部分 | ≈ **41 MB** | ≈ **25 MB** | 按 N=8192、每条 524,401 字节实测推算 |
+| 表大小 | 12 M long | **7 M long** | `[26]` → `[16]` |
+| `L_BFF` | 130 | **256** | 定义整个换了（几何副产品 → BFF 参数化） |
+| `dataRadius` | 15 | **16** | |
+| 单关键词的落点 | 1 个 cell 的连续 3 行 | **3 个分散位置** | |
+| `CapeBffParamDiag` 的断言「k 个位置 = 同一列的连续 3 行」 | ✓ | **只在旧几何成立** | 该断言现在描述的是旧路径；新路径见 §12.7 |
+
+**仍然有效、未被推翻的**：`BloomScoring`（与几何无关）、`CapeWireFormatProbe` 的线格式、
+`s_L == s_R` 这条硬约束（§P1-1）、Bloom 侧的全部结论。
+
+### 14.5 范围与接线状态（2026-10-14 深夜，按用户指示收窄）
+
+⚠️ **本轮的交付范围是 `bloom/` 与 `bff/`**（"我要 bff 和 bloom 完全满足后续 FusePIR 和 CAPE 的调用"）。
+我一度把 `CapeDemoService` 的默认路径也切了 —— **那是 CAPE 侧的行为改动，不在这一步，已完全回退**：
+
+| 文件 | 状态 |
+|---|---|
+| `cape/CapeDemoService.java` | **已回退**，运行行为与改动前**完全一致**（仍走旧几何、仍用 `tb.colOf/rowOf`）。核验：3 对 `cIdx[a]=tb.colOf[…]` / `rIdx[a]=tb.rowOf[…]+a` 齐全，全文无 `colRow`/`paperGeometry`/`buildTablesPaper` 痕迹 |
+| `cape/CapeQuery.java` | ⚠️ **唯一保留的 `cape/` 改动**，且**不改变行为**：`build(...)` 只是被拆成"先算几何 → 再交给 `buildWithIndices`"，逐位等价；另外**新增** `buildPaper(...)`。保留它的理由：它是"bff 完全满足下游调用"这条要求的**调用方证据**，而且由 `CapePaperGeometryTest` 正面验过（不是没人跑的死代码）。⚠️ 那个"逐位等价"的声明**不是靠看代码断言的** —— `CapePaperGeometryTest` §旧几何分支把 128 关键词 × 3 路逐个与旧建表的 `(colOf, rowOf+a)` 对过（**384 项全等**，负对照 R 16→8 能检出）。**若你希望 cape/ 一行都不动，说一声我就回退。** |
+
+**⏳ 明确没跑的**（按"先不用跑全连接"）：
+
+1. `CapeDemoService` **没起过**，`-Dcape.selftest=true` 没跑，`/api/query-sealed` 没打过 ——
+   下面所有验证里**不包含任何 HTTP 往返**。
+2. 服务侧探针未重跑：`CapeDefaultPathTest`、`CapeAlgorithm2Diag`、`CapeColumnSelWireTest`。
+3. `CapeQuery.buildIndicesOnly`（跨进程格式探针用）仍用旧公式。
+
+### 14.6 ⚠️ 本轮我自己造成的一个 bug（必须记）
+
+回退 `CapeDemoService` 时发现：我用 `[regex]::Replace` 做批量替换，
+替换串里的 `$1cIdx[a] = cr[0];` 被 .NET 的替换语法解析错，
+**把 `cIdx[a] = cr[0];` 与 `rIdx[a] = cr[1];` 两行静默吃掉了**，只剩 `int[] cr = …` 一行。
+
+**而代码照样编译通过** —— 因为 `cIdx`/`rIdx` 本来就先 `new long[K]`（全 0），
+少两行赋值只是让它们保持全 0，于是 native ANSWER 会**三路都读槽 0** ⇒ 静默错误答案。
+
+* 影响范围：**零**。服务从未启动，`CapePaperNativeTest` 自己构造 `cIdx/rIdx`，
+  所以没有任何已跑的验证被污染。
+* 已经修好（三处按原样还原），并且**加了一条机械核验**：
+  `cIdx 赋值 3 处 / rIdx 赋值 3 处` 必须成对。
+
+**教训（与前面几次同类）**：`[regex]::Replace` 的**替换串**不是字面量，
+`$` 有特殊含义；批量改代码要么用字面量 `.Replace()`，要么改完**逐处核对**。
+而且"编译 0 错误"**不是**批量改动正确的证据 —— 这次它掩盖了两行丢失。
+
+### 14.7 实测对照（同机、同数据集）
+
+| | 旧几何 | 新几何（论文） |
+|---|---|---|
+| `L_BFF` | 130 | **256** |
+| `R` / `C` | 16 / **26** | 16 / **16** |
+| 表大小 | `26×59×8192` = **95.9 MB** | `16×59×8192` = **59.0 MB** |
+| **ANSWER 一次** | **77,775 ms**（439.41 ms/unit） | **76,165 ms**（平均，C=16） |
+| 载荷失配 | 0/59 | **0/59** |
+
+⇒ **换几何没有解决速度问题**：`C` 从 26 降到 16，ANSWER 只快了约 2–6%，
+因为瓶颈在**盲旋转**（约 400 ms/unit × 177 unit），不在 `CtPtMul`。这与 P1-1 的结论一致。
+
+⚠️ 两次实测的 `t` **不同**（旧探针硬编码 `65537`，新路径用 DB 里的 `2^32`），
+所以这个百分比只能当**指示性**数字，不是严格控制变量下的对照。
+---
+
+## 15. `bloom/` 与 `bff/` 完整性审计（2026-10-14 深夜，回答"是否完整"）
+
+> **问题**：`bloom/` 和 `bff/` 是不是都完整了？
+> **答案**：**查完之后不能说"完整"。** 审计翻出 4 类问题，其中 1 类是**真的没做到"完全满足调用"**。
+> 下面每条都是 grep 出来的，不是印象。
+
+### 15.1 审计方法
+
+对 `bloom/` 与 `bff/` 的**每一个公开函数**做调用点统计
+（`\bfn\s*\(`，排除 javadoc 行与函数定义行）。
+⚠️ 第一遍我用了**限定名**（如 `BffSetup.fp(`），同文件内的非限定调用匹配不到，
+得到一堆假阳性（`oracleHash`、`foldSlots`、`foldAllSlots`、`mappingStep` 都被误判成死代码）。
+**改用裸函数名重查才是对的。**
+
+### 15.2 查出来的 4 类问题（都已修）
+
+| # | 问题 | 性质 |
+|---|---|---|
+| 1 | **`BffSetup.fp` 是死代码（0 个调用方）**，而 `fp` 这个算式在项目里写了 **4 遍**：`BffSetup.fp`、`CapeDemoData.buildPayload`（`inField(kw.hashCode(), t)`）、`FusePirDecode.fpOf`（同式）、`CapeDemoService:1081`（同式）。**`fp` 是 A1 SETUP 1 的 `(D, H, fp) ← BFF.Setup(n,3)` 三个产物之一，属于 BFF 层** —— 所以"下游绕过 bff 自己算"正是"bff 没完全满足调用"的直接证据 | ❌ **真问题，已修**：三处改为调 `BffSetup.fp`（唯一实现） |
+| 2 | **`BffSetup.newD` 是死代码**（`BffEncode.encode` 自己 `new long[rc][bPay]`）。而且**它的 javadoc 是错的**：写着形状是 `[L_BFF][B_pay]`，但 A1 SETUP 9-11 要写 `D[u], u ∈ [L_BFF, RC)` ⇒ 论文里 `D` 就是 `[RC][B_pay]` 长，按 `[L_BFF]` 分配那一步会直接越界 | ❌ **真问题，已修**：`encode` 改调 `newD`；javadoc 更正为 `[RC][B_pay]` |
+| 3 | **`BffSetup.setup` 是死代码**（0 调用方）。它是 `A3 SETUP 1-2` 的入口 `(s, L_BFF) ← BFF.Setup(n,3)` | ⚠️ 已修：`selectRC` 改为经 `setup` 取值；另加 `setup(n,k,useCeil)` 重载 |
+| 4 | **三处 javadoc 与代码矛盾**：`bff/BffEncode` 类注释与 `bff/BffSetup` 类注释都写 *"`h_i` 没有实现"*（**已经实现了**，在 `BffHash.positions`）；`bloom/BloomSetup` 类注释写 *"`S_v` 有两份独立实现"*（**已收敛成一份**，`CapeQueryDecode` 现在调 `BloomSetup.valueToKeywords`） | ❌ **注释撒谎，已改** |
+
+### 15.3 复查结果：bff/bloom 里已无死代码
+
+修完之后对 16 个关键函数重查，**全部有 ≥1 个调用方**：
+`fp`(24)、`newD`(1)、`setup`(11)、`oracleHash`(1)、`mix`(2)、`foldSlots`(2)、
+`foldAllSlots`(2)、`layout`(6)、`fromBff`(1)、`selectRC`(2)、`embed`(2)、`zeroTail`(2)、
+`reconstruct`(4)、`encode`(17)、`positions`(8)、`allocate`(4)。
+
+**回归**：`fp` 的改动直接动载荷内容，所以重跑了全部探针 ——
+`BffLayerTest 128` 30/30、`CapePaperGeometryTest` 15/15、`CapeTableDiag` 15/15
+（**假阴性 0、假阳性率仍 0.0344**，与改动前逐位相同 ⇒ 纯重构）、
+`BloomScoring` 8/8、`CapeBffParamDiag` 16/16。全部 exit=0。
+
+### 15.4 ⚠️ 仍然**不**完整的地方（这些不是代码缺失，是别的东西）
+
+"函数齐了 + 都有人调" ≠ "完全符合论文"。下面这些要一起说：
+
+| # | 项 | 性质 |
+|---|---|---|
+| A | **`fp` 是 32-bit `String.hashCode`，论文是 40-bit** | **保真度缺口**（D7）。函数在、被调用、行为正确，但**取值域不对**。改它要动 `t` 相关的对齐，是独立一轮 |
+| B | **`h_a` 按 BFF 参考实现落地，不是 CAPE 所引 ChalametPIR 的字面公式** | 因为那条字面公式把 k 个位置放同一段，与 BFF 原论文 + ChalametPIR 自己的参考实现都矛盾（§12.4） |
+| C | **`L_BFF` 用 BFF 参数化（256），不是 CAPE Alg3 闭式（155）** | 因为 155 与 `HashGen` 互不自洽（§12.6） |
+| D | **`R` 的策略是我们的（`R = C = √L_BFF`）** | 论文只给约束、没给策略（§12.7） |
+| E | **`bff/` 里同时存在两套几何** | 旧的那套（`keywordHash`/`place`/`splitShares`/`writeD`/`randomizeD`）**仍有调用方** —— 只经 `CapeDemoData.buildTables`（旧几何对照路径）。不是缺口，但"bff 里有两套写法"本身是维护风险 |
+| F | **`bff/CapeDemoData` 仍是 615 行的单类** | 混了 JSON 解析 + DB 装载 + 建表（两套几何各一份入口）。MAP §7 已记 |
+| G | **`probe/` 下还有几份自己写的 `S_v` / `b_v` / 指纹副本** | 一次性诊断件，不在生产路径上（`CapeAnswerFull:65`、`CapeColumnPacked:87`、`CapeEndToEnd4:177`、`CapeEndToEndNative:90`） |
+| H | **`Pack` 仍然没有**（A1 ANSWER 13） | 所以 A2 ANSWER 3 要的 `ct^BF_j` 无法从协议里产生（D2）。**范围在 `fusepir/`/`cape/`，不是 bloom/bff 的缺口** |
+### 15.5 ✅ 状态更新（2026-10-14 深夜第二轮：A 已做、E 已做、F 未做）
+
+用户指示"完成它两（A + E/F），不用跑全连接，更新 MAP 中 bloom 与 bff 状态"。实际结果：
+
+#### ✅ A：`fp` 从 32-bit 改成论文的 **40-bit**（D7 已消除）
+
+**关键约束（实测确认）**：论文 §5.1 是 `μ = 40`，而**论文自己的 `t = 65537` 只有 16 bit/槽**
+—— 40 bit **装不进一个 `Z_t` 槽**。所以 `y = fp ‖ m ‖ v…` 里那个 `fp`
+必然是 `⌈40/⌊log2 t⌋⌉` 个槽。我们此前推的 `B_pay = 2 + m·perValue`
+里的那个 `2` 就是把 40-bit `fp` 当成了 1 个槽 —— **论文从未写过 `B_pay` 的算式**，所以这是我们该修的推断。
+
+| `t` | 每槽 | `fpSlots` |
+|---|---|---|
+| 我们的 native `2^32` | 32 bit | **2** |
+| 论文的 `65537` | 16 bit | **3** |
+
+新增/改动的 API：
+* `FusePirSetup.FP_BITS`(40)、`slotBits(t)`、`fpSlots(t)`、`countOffset(fpSlots)`
+* `payloadBpay(fpSlots, m, perValue)`、`valueOffset(fpSlots, j, perValue)`、`bloomOffset(...)`
+  —— **三个签名都加了 `fpSlots`**，于是 18 个调用点**全部编译报错**（这正是我要的：编译期暴露，不静默）
+* `BffSetup.fp(String)`（40-bit）、`fpDigits(kw, t, fpSlots)`、`fpFromDigits(y, off, fpSlots, t)`、
+  `FP_SEED`（**与 `ρ_H` 独立的指纹种子**，对齐正文 *"seeds ρ_H and ρ_fp are sampled independently"*）
+* `FusePirDecode.fpOf(kw)`、`fingerprintOk(kw, y, t)`（A1 DECODE 6 的 ⊥ 判据）、`nativeFieldModulus()`
+* `CapeBloomScore.score(..., fpSlots)` 重载（候选数下标随 `fpSlots` 走）
+
+**验收**（`probe/CapePaperGeometryTest` 新增 `fingerprint40Section`，总计 **22/22**，exit=0）：
+* `t=2^32 ⇒ fpSlots=2`；`t=65537 ⇒ fpSlots=3`（与论文一致）
+* **拆—拼往返**：128 个关键词的 40-bit 指纹都能从载荷拼回
+* 指纹最大值 ≥ `2^32` —— **确实用到了 32 bit 以上的位**（32-bit 版做不到）
+* ★ 正确的关键词：`fingerprintOk` 对全部 128 个通过（假阴性 0）
+* **[负对照]** 用错的关键词去校验 ⇒ **128/128 全被拒**
+* **[负对照]** 把指纹槽改 1 ⇒ 校验失败（不是恒真）
+
+**被推翻的数字**：`B_pay` **59 → 60**（多一个指纹槽）。
+响应大小、`ANSWER` 时间相应 +1/60 ≈ +1.7%（未实测，服务没跑）。
+
+#### ✅ E：旧几何已从 `BffEncode` 搬出
+
+`bff/BffEncode.java` **只留论文路径**（`checkDataRadius` + `PositionFn`/`Table`/`encode`/`embed`/`zeroTail`/`reconstruct`），
+旧几何那套（`keywordHash`/`mix`/`Placement`/`place`/`splitShares`/`randomizeD`/`writeD`）搬到
+**`bff/BffEncodeLegacy.java`**。
+
+⚠️ **为什么是"搬"而不是"删"**：回退后的 `CapeDemoService` 与 `CapeQuery.build(...)`
+**仍在用旧几何**（MAP §14.5）。删掉会让服务直接编译不过。
+所以做成"搬到明确命名的地方" —— `bff/` 的默认表面只剩论文路径，
+旧路径的存在一眼可见。**等服务默认路径切到论文几何后，这个文件可以整个删除。**
+
+#### ❌ F：`CapeDemoData` **没有拆**
+
+它现在 **748 行**（比之前的 615 行还长，因为 `buildPayload` 加了指纹拆槽与往返自检）。
+仍混着：JSON 解析 + DB 装载 + **两套几何的建表入口**（`buildTables` / `buildTablesPaper`）+ `Tables` holder。
+**这是本轮没做完的一项**，如实登记。
+
+#### 回归（全部离线，无 HTTP 往返）
+
+| 探针 | 结果 |
+|---|---|
+| `BffLayerTest 128 8192` | 30/30 exit=0 |
+| `CapePaperGeometryTest` | **22/22** exit=0（含新增的 40-bit 指纹节） |
+| `CapeTableDiag` | 15/15 exit=0 |
+| `CapeBffParamDiag` | 16/16 exit=0 |
+| `BloomScoring 8192` | 8/8 exit=0 |
+| `CapeBloomScore 8192 18` | 15/15 exit=0 |
+| `CapeWireFormatProbe 8192 18` | 9/9 exit=0 |
+
+**过程中修掉的一处真 bug**：`CapeTableDiag` 里候选数下标**硬编码成 `pay[1]`**、
+值起始**硬编码成 `2 + v*(1+lBf)`**。`fpSlots` 变成 2 之后这两处会**静默读错槽**
+（`pay[1]` 变成指纹的第 2 位）⇒ 该探针报"**假阴性 = 298**"。
+已改为走 `FusePirSetup.countOffset/valueOffset`。
+**这正是 `fpSlots` 加进签名要防的事** —— 但只防住了走布局函数的地方，硬编码的那些得靠跑探针抓。
+
+#### ⚠️ 一个**未查清**的现象（如实登记，没有解释）
+
+`CapeTableDiag` 的**实测**假阳性率**不变**（0.0344，与 40-bit 改动前逐位相同），
+但它同时打印的**理论值 `mean((k_v/ℓ)^h)` 从 0.0164 变成了 0.0221**。
+我**还没查清**为什么 —— 理论上 Bloom 那条链路与指纹无关。
+已记为待查项，不当作"没发生"。
+### 15.6 ⚠️ 第三轮复查：**A 原来只做了一半**（2026-10-14 深夜）
+
+用户问"BFF 完善了吗"，我按惯例先查再答 —— 结果查出 **4 处生产侧消费方还在按旧的 1 槽布局读载荷**。
+
+#### 问题：40-bit 指纹改完之后，读的那一侧没跟着改
+
+| 文件 | 旧代码 | 后果 |
+|---|---|---|
+| `cape/CapeBloomScore.fingerprintOf(payload)` | `return payload[0]` | 只拿到 40-bit 指纹的**低 32 位** ⇒ `f ≠ fp(K)` **恒成立** ⇒ **所有查询都返回 ⊥** |
+| `cape/CapeAnswer:97` | `(int) payload[1]` | 候选数变成指纹的**第 2 位**（一个巨大的数）⇒ `Math.min(cnt, maxValues)` 恒为 `maxValues`，看起来"还能跑" |
+| `cape/CapeDemoService:1081` | `CapeDemoData.inField(kw.hashCode(), t)` | 期望指纹是**旧的 32-bit 值** ⇒ P0-4 校验恒 FAIL |
+| `cape/CapeAnswer.answer(...)` | 无 `t` 参数 | 拿不到 `fpSlots`，无法定位槽 |
+
+**这四处都不是编译错误**（`payload[0]`/`payload[1]` 语法上完全合法），
+所以"编译 0 错误 + 探针全绿"**完全掩盖了它们** —— 因为跑的那 7 个离线探针里，
+没有一个走 `CapeAnswer.answer(...)` 这条路（它只被 `CapeDemoService` 用）。
+
+⇒ **教训**：改一个**跨层的数据布局**（这里是载荷的槽布局）时，
+"改了定义方 + 调用方能编过" 只覆盖了**走布局函数**的那部分；
+**硬编码下标的地方是编不过也测不到的盲区**。
+本轮这类盲区一共 6 处（`CapeTableDiag` 2 处 + 上面 4 处）。
+
+#### 已修
+
+* `CapeBloomScore.fingerprintOf(long[] payload, long t)` —— 用 `BffSetup.fpFromDigits` 拼回 40-bit
+* `CapeBloomScore.valueCountOf(long[] payload, long t)` —— 走 `FusePirSetup.countOffset`
+* `CapeAnswer.answer(..., long t)` —— 新增 `t` 参数；`CapeDemoService` 传 `t`
+* `CapeDemoService` 的期望指纹改为 `BffSetup.fp(query.get(0))`（bff 层唯一实现）
+* 删掉两个**死代码**：`CapeDemoData.inField`（无调用方）、
+  `BffSetup.fp(String, long)`（40-bit 上线后无调用方）；"静默回绕"那段警告挪到
+  `BffSetup.oracle40` 的注释里
+
+#### 回归
+
+`BffLayerTest` 30/30、`CapePaperGeometryTest` 22/22、`CapeTableDiag` 15/15、
+`CapeBloomScore` 15/15、`CapeBffParamDiag` 16/16、`BloomScoring` 8/8、
+`CapeWireFormatProbe` 9/9 —— **全部 exit=0**（仍未跑全连接）。
+
+⚠️ **但这四条修改所在的路径（`CapeAnswer.answer` → `CapeDemoService`）
+在离线探针里覆盖不到，只有跑服务才会走到** —— 按用户指示没跑。
+所以对它们我只能说"改对了、编过了"，**不能说"验过了"**。
+
+#### 当前 bff/ 的完成度（诚实版）
+
+| 维度 | 状态 |
+|---|---|
+| 论文要求的函数**齐全** | ✅ `BFF.Setup`(s/L_BFF/D/H/fp)、`MAPPINGSTEP`、`ENCODE`(LIFO+重试)、`CHECK/RECONSTRUCT`、`select R,C`、尾部补零 —— 全在 `bff/` |
+| 每个函数**都有调用方** | ✅ 复查过（裸函数名逐个查，避免上一轮的假阳性） |
+| **`fp` 40-bit**（D7） | ✅ 已修（拆槽 + 往返 + ⊥ 判据 + 2 条负对照） |
+| 旧几何**已移出默认表面** | ✅ 搬到 `bff/BffEncodeLegacy`（**没删**，因为回退后的服务仍在用） |
+| **无死代码** | ✅ 本轮的 2 处已删 |
+| `h_a` 按**参考实现**而非所引字面公式 | ⚠️ 见 §12.4 —— 那条公式可被证伪 |
+| `L_BFF` 用 BFF 参数化而非 CAPE 闭式 | ⚠️ 见 §12.6 —— 闭式与 `HashGen` 互不自洽 |
+| `R` 的策略是我们的 | ⚠️ 见 §12.7 —— 论文只给约束 |
+| **`CapeDemoData` 未拆（F）** | ❌ **仍 747 行**，混 JSON 解析 + DB 装载 + 两套几何建表入口 |
+| 服务侧那 4 处修改**未实测** | ⚠️ 见上 |
+### 15.7 第四轮：按伪代码补齐函数（子代理系统清点 + 已修项）
+
+用户指示："根据论文以及伪代码完成各个调用所需的函数包括未完成的 bff，先不用连接 FusePIR 和 CAPE"。
+我开了一个子代理做 **Algorithm 1/2/3 + Alg 4(FusePIR-C) + Alg 5(CAPE-C) 逐行 → Java 函数** 的清点
+（用**裸函数名** grep 查调用点，避免限定名的假阳性）。
+
+#### ✅ 本轮修掉（都是子代理查出来或我自查出来的）
+
+| # | 问题 | 修法 |
+|---|---|---|
+| 1 | **`BFF` 的 `Check` 没有独立过程** —— 论文里 `Check(D,H,K)`（取 `d_j←D[h_j(K)]`）与 `Reconstruct`（求和）是**两个**过程，此前被压成一个 `reconstruct` | 新增 `BffEncode.check(d, posOf, k, bPay)` 返回 `(d_0..d_{k−1})` 并做范围自检；`reconstruct` 委托它 |
+| 2 | **`BffHash.allocate` 把 `3.33/2.25` 写死、与 `k` 无关** ⇒ `k=4` 会静默拿到 `k=3` 的段长，而 `paperS(4,n)` 用 `2.91/−0.5`（两个口径不一致且都不报错） | `allocate` 现在调 `BffSetup.paperS(k,n)`；**且 `k≠3` 直接拒绝** —— k=4 的容量常量（0.77/0.305）我们没对着参考实现核过，编一个"看起来合理"的数比报错危险 |
+| 3 | **`HashGen` 缺伪代码的原签名** —— 伪代码是 `HashGen(ρ_H, L_BFF, s, k)`，(L_BFF, s) 是**入参**；此前只有 `positions(…, BffParams, k)`（参数从 n 推出来） | 新增 `BffHash.hashGen(lBff, s, k)`：反解 `segmentCount = L_BFF/s − (k−1)` 并校验，**描述不出布局的组合在调用点就被拒**（如 CAPE 的 `(155, 64)`）；`BffLayerTest` 里配了负/正对照 |
+| 4 | **我这轮自己造的死代码 3 处**（`BffParams.hashGen()`、`BffSetup.setup(n,k)` 2 参重载、`positions(List,seed,HashGen)`） | 前两个改为**被生产路径调用**（`CapeDemoData` 现在走 `bp.hashGen()`）；2 参重载**删除** |
+| 5 | `BffSetup` 的 javadoc 指向**已搬走**的 `BffEncode#keywordHash`，以及**已退役**的 `FusePirSetup#span`（旧几何） | 已改指 `BffEncodeLegacy#keywordHash` / `fromBff`，并注明旧几何口径已退役 |
+
+回归：`BffLayerTest` n=128 **32/32**、n=512 **32/32**、`CapePaperGeometryTest` 22/22、
+`CapeTableDiag` 15/15、`CapeBffParamDiag` 16/16、`BloomScoring` 8/8、`CapeBloomScore` 15/15、
+`CapeWireFormatProbe` 9/9 —— **全部 exit=0**。
+
+#### ⚠️ 子代理清点出的**仍未完成**项（按"是否卡住调用方"排序）
+
+**Tier 1 — 真的卡住调用方（伪代码那一行写不出来）**
+
+1. **`Pack({ct_{pay,b}})`**（A1 ANSWER 13 `out_cape.txt:901`；A2 ANSWER 3 `:1043`）。
+   ⚠️ **且 §6:294 "Pack 整个没有 / 没有文件" 这个说法不准**：
+   `prim/RingPack.pack(...)`（`:154`）是一个**真的 ring packing** 原语且被验过
+   （`probe/PackGoalCheck:151` 明说"论文的 Pack 已经另起一个类实现并验证了"），
+   但它收的是**明文 LWE 分量** `(as, bs)`，不是 `{ct_{pay,b}}` 这组密文，
+   而且**没有任何协议代码调它**。所以准确说法是：
+   *"ring-packing 原语有了；缺的是收 ANSWER 那组密文的 `Pack`，以及任何调用方"*。
+   ⚠️ 另外 `probe/SampleToPackLink:125` 实测 `|residual|` 最大 ≈30（位值是 1）
+   ⇒ 就算套上适配器，A2 的 `s_j = τ` **精确相等**判据在那条路上也不成立。
+2. **`BFF.Check`** —— ✅ 本轮已加（见上表 #1）。
+3. **Algorithm 4/5（FusePIR-C / CAPE-C）整条查询压缩链没有实现**：
+   `PRG(ρ,a,j)`（`:2044-2046`、`:2121`）、`bin_ℓ(x)`（`:2042`）、`ℓ_c=⌈log2 C⌉, ℓ_r=⌈log2 R⌉`（`:2034-2038`）
+   都**没有**任何对应函数，`PRG` 这个词只出现在注释里；
+   而且**根本没有 `FusePIR-C` / `CAPE-C` 类**（Alg 5 是 100% 委托）。
+   ⇒ 这两个算法的 QUERY 完全写不出来。
+4. **Alg 4 的原语有、但没有任何协议调用方**：`LweToRgswOps.convert`（`:59`，5 个参数、没有 `z̃` 对象）
+   与 `ExpandOps.expand`（`:86`）都只被自己的 `main` 或探针调用。
+   Alg 4 SETUP L2 *"Generate the public evaluation material required by LWEtoRGSW"*（`:2031`）**没有实现**；
+   `probe/CapeBkCompressed:37` 还记着 Java 侧位提取 **4/4 失败**。
+5. **没有名为 `CtPtMul` / `CtCtMul` / `CtCtAdd` / `CtRotate` / `SampleExtract_0` 的函数**：
+   ANSWER 4-11（`:878-900`）与 A2 ANSWER 4-7（`:1050-1053`）在 Java 侧只有**内联**实现，
+   或者只在 C++（`cape_answer_core`）里。
+6. **没有 `pp` / `st_S` / `st_C` 类型**，没有 `(s_L,s_R)` 密钥对生成
+   （`CapeQuery:227-229` 记着 `s_L` 必须与 bootstrap key 的比特逐位相同 ⇒ 两把密钥的结构没实现），
+   没有 `ρ_H`/`ρ_fp` 的**采样**（`ρ_H` 是调用方给的 `seed0`，`ρ_fp` 是硬常量 `BffSetup.FP_SEED`）。
+
+**Tier 2 — 不卡（存在，只是参数表不同）**：`BFF.Setup/Encode/MappingStep/Reconstruct`、
+`BffSetup.layout/zeroTail/embed/newD`、`BF.Gen`、`BloomChannel.encryptQuery`、
+`FusePirDecode.decodePayload/fingerprintOk`、`sampleExtract`、`BlindRotateOps.blindRotate`。
+
+**Tier 3 — 死代码（子代理逐个裸名核过，我尚未处理）**：
+`CapeQuery.toSlots`、`CapeBloomScore.toWire`、`CapeBloomScore.plainScore`、`CapeDecode.decode`（12 个调用方全走 `decodeWire`）、
+`Mpc4jRgsw.addInplace`/`subInplace`、**整个类 `cape/CapeSetup.java`**（唯一成员 `bPay` 0 调用）、
+**整个类 `cape/CapeQueryDecode.java`**（只被 docs 与 `split-packages.ps1` 提到）。
+
+#### ⚠️ MAP 里**已知与本轮代码不符**、但还没逐行改的行（诚实登记，别当已改）
+
+`§11.2:635`（D7 仍写 32-bit，**已过时**，见 §15.5A）、`§11.2:636`（参数名写 `lBff`，实为 `rc`）、
+`§11.2:642`（CHECK/RECONSTRUCT 合并说 —— 本轮已拆开，此行要更新）、
+`§11.2:645`（把字段 `Layout.r` 说成函数）、`§11.2:647`（"旧几何已非默认路径"**低估**了：
+`CapeDemoService:117` 仍在调旧几何的 `buildTables`，与 §14.5 自相矛盾）、
+`§11.1:607/613/618`（三处**调用方归属写错**：`S_v` 的第二个调用方是孤儿类 `CapeQueryDecode`；
+`BloomChannel.encryptQuery` 的调用方是 `CapeDemoService` 不是 `CapeQuery`；
+`CapeSetup` 根本没调过 scorer setup —— 它是死类）、
+`§11.3③:668`（写 `R = L_BFF = 256`，与 §12.7 的 `R=16` 矛盾）、
+`§12.5:847`（"`allocate` 的 `segmentLength` = `paperS`，两者一致" **只在 k=3 成立** —— 本轮已修代码）、
+`§6:294-296`（Pack/h_i/循环依赖三行的旧口径）。
+### 15.8 第五轮：伪代码点名的同态运算收成函数（范围：**只要 CAPE/FusePIR 所需的**）
+
+用户指示收窄范围："只要 CAPE 和 FusePIR 所需的函数就行，别的不用"。
+所以本轮**不做** FusePIR-C/CAPE-C（Alg 4/5）、不做 ChameletPIR 延伸、不做与本条无关的整理。
+
+#### 新增 `prim/CtOps.java` —— 伪代码点名、而 Java 侧此前**一个都没有**的那些运算
+
+审计的发现是：论文里 `CtCtAdd` / `CtCtMul` / `CtRotate` / `CtPtMul` / `SampleExtract_0`
+**都有名字**，而我们的 Java 树里全是内联展开（或只在 C++ 的 `cape_answer_core` 里）。
+后果不是"跑不动"，而是**没法把伪代码的一行对上代码的一处**；更糟的是
+**`relinearize` 忘了写不会有任何报错**（密文维度涨上去，后面才炸或悄悄错）。
+
+| 论文行 | 函数 | 调用点 | 状态 |
+|---|---|---|---|
+| A2 ANSWER 4 `CtCtMul(q^BF, ct^BF_j)` | `CtOps.ctCtMul`（**强制含 relinearize**） | `BloomScoring:107,123` | ✅ 活 |
+| A2 ANSWER 5 `CtRotate(ct, 2^r)` | `CtOps.ctRotateRows` | `BloomScoring:172,193` | ✅ 活 |
+| A2 ANSWER 5 / A1 ANSWER 11 `CtCtAdd` | `CtOps.ctCtAddInplace` | `BloomScoring:173,194,200` | ✅ 活 |
+| **A1 ANSWER 5** `CtPtMul(q^col[c], P_{c,b})` | `CtOps.ctPtMul` | **0** | ⚠️ 无调用方，**已如实标注** |
+| **A1 ANSWER 7** `SampleExtract_0(Acc)` | `CtOps.sampleExtract0` | **0** | ⚠️ 无调用方，**已如实标注** |
+
+**两个"无调用方"的说明（不是遗漏）**：我们这条路径的 ANSWER 4-8 **整个在 native/C++**
+（`rgsw_blindrotate.cpp:543` `cape_answer_core`）。留着这两个函数的理由是
+**伪代码点名要求它们**，且一旦要在 Java 侧写 ANSWER 5/7，它们是唯一正确的入口。
+两条都写进了各自的 javadoc（"目前没有 Java 调用方"），不是偷偷留死代码。
+
+⚠️ `sampleExtract0` 的**类型映射要一起说**：论文的 `SampleExtract_0` 交出一条 **LWE 密文**，
+而我们的 `LweRlweBridge.sampleExtract` 返回的是 **LWE 样本**（`long[][]`）。
+本函数如实转发那个类型 —— 硬包成 `Ciphertext` 只会骗人。
+
+⚠️ `ctPtMul` **没有做明文长度自检**：本库的 `Plaintext` 没有公开的长度读取方法
+（只有 `reserve/resize/set` 与构造器）。**这是已知边界，不是"检查过了"** —— 已写在 javadoc 里。
+
+#### 自己加的又删掉的（记下来，因为这是第三次踩同一个坑）
+
+我先写了 `ctCtAdd` 的**值形态**、以及 `zeroPlaintext`/`checkPlaintext` 两个工具，
+随后核调用点发现 **三者都没有调用方** ⇒ 全部删除。
+项目已经因为"加了没人调的函数"被审计抓过两次（`BffSetup.fp`、我这轮的 `BffParams.hashGen()`），
+所以这次是核完就删，不留。
+
+#### 回归（全离线，无 HTTP 往返）
+
+`BloomScoring` 8/8、`CapeBloomScore` 15/15、`CapeWireFormatProbe` 9/9、
+`BffLayerTest` n=128 **32/32**、n=512 **32/32**、`CapePaperGeometryTest` 22/22、
+`CapeTableDiag` 15/15、`CapeBffParamDiag` 16/16 —— **合计 149 项 PASS / 0 FAIL，全部 exit=0**。
+
+⚠️ 替换是**逐字等价**的（原写法 `ev.multiply(...)` + `ev.relinearizeInplace(...)` /
+`shifted.copyFrom(acc)` + `ev.rotateRowsInplace(...)` / `ev.addInplace(...)`），
+且**没有改变分配次数**（原来每轮也新建一条 `shifted`），所以性能不受影响 ——
+这一点是刻意的：折叠要跑 `⌈log2 ℓ_BF⌉` 轮，值形态会引入每轮一次分配。
+---
+
+## 16. `Pack` 的实测结论（2026-10-14 深夜，**决定性负结果**）
+
+> 这一节的全部数字都是**真 SEAL 4.0.0 native 上实测**出来的，不是读代码推的。
+> 完整报告：`E:\学习\密码赛\refs\packlwe-master-实测报告.md`（在 `coding/` 之外，不动仓库）。
+
+### 16.1 ⚠️ 更正一条归因（我此前说错了）
+
+代理⑤ 在 **MPC4J Java SEAL 移植版**上发现：`packFromSample` 只对"一条密文里一个位置"精确，
+堆叠 6 个位置 6/6 全错且**不抛异常**，两条各自正确的密文相加连位置 0 都坏。
+我当时归因为"**这套 Java 移植版对稠密打包是坏的**"。
+
+**这个归因是错的。** 代理③ 在**真 SEAL 4.0.0 native** 上复刻了同一构造：
+- 单位置：**8/8 精确**（与 Java 侧逐位一致）——说明移植层没错；
+- **4 个各自精确的单位置密文相加 → 0/4 正确**。
+
+**代数原因**：`packFromSample` 的 `c1` 是**稠密**向量、项是模 q 的均匀大数（~2^27）；
+相加后 `⟨c1,s⟩` 按 `N·q` 量级增长，远超 `Δ = q/t` ⇒ **解密必然读出垃圾**。
+⇒ 这是**那个构造本身的性质，与库无关**。
+**结论：`packFromSample` 这条路线从候选里划掉**，理由 = "该构造 c1 稠密，相加爆噪声"。
+
+（顺带确认：`packFromSample` 回卷时的**二次取负是必要的** —— 不做那步 8/8 全错；
+`sampleExtract` 的符号约定自逆。这条已写在 Java 侧注释里，现在有 native 对照了。）
+
+### 16.2 `packlwe-master` 的 `doPackingLWEs` **不成立**（结构性）
+
+| 实测 | 结果 |
+|---|---|
+| 输入侧 4094/4094 单独解密 | ✅ 全对 |
+| 合并：4094 条 → 1 条 | ❌ **只有 12/4094 条消息存活**，**全程无异常**（与 Java 侧同一"静默失败"症状） |
+| 墙钟 | 1.95 s（N=4096, t=2^32, q=109 bit） |
+| 单元脉冲 | input 0 → `0:512`；**input 1..4093 全部湮灭**（k=1..8 均如此） |
+| 扫 67 种合并参数（e∈{1..63 奇}∪{N+1,2N+1} × 左右移 × s∈{1,2,4,N/4,N/2}） | **满足"两条消息都存活"的配置 = 0 个** |
+
+**根因是结构性的**：`src/packfunc.cpp:214` 用
+`apply_galois_inplace(ct_even, depth + 1, galois)` —— 指数是 `2,4,8,…,4097`，**全是偶指数**。
+SEAL 拒绝偶指数作 galois element；而实测自同构规则是 `ψ_e(X^k) = X^{e·k mod 2N}`，
+可用 `e` **全是奇数** ⇒ `e·k` 与 `k` **同奇偶**；`NegacyclicRightShiftInplace` 也保奇偶。
+⇒ **系数永远跨不过"偶 → 奇"**，而稠密打包恰恰需要连续系数（含奇数位）。**不可修。**
+
+**换 `t` 救不了**：`t=270337` 与 `t=2^32` 下**一样坏**（都只救回 2/8）。
+
+**但它"与 `t` 无关"这一点是真的**（这条本身有用）：`BatchEncoder` 在 `packfunc.cpp` 里出现 **0 次**，
+明文在 `packfunc.cpp:77` 逐系数手写；实测 `t=2^32` 时 `new BatchEncoder` 抛
+"not valid for batching"，而 `doPackingLWEs` 照跑完。
+
+### 16.3 ⭐ `Pack` 唯一还有实证支持的路：**修好的"移位 + 相加"**
+
+实测证明：**新鲜密文**的移位相加**是干净的**（`7@0 + 9@0` → `0:14  1:9`，无污染）。
+坏的只是 `ψ_e` 的**指数选择**。
+
+受 §16.2 的奇偶障碍限制，系数布局**大概只能做到"间隔 2 的格"= N/2 = 2048 条消息/密文**。
+而 CAPE 要的是 **`B_pay = 60` 条 → 1 条** ⇒ **2048 ≥ 60，可能已经够用，不必改任何参数**。
+
+**⇒ 这是现在最该先算清的点**，且不再是"读代码能解决"的：
+*待答问题*：在 `t = 2^32` / BFV / q = 109 bit / N = 4096 下，
+间隔 2 的格能否把 **60** 条消息全部正确装进 **1** 个密文并全部解出？
+（代理试过的修复版：移位量改 `N/depth`、指数改 `2·(N/depth)+1`、两种方向、样本换新鲜密文 —— **都没成功**，
+最好结果是全部塌到系数 0。所以"修好的版本存在"这一点**尚未被证实**。）
+
+另外两条候选（代价更大）：
+1. **改到可 batching 的 `t`**（`t ≡ 1 mod 2N`，如 65537/270337），直接用 SEAL 的 slot 置换。
+   代价：与现有 `t = 2^32` 载荷信道**不兼容**（D11 那两个 `t` 会变成三个）。
+2. **RGSW/CMux 逐位合成**：语义绝对安全，代价 `O(N)` 次 CMux。
+
+### 16.4 shipped 源码的硬伤（记下来，别再被它浪费时间）
+
+| 位置 | 问题 |
+|---|---|
+| `include/common.h:12` | `typedef unsigned long size_t;` —— 与真 `size_t` 冲突（几百处 ambiguous），Win64 上还是错的 32 位，并让 `packfunc.cpp:18` 的定义与 `packlwes_head.h:8` 的声明不一致 |
+| `src/packfunc.cpp:285/287` | `dobumblebeepack` 用了**未声明**的 `num_ct` ⇒ **硬编译错误**；上游**从未编译过它**（`pack_test.cpp:17` 里那行是注释掉的） |
+| `src/packfunc.cpp:64-68` | 取模硬编码 `PLAIN_MODULUS` 而非 `plain_modulus()`；且 `for (auto v : vec)` 是**按值拷贝** ⇒ 整个归约**完全无效** |
+| `src/testfunc.cpp:133-215` | `packlwes_test()` **不做任何断言**，只 `print_matrix` 打印首尾各 4 个系数；`packfunc.cpp:175-182` 把 `pod_matrix` 改成了消息本身 ⇒ `:172` 加密出的 `ct_for_padding` **带着消息**，padding 从未生效 |
+| 仓库根 `origin.cpp` | 是旧版 packfunc（283 行，`doPackingLWEs` 只有 4 参） |
+| 仓库自带 `bin/packlwes_test` | **Linux ELF**，本机跑不了；`CMakeLists.txt:11` 要求 SEAL **4.1** |
+
+### 16.5 环境与可复用产物（**下一轮别再重新踩**）
+
+- **SEAL：本机只有 `E:\学习\密码赛\tools\SEAL-4.0.0\`（源码 v4.0.0）。**
+  `%TEMP%\dsh-*` **不存在**；`third_party\` 只有 bkpir-main；`coding\native-jni\lib` 只有 DLL 产物。
+  （我此前会话记录里"SEAL 暂存在 `%TEMP%\dsh-*`"**已经过时**。）
+- 手写构建产物：**`refs\ascii\sealbuild\lib\libseal.a`**（36 `.cpp` + 3 `.c`，编译 20.8 s）。
+- 可复用脚本（都在 `coding/` 之外）：
+  `refs\build_seal_manual.py`（手写构建 SEAL）、`refs\ldlink.py`（直接调 ld 链接）、
+  `refs\build_packlwe.py`、`refs\build_dense_native.py`、`refs\pl_diff.py`（比对脚手架），
+  以及 `refs\packlwe_dense.cpp` / `refs\dense_pack_native.cpp`。
+- ⚠️ **沙箱踩坑（重要）**：
+  1. **非 ASCII 绝对路径传不进 `ld.exe`/`g++` 驱动** —— g++ 链接完全不可用；
+     必须 `cwd` 是 ASCII 且**全用相对路径**直接调 `ld`。
+  2. **`-DXXX=OFF` 不等于未定义** —— SEAL 的 `gcc.h:22` 用 `#ifdef` 判，写 `=OFF` 反而算"已定义"。
+  3. `-Iinc` 这种**裸相对路径无效**，要写 `-Isealbuild/inc`。
+  4. **输出路径含中文也会崩**，产物必须放**纯 ASCII** 目录。
+  5. cmake 的 compiler-id 探测在本沙箱以 `0xC0000409` 崩 —— 所以用手写构建，别用 cmake。
+---
+
+## 17. 全仓对账：我此前报的"缺口"有 15/19 其实存在（2026-10-14 深夜）
+
+> 起因：用户问"查查还有什么是实现了你却以为还缺的"。
+> 方法：一个只读代理把 19 条"缺口"逐条去**全部模块**里搜（不只 `rgsw-lab`），
+> 每条给"**有没有 + 在哪（file:line+签名）+ 是不是当前口径 + 有没有接线 + 能不能直接用**"。
+> **结果：19 条里 15 条存在、3 条"结论对但理由错"、只有 1 条真的没有。**
+
+### 17.1 ⚠️ 我为什么错（流程缺陷，不是一次性失误）
+
+1. **我引用了 `MAP.md` 里我自己写进去的"过期行登记表"所列举的行。** 那张表在
+   `§15.7`（本文件 `:1387-1398`），标题就是*"⚠️ MAP 里已知与本轮代码不符、但还没逐行改的行
+   （诚实登记，别当已改）"*，里面**逐条列出了** `§6:294-296（Pack/h_i/循环依赖三行的旧口径）`、
+   `§6:294 "Pack 整个没有"这个说法不准`、以及"没有名为 CtPtMul/CtCtMul/… 的函数"那一行。
+   **⇒ 我答"FusePIR 还差什么"时引的就是这几行。** 登记了却不遵守，登记就没有意义。
+2. **我信任了一份校正前的报告。** `docs/reports/逐子程序核对-我们的实现是否符合论文算法-2026-10-13.md:182-184`
+   把 `CtCtMul`/`CtRotate`/`resp` 三行标 ❌，而**同一份文件 `:59` 逐字引用了
+   `lwe-java/cape/he/LWE.java`** —— 我据它得出"`LWE.Enc` 没有函数"。
+3. **我只看 `rgsw-lab/`。** 仓库还有 `lwe-java/`、`rlwe-java/`、`tiny-cape/`、
+   `cape-fusepir-database-handoff/`（41 文件）四个模块，我一次都没打开。
+   还有 `docs/` 里**正是我需要的"哪份实现是默认"的文档**：`默认实现一览.md`、
+   `QUERY_DECODE_编排说明.md`、`HE_三层调用说明汇总.md`、`RLWE路线审计.md` —— **一份没读**。
+
+**⇒ 规则（写下来当约束用）**：判"缺"之前必须
+**(a) 跨全部模块搜；(b) 判它是不是当前口径（参数是否与主路径一致）；
+(c) 判有没有接线；(d) 只信 `§15.7` 那张登记表之外的行 —— 表内的行一律不许引用。**
+
+### 17.2 ⚠️⚠️ 最要紧的一条：**两份 BFF 位置函数实测不一致**
+
+代理把两份**都忠实重实现**（先复现 handoff 的冻结测试向量以证明转写无误）再比对：
+
+| `n=128` | 位置 |
+|---|---|
+| `bff/BffHash`（**现行**） | **[87, 140, 225]** |
+| `cape-fusepir-database-handoff/…/BffHashGen`（**旧**） | **[2, 85, 143]** |
+
+**不一致。** 分歧点四条：段长 **2.25**（论文 Table 1 + C/Rust 实现，四份来源）vs **2.11**
+（正是 `BffHash:160-161` **刻意否定**掉的 Java `XorBinaryFuse8` 变体）；oracle
+`SHA-256(ρ_H‖0x00‖K)` vs `murmur3`；`h_0` 用 64 位 `unsignedMultiplyHigh` vs 取高 32 位比对；
+`L_BFF = (segmentCount+k−1)·s` vs `(segmentCount+2)·s`。
+
+**今天不致命，但只是"碰巧"**：`grep com.fusepir.database` 在 `rgsw-lab` 里 **0 命中**
+⇒ handoff 那条链是**被意外隔离的，不是设计隔离的**。而它产出**约 5.2 GB 的磁盘 BFF 表**，
+`HANDOFF.md:41` 明说那张表是**服务端资产**。
+**⇒ 主路径哪天去读那个目录，每一次查找都会静默落空** —— 正是本项目反复踩到的假阴性类别。
+**这是整份对账里唯一有"可复现不一致 + 静默失败 + 实体数据挂着"三件套的项。**
+
+**建议动作**：`BffHashGen` 对到 `BffHash`（纯 n 上的数学，无密码学依赖），或退役 handoff 的 BFF 链；
+**在做完之前，任何人不得把那张磁盘表接进主路径。**
+
+### 17.3 我说成"缺"的东西（按重要性）
+
+| 我说"没有" | 实际 | 影响 |
+|---|---|---|
+| `LWE.Enc` | ✅ `lwe-java/src/main/java/cape/he/LWE.java:101` `encrypt(LWESecretKey, long)`，**带 Δ=q/t 与噪声** | **这是项目自己的 #1 缺陷 P0-1 的解药**（`缺陷总表.md:59`：把通用 LWE 密文直接喂盲旋转，旋转量变成 `Δr = 256r`）。我说"没有函数"**把修法藏起来了** |
+| `CtCtMul` / `CtRotate` / `CtCtAdd` | ✅ `prim/CtOps.java`，且**全都在默认打分路径上是活的**（`BloomScoring:108,124,172,193,173,194,200`） | 信了我就去**重写已经跑通、且带 relinearize 的代码** —— 最容易真引出 bug 的一条 |
+| Java 侧 ANSWER 5-7 | ✅ `probe/CapeEndToEnd4:485-489/383/385/391` 有完整 Java 实现并跑通 | Java 化是**接线**，不是重写 |
+| `(s_L, s_R)`"结构性不可能" | ⚠️ **结论对、理由错**：`Mpc4jRgsw(..., SecretKey)` 证明两把密钥**可构造**；真阻碍是**旋转恒等式**且已量化（`CapeDSemanticsProbe:212/217/219`：差 1 位 ⇒ 行偏 **5767**） | 不是"不可能"，是"已量化代价 + 有书面决定的架构选择" |
+| `oneHot` / `u→(c_a,r_a)` / 单一 `FusePIR.Query` / 两个 `Parse` | ✅ 全在 `fusepir/FusePirQuery.java:369,414` 与 `FusePirAnswer.paths:183`，**现行且活的**，带着本仓库最好的防御性断言 | 信了我会**第三次**重写那段"已改正过两次"的代码 |
+| **"CAPE 从未端到端跑通"** | ❌ **这句话是错的**：`CapeEndToEnd4` 与 HTTP 默认路径**都端到端跑过**，各有验收命令 | 可信度风险。**站得住的措辞是 `缺陷总表.md:35-37`**：*"Algorithm 2 的增量已实现并通过端到端断言；但索引无噪声、候选密文未从检索密文导出、单 JVM 密钥未隔离这三条 P0 仍未修 ⇒ 完整、具查询隐私、按论文参数工作的 CAPE 尚未实现"* |
+| `tiny-cape/CapeEndToEnd` | ⚠️ N=8/t=17/q=97，**服务器被直接告知 `(r*,c*)`**（无密文列选择）、当场解密、打分是明文整数点积 | **不得当"端到端 CAPE"引用**。但它**独立确认了 Pack 的缩放墙**（`tiny-cape/README.md:102`：q=97 时 `Δ·N·t/2 > q/2` 让槽掩码乘法不可能）—— 与 `SampleToPackLink` 实测的 ≈30 是同一堵墙、不同参数点 |
+
+**我说对的**：`FusePIR-C`/`CAPE-C`（算法 4/5）**确实整个没有** —— 唯一一条准确的"缺"。
+**`Pack`**：算法层我说错（四份实现，`RingPack` 是真 ring packing，`README.md:315` 有 **6/6** 验收行）；
+**协议层我说对**（无调用方），但**理由从"没写"变成"已实测的架构决定"**。
+
+### 17.4 数字与文档缺陷（与代码无关，但会误导人）
+
+* **`B_pay` = 60**（native `t=2^32`）/ **61**（scoring `t=65537`）；
+  而 **59 还印在三处**：`README.md:469`、`缺陷总表.md`、`keywords.json` 的 `"bPay":59`
+  （那个字段**没人读**，`CapeDemoData:188,403` 会重算）。⇒ 纯文档缺陷。
+* **主路径参数全部核对无误**（代理实测）：N=8192、t=2^32/65537、ℓ_BF=18、k=3、
+  L_BFF=256、R=16、C=16、`tail=0`；`n=256/512` ⇒ L_BFF=384/C=24 与 768/C=48。
+* `MAP.md` 的 `L_BFF`/`h_a`/`Pack`/`FusePirQuery` 几行与工作树矛盾（见 §15.7 那张表）。
+
+### 17.5 真正还开着的工程项：**只有两个**
+
+1. **P0-1**：把 `cape.he.LWE.encrypt` 接进盲旋转、去掉 `Δ=256` 的缩放
+   （`缺陷总表.md:59`，🔴 最大的一条）。
+2. **A1 ANSWER 13 的 `Pack`**：`RingPack` + 一个收 `{ct_{pay,b}}` 的适配器，
+   或 §16.3 那个"间隔 2 的格能否装下 60 条"的实验 —— **容量上 2048 ≥ 60，但没人证过**。
+   ⚠️ **这一条在 §18 里已经被大幅收窄**：`Pack` **能**闭合，但**只能闭在 65537 那条通道上**；
+   在 `t=2^32` 上是**可证的数学不可能**。**读 §18，不要只读这一行。**
+
+---
+
+## 18. `Pack`（A1 ANSWER 13）的最终裁决：**能闭合，但只能闭在 65537 那条通道上**
+
+（2026-10-15；`RingPack` 自检重跑 + 代理 `0deb4da0` 复核 + 我逐条复核代理结论）
+
+### 18.0 结论先行
+
+1. `RingPack` 是**真的 ring packing**，算术核心在**项目尺度上逐槽位精确**
+   （我本机重跑 N=8192 / t=65537 / nLwe=32 ⇒ **7/7 全 PASS，exit 0**）。
+2. 但它在 **`t = 2^32` 上不可能存在** —— 不是"没实现"，是**数学上不存在**（§18.2）。
+3. 而这条墙**只挡住 native 载荷通道**；`Pack` 与 `BloomScoring` 共用的那条 65537 打分通道
+   **本来就满足条件**，且 `RingPack.main` 的 P2 已经在喂**打包产物**（而不是新加密的密文）（§18.1）。
+4. ⇒ **A1 ANSWER 13 在我们的 65537 通道上可闭合；在 2^32 native 通道上永久关闭。**
+   这又是一条**独立**支持 D11 双-t 设计的理由。
+
+### 18.1 我独立复核的（不是转述）
+
+命令 `.\run-mpc4j.ps1 -Class com.fusepir.prim.RingPack 8192 32` ⇒ exit 0，`P1…P5b` + `P6.1…P6.7` 全 PASS。
+
+```
+[setup] 交换密钥 96 条（32×3），构造 882–924 ms
+        体积约 48.0 MB（每条 512 KB）
+```
+
+⇒ **524,288 B/密文**，与 `[params] … 工作层=4(174 bit)` 自洽：`2 × 4 × 8192 × 8 = 524,288`。
+**整张交换密钥成本表因此可以自己算，不必信任何人**（§18.4）。
+
+**P2 就是"打包产物 → 槽位域 SIMD 内积"这条链**：`RingPack.java:592` 的 `score(...)`
+收的是 `Ciphertext packed`，内部 `transformFromNttInplace` 之后**直接喂**
+`BloomScoring.bloomScore(m, gk, qBF, packedCoeff)`；调用点 `:286`（P2）与 `:459`（P4 扫描），
+`P3` 是"查询平移一格后得分必须变"的负对照。
+
+### 18.2 为什么 `t = 2^32` 上**不存在**槽位选择子（我重推过）
+
+设 `E(X) = Σ v_j X^j`，槽位点 `x_i = ω^{2i+1}`（`ω` 为 2N 次本原单位根，`ω^N = −1`）。
+
+1. `E(x_i) − E(x_0) = (x_i − x_0)·G(x_i)`，`G ∈ Z[X]`（因式分解恒等式）。
+2. `ω` 是**奇数**（`Z_{2^32}` 的单位）⇒ 每个 `x_i = ω^奇` 与 `ω` **同余 mod 4**
+   （`ω≡1` 则全 `≡1`；`ω≡3` 则奇次幂仍 `≡3`）⇒ `x_i − x_0 ≡ 0 (mod 4)`。
+3. ⇒ **任意 `E`、任意 `i` 都有 `E(x_i) ≡ E(x_0) (mod 4)`。**
+4. 选择子要 `E(x_i)=1` 且 `E(x_j)=0`；但由 3，`E(x_i)=1 ⇒ E(x_j) ≡ 1 (mod 4) ⇒ E(x_j) ≠ 0`。
+   **矛盾。对一切 N ≥ 2 成立。**
+
+一句话根因：**`Z_{2^k}[X]/(X^N+1)` 不是 N 个 `Z_{2^k}` 的积环**
+（Vandermonde 行列式 `Π_{i<j}(x_j − x_i)` 的每个因子都是偶数 ⇒ 行列式非单位），
+所以它**没有幂等基**，也就没有"槽"这个概念 —— **连"换一种槽的定义"这条路也一起断了。**
+
+代理的穷举把这个定理钉住了：`N=4, k=5` 遍历 `(2^5)^4 = 1,048,576` 个系数向量、
+`k=6` 遍历 `16,777,216` 个，**均无选择子**；同一套代码在 `t=65537` 与 `t=536903681` 上**找得到**。
+（N=8192 本身搜不了：`(2^32)^8192`。）
+
+> 顺带钉掉一个诱人的错直觉：`Z_{2^k}[X]/(X^N+1) ≅ (Z_{2^k})^N` 是**假的**。
+> 上面那句"Vandermonde 非单位"就是它的反证。
+
+### 18.3 我**纠正代理报告**的三处（重要 —— 否则会把已成的事当缺口）
+
+| 代理的说法 | 实际 | 若不纠正的后果 |
+|---|---|---|
+| *"喂 `packed`（而非新加密密文）进 `BloomScoring` 是**下一个待跑的实验**"* | ❌ **已经是 `RingPack.main` 的 P2，而且 PASS**（`:286` + `:592`，配 P3 负对照） | 会去重跑一件**已经跑通**的事；还会误以为 A1 的"一个打包密文 → SIMD 内积"这条链**没闭合** |
+| *"`PackGoalCheck` 那句『实测 6/6』是过期的，`main` 只有 5 项"* | ❌ 实测 **6 条 report**（P1/P2/P3/P4/P5a/P5b），**"6/6" 是准的** | 会去"修"一句没写错的验收行 |
+| *"打包通道**必须**挪到 ~30 bit 素数"* | ⚠️ **不是必须**：`65537` 在 N=8192 **和** N=16384 上都可批处理（`65537−1 = 65536 = 4·16384`），而 `BloomScoring` 每个入口都硬依赖 `BatchEncoder`（`encryptBloomVector:74`、`decodeScore:249`） | 会去动一条**本来不需要动**的模数决策。30 bit 素数买到的是**槽位余量**，不是可行性 |
+
+代理**说对的**（我复核确认）：`CapeAnswerHomomorphic:135` 确实把 `vBf` **重新加密**成 `candBF`
+再去 `:138` 打分，`:102` 打的包**根本没进打分** ⇒ 那条链在该探针里**是断的**；
+`RingPack.main` 建的是 `t=65537` 而非 `2^32`（`RingPack.java:242`）。
+代理另一条也准：`PackGoalCheck` 的 ❌ 裁决块与它下面的 ✅ 块**互相打脸**，
+只读 ✅ 就会得出"Pack 已完成"的错结论 —— **以 ❌ 裁决块为准**（它针对的是
+`LweRlweBridge.packFromSample` 那条**系数域**路线，那条路线确实不是论文的 Pack）。
+
+### 18.4 交换密钥成本（实测，不是估计）
+
+每条 RLWE 密文 **524,288 B**（N=8192、工作层 4）。
+
+| 配置 | 条数 = `nLwe × digits` | 字节 |
+|---|---|---|
+| N=8192, t=2^32, base=2^16, digits=2, **`nLwe = N`**（论文的 LWE-in-RLWE 假设） | 16,384 | **8.0 GB** |
+| N=8192, t=2^32, base=2^16, digits=2, **`nLwe = d = 16`**（小独立 `s_L`） | 32 | **16 MB** |
+| N=8192, t=65537, base=2^8, digits=3（原型自身配置，即 6/6 那套） | 24,576 | 12.0 GB |
+| N=16384, t=2^32, base=2^16, digits=2, `nLwe = N` | 32,768 | **64.0 GB** |
+| N=16384, t=2^32, base=2^16, digits=2, `nLwe = d = 16` | 32 | 64 MB |
+
+⇒ **512× 的差**。⚠️ `RingPack.java:52-54` 那句"N=16384 时约 16 GB"**低估**：
+按 2 个多项式分量算是 64–96 GB。
+
+**但这里有个对我们有利的不对称**：盲旋转那边的 LWE 秘密**只有 `d = 16` 位**
+（`CapeQuery.java:374` `Integer.getInteger("cape.d", 16)`；`CapeDemoService:132` 用它建 bootstrap key），
+所以 `s_L` **已经**可以是独立小秘密；**只有 Pack 的交换密钥**需要整个环秘密 ——
+因为 `SampleExtract_0` 出来的是**环秘密下**的 N 维 LWE 样本。
+
+### 18.5 `Pack` 与两条通道的对齐（这条决定 ANSWER 13 能不能闭）
+
+| 通道 | `t` | `slotBits` | `fpSlots` | `B_pay` | 能否 `Pack` |
+|---|---|---|---|---|---|
+| native 载荷（D11 加的那条） | `2^32` | 32 | 2 | **60** | ❌ **不可能**（§18.2） |
+| 打分（论文自身的 t） | `65537` | 16 | 3 | **61** | ✅ **已跑通**（P2/P4/P5） |
+
+> ⚠️ **2026-10-15 加注（很容易误读，务必一起看）**：上表第一行的 `t=2^32` 是
+> **CAPE 演示服务**那条载荷通道，**不是 FusePIR 的**。
+> FusePIR 自己的应答通道明文模数是
+> `FusePirParams.NATIVE_PLAINTEXT_MODULUS = 65537`（`:281`，`FusePirAnswer:364` 强制对账）
+> ⇒ **`Pack`（A1 ANSWER 13）没有任何模数障碍**，它在 `N=8192` 与 `N=16384` 上都可批处理。
+> §18.2 那条墙只挡 `2^32` 那条通道。**适配器已实现并验收，见 §23.2。**
+
+`FusePirSetup.slotBits(65537) = 16`、`fpSlots(65537) = 3` ⇒ `payloadBpay = 3+1+m·perValue = 61`
+（`FusePirSetup:111-146`）。**每槽 ≤ 2^16 < 65537，物理上放得下** ——
+§15 那条"40 bit 指纹连论文自己的 t 也放不进一个槽"的观察，反过来正是 Pack 可行的原因。
+
+### 18.6 我这次改的代码（唯一一处）
+
+**`RingPack.pack` 会静默截断高位。** `pack` 对每条 `a_j` 只迭代 `digits` 次
+`digit = remaining % base; remaining /= base`，循环结束后**直接丢掉 `remaining`**。
+若 `base^digits < t`，所有 `a_j ≥ base^digits` 的**高位被无声丢弃** ——
+产物仍是一条"看起来正常"的密文，只是相位错了。
+
+- `t=65537` + 原型自带的 `base=2^8, digits=3`：覆盖 `2^24 > t` ✅（**这就是 6/6 成立的原因**）
+- `t=2^32` + 同一套 gadget：只覆盖 `1/256` ⇒ **几乎每条 `a_j` 都被截断**
+- 要上 `t=2^32` 必须 `base=2^16, digits=2`（恰好覆盖 `2^32`，且 `base ≤ t/2` 仍在明文窗口内）
+
+**动作**：新增 `requireGadgetCovers(t, base, digits)`（`RingPack.java:215`），
+`pack` 第一行调用（`:156`），不满足直接抛。**并配 7 条子检查**
+（`P6.1–P6.7`，`RingPack.java:367-381`），**逐条打印**而不是用一个布尔量兜住 ——
+其中 `P6.2` 是 `2^8·2 = 65536 < 65537`（**只差 1** 的边界，必须拦），
+`P6.5/P6.6` 是 `t=2^32` 的一负一正，**`P6.7` 真调 `pack`** 验证守卫确实被接线（防"守卫写在旁边没人用"）。
+
+> **过程记录（值得留）**：P6 第一版我用一个 `boolean` 把 6 个子项 `&=` 起来 ⇒
+> 只报一行 "FAIL"、**不知哪条错**，第一次跑就是这么糊过去的；
+> 拆成逐条 `sub(...)` 后立刻定位到"`Mpc4jRgsw(1024, 2^32, …)` 建不出来
+> （`plainModulus is not smaller than coeff_modulus`）"——
+> 顺带发现**守卫根本不需要一个密码学上下文**，于是把它重构成纯函数 `(t, base, digits)`。
+> **"一个布尔量兜住 N 个子项"正是本项目反复踩的假通过类别。**
+
+### 18.7 仍然开着的（诚实清单）
+
+1. **P2 打的是 1-bit 消息。** 真实载荷是 `B_pay = 61` 个 **16-bit limb** 落进 61 个槽，
+   再走 `qBF × packed → 折 ℓ_BF` 那套。**没跑过。** 这是下一条要做的实验。
+   ⇒ ⚠️ **已在 §19 跑掉，结论见那里（搬运精确；但折叠轮数不能按 ℓ_BF 取）。**
+2. **`65537` 的 BFV 噪声余量够不够撑完整条链**：P5b 的余量（最大偏差 66 vs `t/2 = 32768`，
+   要求 ≥ 8×）是**打包构造明文侧**的余量，**不是** `ct×ct + relinearize + 5 轮折叠`之后的。
+3. **适配器没写**：`{ct_{pay,b}} → 一个打包密文`。
+   （`FusePirPack` 是 R1 的**系数域**变体，60→60，**无压缩**。）
+4. **"自己写 Lagrange 选择子"这条路未验证、不得当后备**：代理实测它**复现不出 `BatchEncoder` 的编码**
+   （`t=536903681` 下 NTT 域 8192/8192 全不匹配；对常数密文选槽 0 解出 **0** 而不是 12345）。
+   选择子**存在性**的穷举证据成立，但**手写那条实现不成立** ⇒ **一律用 `BatchEncoder`**。
+5. 若将来真需要 >16 bit 的槽：`t = 536903681 = 41·2^14 + 1`（30 bit 素数，`≡ 1 mod 2N`）
+   可 `BatchEncoder`（代理实测 8 槽 0 错）。但 **BFV 噪声随 t 增长**，
+   大 t **不是白送的** —— 别把它当"更多余量"。
+
+### 18.8 ⚠️ 顺带发现：**两份 Pack/LWE-桥权威文档正文被损坏**（**已修**，见下）
+
+查 `LWE_RLWE打包_RingPack_调研.md` 的 §五之三 时，`grep Pack` **0 命中**。
+按字节查下去：
+
+| 文件 | 字符数 | 小写 `c` | 小写 `o` |
+|---|---|---|---|
+| `rgsw-lab/LWE_RLWE打包_RingPack_调研.md` | 12,338 | **0** | 305 |
+| `rgsw-lab/LWE_RLWE桥_调用说明.md` | 6,554 | **0** | 180 |
+
+**结论：这两份文件的正文里每一个小写 `c` 都被写成了 `o`**（大写 `C` 未受影响、中文未受影响）。
+证据：`RingPack` 0 次 / `RingPaok` 9 次；`BloomScoring` 0 / `BloomSooring` 4；
+`scaleToT` 0 / `soaleToT` 1；`SampleToPackLink` 0 / `SampleToPaokLink` 2；
+首行标题字节为 `… Ring Pao`（本应 `Ring Pack`）。
+**注意文件名本身是好的**（`…_RingPack_调研.md`），所以只看目录列表发现不了。
+
+**危害（正是本项目最怕的静默类别）**：
+* 在这两份**权威文档**里搜 `Pack` / `packFromSample` / `BloomScoring` / `scaleToT` / `PackGoalCheck`
+  **一律 0 命中** ⇒ 读者会得出"这些文档根本没讨论 Pack"的错结论，
+  于是**再写一遍已经写过的调研**（本项目已经重复踩过好几次）。
+* 本次代理引用的"调研 §四""§五之三"就是这两份文件；它把 `RingPaok` 读成 `RingPack` 是对的，
+  但**下一个人不一定会**。
+
+**成因：未定。** 明确**排除**了 §14.6 那类编码往返（那类会产生替换符 `�`，这里没有）；
+变换是精确的 `c → o`，与"替换串里 `$1` 后面直接跟 `c` 被当成分组引用"这种*正则替换事故*
+同属一类（见 `README.md` 附录 A 第 16 条）。**但这是推测，不是结论。**
+
+**修复状态：已修（2026-10-15）。** 反向映射在一般情形下**不可逆**，所以用的是
+**受控词表**：把文档里含 `o` 的 token 逐个枚举"哪些 `o` 本来是 `c`"，候选必须
+**在代码库里真的存在**才采纳（唯一候选才替换）。两个必须的前提是
+"排除损坏形态自身"（损坏形态会串进别的文档，否则自己匹配自己）与"大小写精确"。
+
+| | 文件 1 `LWE_RLWE打包_RingPack_调研.md` | 文件 2 `LWE_RLWE桥_调用说明.md` |
+|---|---|---|
+| 小写 `c` | **0 → 139**（我补 12 后为 **151**） | **0 → 106** |
+| 小写 `o` | 305 → 178（我补后 **166**） | 180 → 86 |
+| 行数 | 323 → 327（+4 行告示） | 212 → 216（+4 行告示） |
+| 中文字符数 | **2988，逐字未变** | **1347，逐字未变** |
+
+**验证（我自己按字节重跑，不采信代理自述）**：`RingPack` 9 / `RingPaok` 0；
+`BloomScoring` 4 / `BloomSooring` 0；`packFromSample` 3 / `paokFromSample` 0；
+首行标题 `# LWE → RLWE 打包（Ring Packing）调研` 完好；
+**总量守恒**：`305 = 178 + 115 + 12`、`180 = 86 + 42 + 52` 两边都对上。
+
+⚠️ **代理自述与文件实况不符一处（已由我纠正）**：它的替换表宣称
+`switoh → switch`、`switohing → switching`、`web_fetoh → web_fetch`、
+`BatohEnoder → BatchEncoder` 都已复原，但按 token 扫描**这四类 12 处仍原样留在文件 1 里**。
+是它的"事故回滚"过程把它们倒回去了。⇒ **代理的"已完成"清单必须按文件实况复核，不能采信自述。**
+我已补齐：`BatchEncoder` ×3、`switch`/`switching` ×5、`web_fetch` ×3、`mismatch` ×1。
+补齐后文件 1 再没有任何含 `oh` 的 token。
+
+⚠️ **差点把告示本身改坏**：`Paok` 与 `Sooring` 在每份文件里各只出现 **1** 次，
+而那 1 次**正是告示里的示例**（"`Paok` → `Pack`"）。机械化替换会把它变成
+"`Pack` → `Pack`"。⇒ **给文档加"损坏示例"告示之后，同名字符串就不再是纯损坏标记了。**
+
+⚠️ **代理另一处判断是错的**：它把文件 2 的 `BFF` 报成"应为 `BFV`"。**实际 `BFF` 是对的** ——
+那一句讲的是 Binary Fuse Filter 的重建性质 `Σ_a D[h_a(K)] = y_K`。**未改**。
+
+**仍然不可信的部分（已由每份文件第 2–5 行的告示声明）**：
+英文散文里的词形（真正的 `o` 与被损坏的 `c` 无法自动区分），以及**不在替换表里**的任何标识符。
+**中文结论、以及替换表里那些对得上代码的标识符，现在可用。**
+文件 1 还留着一处被截断的引文片段 `the RLWE c…`（字符已复原，原词不可知）。
+
+**还有一处未解、且不属本损坏类别**：文件 1 的 HERMES 引用写成
+`https://askoryp.to/t/resource-topic-2023-1244-…/20474`，**实测 `askoryp.to` 解析不了**
+（`getaddrinfo ENOTFOUND`）。它**不是** `c→o` 的产物（反推只会得到 `askcryp`，不是已知站点），
+所以要么是别的损坏、要么作者本来就写错了。**未改、未猜** —— 记在这里等人核对。
+（同一张表里 `web_fetch` 被限制那条也保留：本环境确实没能读到原文。）
+
+---
+
+## 19. 真实载荷过 `Pack` 的实测（A1 ANSWER 13 的最后一块判据）
+
+（2026-10-15；新探针 `probe/PackLimbPayloadTest.java`）
+
+跑法：`.\run-mpc4j.ps1 -Class com.fusepir.probe.PackLimbPayloadTest 8192 16`
+⇒ **exit 0，13 项全达成**，其中 2 项是**刻意期望"错"的缺陷断言**。
+
+参数：`N=8192`、`t=65537`、`ℓ_BF=18`、`m=3`、`fpSlots=3`、`perValue=19`、**`B_pay=61`**、`nLwe=16`。
+
+**探针用的载荷槽布局**（由 `FusePirSetup` 的算式算出，探针里不手写下标）：
+
+```
+[fp 0..2] [m_i 3] [v_0 4][bv_0 5..22] [v_1 23][bv_1 24..41] [v_2 42][bv_2 43..60]
+```
+
+⇒ **三个 Bloom 段的起点是 5 / 24 / 43** —— 这个数字是 §19.4 那条缺陷的全部原因。
+
+### 19.1 判据一（搬运）：61 个 16-bit limb 逐槽精确 ✅
+
+* `P0.1–P0.4`：`fpSlots(65537)=3`、`perValue(18)=19`、`B_pay=61` —— 把 §18.5 那张表变成断言。
+* **`P1.1`：61 个 limb 错 0 个，未写入的槽非零 0 个。** 值取 `{30000, 31000, t−1}`，
+  **含最大可表示 limb `t−1 = 65536`**。
+* `P1.2`：40-bit 指纹（三段 `[41719, 59681, 94]`）经 Pack 往返一致。
+
+⇒ **§18.7 第 1 条（"真实载荷没跑过"）关闭。**
+`Pack` 在 65537 通道上对**完整 `B_pay = 61` 的 16-bit limb 载荷**是**逐槽精确**的，
+且不是"恰好一个比特对"—— 61 个槽全中、尾部不泄漏。
+
+### 19.2 判据二（可算性）：**只有二进制段能进同态内积** ✅
+
+`P8`：查询在三个**值**槽 `{4, 23, 42}` 上各置 1 ⇒ 真值 `30000+31000+65536 = 126536`，
+解出 **`60999` = 126536 mod 65537**。
+
+**这条的判据必须两个一起看**：`P1.1` 已证明**每个 limb 单独搬运是精确的** ⇒
+结论只能是 **"单个 limb 没问题、求和有问题"**，**不能**缩成"16-bit 不能打包"。
+`t = 65537` 只装得下权重为 `w`、每个值 `≤ t/(2w)` 的和；
+`w = 18`（ℓ_BF 全命中）时上界只有 **1820**。
+
+⇒ 载荷的槽**分两类**，这条区分必须写进 A1 ANSWER 13 的契约：
+
+| 类别 | 槽（本例） | 能否进 `CtCtMul` 内积 |
+|---|---|---|
+| **被搬运**的 limb（fp / `m_i` / 值，可达 `t−1`） | `0..4`、`23`、`42` | ❌ 求和会回绕 |
+| **可算**的二进制段（`bv`，0/1） | `5..22`、`24..41`、`43..60` | ✅ |
+
+### 19.3 判据三（**新缺陷**）：论文形状的折叠**够不着** Pack 的落点 🔴
+
+`BloomScoring.foldSlots` 的正确性前提是"支撑落在 `[0, ℓ_BF)`"——`BloomChannel.padToSlots`
+造的候选满足它。**但 `Pack` 的产物天然违反**：Bloom 位散布在整个 `[0, B_pay)` 上。
+
+`ℓ_BF = 18` ⇒ `⌈log2 18⌉ = 5` 轮 ⇒ **只够到 `[0, 32)`**。实测：
+
+| 段 | 命中位在槽 | 5 轮折叠得分 | 真值 | 判据 |
+|---|---|---|---|---|
+| 0 | 20..22 ⊂ [0,32) | **3** | 3 | `P2` ✅ 正对照 |
+| 0（不命中查询） | — | **0** | 0 | `P3` ✅ 负对照（证明分数随查询变） |
+| 1 | **39..41 ≥ 32** | **0** ❌ | 3 | `P4` **缺陷断言复现** |
+| 2 | **58..60 ≥ 32** | **0** ❌ | 3 | `P6` **缺陷断言复现** |
+
+**正确的轮数** = `⌈log2(最高参与槽 + 1)⌉`：`B_pay = 61` ⇒ 最高参与槽 60 ⇒ **6 轮**（够到 `[0,64)`）。
+`P9` 实测 **6 轮**，严格介于论文形状的 **5 轮**与折满的 **13 轮**之间。
+
+**这是"漏算"不是"算错"**：分值偏小 ⇒ **本该接受的候选被拒**，
+与 `foldSlots` 注释里已经登记过的那类静默失败同族。
+`P5b`/`P7b` 是**参数活性负对照**：把最高参与槽谎报成 31 ⇒ 必须重现漏算。
+若这两条也得 3，说明新入口的参数是摆设 —— 它们通过了，所以参数确实在起作用。
+
+### 19.4 我加的 API（本轮第二处代码改动）
+
+* `BloomScoring.bloomScoreReaching(m, gk, q, cand, highestSlotInclusive)`（`:214`）
+* `BloomScoring.foldSlotsReaching(m, gk, ct, highestSlotInclusive)`（`:228`）
+  —— 实现在 `foldSlots` 之上（传 `最高参与槽 + 1`，恰好等价于"够到该槽"）
+* `foldSlots`（`:156`）的注释里补了**"候选是 Pack 产物时不满足前提、会静默漏算"**的警告。
+
+⚠️ **必须说清的边界：这是"潜在缺陷"，不是"现行缺陷"。**
+`cape/CapeBloomScore.java:200` 走的确实是 5 轮那条，但它的**候选是 `BloomChannel` 造的
+BF 向量**（支撑在 `[0, ℓ_BF)`）⇒ **现行打分路径是对的，不要误报成线上 bug**。
+这个漏算**只在 `Pack` 产物成为候选的那一刻发作** —— 也就是 A1 ANSWER 13 接线的那一步。
+**所以：接线时必须走 `bloomScoreReaching`，否则答案会静默偏小。**
+
+### 19.5 回归
+
+`BloomScoring`(8 PASS) / `CapeBloomScore`(15 PASS) / `CapeWireFormatProbe`(9 PASS) /
+`PackGoalCheck`(exit 0，刻意 4 条"未达成") —— **全部 exit 0，无回归**。
+
+### 19.6 §18.7 清单的更新
+
+| # | 原状态 | 现状态 |
+|---|---|---|
+| 1 | P2 打的是 1-bit 消息，真实载荷没跑过 | ✅ **关闭**（§19.1：61 个 16-bit limb 逐槽精确） |
+| 2 | 65537 的 BFV 噪声余量够不够撑完整条链 | ⚠️ **仍未验**，但**多了一档可用轮数**：6 轮比折满少 7 轮（噪声少 2^7 倍）。仍缺"Pack 产物 → `CtCtMul` + relinearize + 6 轮折叠"的实测余量 |
+| 3 | `Pack` 的适配器（`{ct_{pay,b}}` → 一个打包密文）没写 | ❌ **仍未写** |
+| 4 | 自写 Lagrange 选择子不得当后备 | 不变（`BatchEncoder` 唯一可用） |
+| 5 | >16 bit 槽需 30 bit 素数 | 不变；**注意 §19.2 让它更不紧迫**：可算槽只需装 0/1 |
+
+**⇒ A1 ANSWER 13 现在的诚实状态**：**搬运**✅、**二进制段打分**✅（前提是轮数取对）、
+**适配器**❌、**打包产物进 `ct×ct` 的噪声余量**❌未测。
+不是"能闭合了"，而是"**只剩两件，且都不再是原理性问题**"。
+
+---
+
+## 20. FusePIR（Algorithm 1）缺口总账（2026-10-15，逐条按代码核过）
+
+回答"FusePIR 还缺什么"。**分四类**，因为"缺"有三种不同的意思：
+写不出来 / 写得出但语义不对 / 曾经缺但现在有了 / 按你的决定不做。
+
+### Tier A —— **真的写不出来**（只有 2 条，其中 1 条是你决定不做的）
+
+| # | 缺口 | 现状（按代码核） | 卡住谁 |
+|---|---|---|---|
+| **A1** | **`Pack` 的适配器**：`{ct_{pay,b}}` → 一个打包密文 | `prim/RingPack.pack` 收的是**明文** LWE 分量 `(as, bs)`，不是那组密文。调用点只有 `probe/CapeAnswerHomomorphic:102`、`probe/PackLimbPayloadTest:156`、`RingPack.main` —— **协议代码零调用** | A1 ANSWER 13；以及 A2 ANSWER 3 的 `Parse {(c_{v_j}, ct^BF_j)}`（D2 是它的症状） |
+| **A2** | **Alg 4 / Alg 5（`FusePIR-C` / `CAPE-C`）整条查询压缩链** | `PRG(ρ,a,j)`（`:2044-2046`、`:2121`）、`bin_ℓ(x)`（`:2042`）、`ℓ_c=⌈log2 C⌉`/`ℓ_r=⌈log2 R⌉`（`:2034-2038`）**都没有对应函数**，`PRG` 只出现在注释里；**没有这两个类**；Alg 4 SETUP L2 的公开求值材料没实现；`probe/CapeBkCompressed:37` 记着 Java 侧位提取 **4/4 失败** | ⚠️ **§15.8 记着你已指示"本轮不做 Alg 4/5"** ⇒ 这是**"按决定不做"，不是"遗漏"**。列为缺口只为账目完整 |
+
+**⇒ §0.5 速查表里 FusePIR 那 10 行，现在已无一行是 ❌**（`Pack` 那行是 ⚠️）；
+A1 唯一"写不出来"的是 **`Pack` 的适配器**。
+
+### Tier B —— **写得出，但语义不符**（不改就不算"按论文"）
+
+| # | 缺口 | 现状 | 解药 / 前置 |
+|---|---|---|---|
+| **B1** | **`q^row` 没有噪声**（P1-2） | `cape/CapeQuery.java` 里 `q.beta[a] = (sum + rowIdx[a]) % twoN` —— 论文要 `LWE.Enc_{s_L}(r_a)`（`Δ·m + e`） | **解药已经找到**：`coding/lwe-java/…/cape/he/LWE.java:101 encrypt(LWESecretKey,long)` **自带 `Δ=q/t` 与噪声**（§17.3）。前置：先定 `R`（已定，§12.7） |
+| **B2** | **独立的 `s_L` 不存在** | `s_L` 必须**逐位等于** `s_R`（`CapeQuery:227-229`），否则净旋转 `Σa_i(s_R,i−s_L,i)−r_a` 不对；`CapeDSemanticsProbe:212/217/219` 实测**差 1 位 ⇒ 行偏 5767** | **架构决定**（`README.md:146-155` 有书面决定与代价），不是机械修复 |
+| **B3** | 🔴 **P0-1：`Δ = 256` 缩放** | 把通用 LWE 密文直接喂盲旋转 ⇒ 旋转量变成 `Δr = 256r`（`缺陷总表.md:59`，**全项目最大的一条**） | 与 B1 **同一剂解药**（`LWE.encrypt`）。**这是当前最值得做的一条** |
+| **B4** | 两方密钥隔离 | 单 JVM 回环。P1-1 之后仍有一条同源边界：**选择子必须与"解码者"同一把秘密** | 工程项 |
+
+### Tier C —— **已经好了，但历史上被写成"缺"**（⚠️ **别再去重做**）
+
+| 曾被写成 | 实际 | 出处 |
+|---|---|---|
+| `h_a`（A1 QUERY 3）❌ 真缺口 | ✅ `bff/BffHash.positions`，**论文几何路径上是活的**：`FusePirParams.bffPositions` → `pp`；建表侧 `CapeDemoData:453`（在 `buildTablesPaper:399` 里）走它；`FusePirStateTest:185` 断言 `pp` 的 `H` 与它逐位一致。⚠️ **但旧几何 `buildTables:185` 仍用替代品，而 `CapeDemoService` 默认调的是旧的** ⇒ 是"未接线"，不是"没实现" | §0.5 / §9.4 已就地更正 |
+| `fp(K)` 用 `String.hashCode`，非 40-bit | ✅ `FusePirDecode:155 fpOf → BffSetup.fp`（`oracle40`） | §0.5 已更正 |
+| `Select R, C`（A1 SETUP 4）没策略 | ✅ 已决定 `R = C = √L_BFF = 16` | §12.7 |
+| `D[u] ← 0, u ∈ [L_BFF, RC)` | ✅ 在我们这组定义下是**空操作** | §11.3 ③ |
+| **`Pack` 整个没有** | ⚠️ **原语有且已验**（`RingPack`），缺的只是适配器与调用方 | §17.3 / §18 / §19 |
+| `Pack` 切换密钥 ≈ 12 GB | ⚠️ 实测 **8.0 GB**（`n=N`）/ **16 MB**（`n=d=16`）；**真正的墙是模数**（`t=2^32` 上选择子不存在） | §18.2 / §18.4 |
+
+**这六条是"我说成缺、其实有（或口径错）"的高危项**，属 §17.1 那类流程缺陷的延续。
+⇒ **动手前先查本表**，否则会第三次重写同一段代码。
+
+### Tier D —— 一句话
+
+**FusePIR 只差两层**：① `Pack` 的适配器（约 2 天量级，且已无原理性障碍）；
+② `q^row` 的噪声与 `Δ=256`（**同一剂解药**，即把 `cape.he.LWE.encrypt` 接进盲旋转，见 B3 —— 这是全项目最大的一条）。
+**其余"缺"要么已有、要么是已量化的架构决定、要么是你决定不做的 Alg 4/5。**
+
+---
+
+## 21. 「盲旋转先不要噪声」这条决定的账目（2026-10-15）
+
+**结论：可以，而且这已经就是现在实现的状态；但"不要噪声"省下的不是隐私，隐私卡在另一处。**
+
+### 21.1 它不是新决定，也不是"先放着"这么轻
+
+* `prim/BlindRotateOps.java:198-209` 的 javadoc 已经写明：
+  {@code b = ⟨a,s⟩ + r mod 2N}（**Δ=1、无 {@code e}**）是**本项目的工程决定，不是论文原文**。
+* `cape/CapeQuery.java:258` 写着"**按需求「盲旋转不要噪声」**"。
+* ⚠️ **关键事实（决定了它不是开关）**：同一段 javadoc 记着实测
+  ——「本实现的盲旋转对 {@code e} **零容忍**（实测 {@code e=±1} 就**整体推移一格、取到相邻记录**）」。
+  ⇒ "加噪声"**不是加一项**，而是要连带做 CMUX 里的**舍入 / mod-switch**（即 Δ 尺度处理）。
+  **那正是 P0-1「旋转量变成 {@code Δr = 256r}」的来处。**
+
+### 21.2 ⚠️ 纠正一个直觉：**噪声不是隐私的解药**
+
+* `cape/CapeQuery.java:461` —— `m.put("sBits", q.sBits);`，**明文秘密比特是上线的**；
+  服务器侧还会解析并用它（`CapeDemoService.java:1711-1727`，随后喂进三个 native 入口）。
+* ⇒ 服务器拿 `a` / `beta` / `sBits` **一步相减**就得到 `r_a`：
+  {@code r_a = beta − ⟨a, sBits⟩ (mod 2N)}。**不需要任何密码学分析。**
+* **而且加噪声也救不了**：只要 `sBits` 还在线上，服务器就会算
+  {@code β − ⟨a,sBits⟩ = Δr + e}，**除以 Δ 一舍入就还原 `r`**。
+  ⇒ **隐私这一条与噪声无关**，它卡在"sBits 上线"，要改的是盲旋转的**接口**
+  （三个 native 入口都收 `sBits`），不是噪声项。
+
+### 21.3 所以"先不要噪声"的真实账目
+
+| | 付掉 | 换来 |
+|---|---|---|
+| 论文保真 | A1 QUERY 5 写的是 `LWE.Enc_{s_L}(r_a)`，我们不是 | —— |
+| 可宣称的范围 | 不能引用 LWE 的安全性论证（`BlindRotateOps:206-207` 原文）；"按论文参数工作的 CAPE"仍不成立（`缺陷总表.md:35-37` 已这么写） | —— |
+| 隐私 | **不额外付**（21.2：损失已由 `sBits` 上线造成，与噪声无关） | —— |
+| 同态管线 | —— | ⭐ **ε=0 ⇒ 每一步都是精确的**：任何失败都是真 bug 而不是"余量不足"。**这对正在做的 `Pack` / 折叠轮数 / 适配器是最干净的正对照** |
+
+### 21.4 若决定维持"不要噪声"，该做的三件事（都不是加噪声）
+
+1. 🔴 **把 `sBits` 从出站报文里拿掉**（或明确标注"仅单进程回环，出站即失去查询隐私"）。
+   `CapeQuery:427` 的表格把它解释成"**公开引导密钥材料** {@code bsk = {RGSW(s_i)}}" ——
+   **这是把两样东西混了**：`bsk`（RGSW **加密**后的比特）确实可以公开，
+   而 `sBits` 是**明文比特**，不是公开材料。这一条比噪声更值得先修。
+2. **把「无噪声 ⇔ Δ=1 ⇔ 旋转量是明文单位」做成断言**：盲旋转入口应要求
+   `β ∈ [0, 2N)`，一旦有人把 `LWE.encrypt`（带 `Δ=q/t` 与噪声）直接接进来就**炸**，
+   而不是静默转 256 倍（P0-1 的形态）。**守卫比注释可靠**（同 §18.6 的 `requireGadgetCovers`）。
+3. **别删已有的负对照**：`probe/CapeAlgorithm2Diag.java:174` 与
+   `CapeDemoService.java:1149` 的 **N5**（"服务器能从 `(a,beta,sBits)` 一步还原 `r_a`"）
+   是"已知未修"的**活证据**；删了就等于把这条缺陷变成静默的。
+
+### 21.5 一句话
+
+**"先不要噪声"是安全的、省事的、且对当前调试有利的选择**；
+它**不新增隐私损失**（因为损失已经由 `sBits` 上线造成），
+**但它不能当作隐私问题的"以后再说"** —— 那一项与环境噪声无关，
+要么把 `sBits` 下架、要么如实声明"本实现不提供查询隐私"。
+
+---
+
+## 22. **不要噪声**的前提下，FusePIR 还缺什么（2026-10-15）
+
+先按 `docs/缺陷总表.md` 逐条过（那是本项目**唯一**的问题清单），再把它与 Code 对照。
+**"不要噪声"= 接受 `缺陷总表` 的 P0-1 后果 1（正确性只在 `e=0` 下成立），不动后果 2。**
+
+### 22.1 ⚠️ 先纠正注册表里一条会误导人的话
+
+`缺陷总表.md:195` 写：*"`r_a` 那一半仍然开着 …… ⇒ **只有 P1-2（索引噪声）才能关掉它**"*。
+
+**在"噪声被推迟"的前提下这句变成了死路，而且它本身也不准**：
+
+| 情形 | 结果 |
+|---|---|
+| `sBits` 上线（`CapeQuery:461`，现状）**且**加噪声 | ❌ **照样泄漏**。服务器算 `β − ⟨a,sBits⟩ = Δr + e`，**除以 Δ 再舍入就是 `r`** —— 这本来就是 LWE 解密，噪声在"服务器持有秘密"面前毫无作用 |
+| 无噪声**且**不下发 `sBits` | ❌ **仍然泄漏**：`缺陷总表.md:61` 自己判过 —— `d=16`、`q_L=2N` 下拿 `(a,b)` 解方程即可恢复 `s`。⇒ 无噪声的 LWE **不是 LWE**，安全性论证整条断掉 |
+| 加噪声**且**不下发 `sBits` | ✅ 这一种才关得掉（真两方部署的形态） |
+
+**⇒ 结论：在"不要噪声"下，查询隐私是"不可达"，不是"以后再说"。**
+这条必须如实声明，而不是留在注释里。`缺陷总表.md:35-37` 那句口径已经这么写，是对的。
+
+### 22.2 不要噪声下仍然缺的（按"是否卡住调用方"排序）
+
+| # | 缺口 | 现状（按代码 / 注册表） | 与噪声有关吗 |
+|---|---|---|---|
+| **1** | 🔴 **`Pack` 的适配器**（唯一"写不出来"的） | `RingPack.pack` 收 `(as,bs) ∈ Z_t`；真实 `ct_{pay,b}` 在 **`q_R`** 上（`Δ=q_R/t` 已缩放）⇒ 适配器必须**二选一**：(a) 缩放到 `Z_t`（引入残差 ≈30，`SampleToPackLink` / `RingPack` P5b 实测），或 (b) **按 `q_LWE` 重设计 gadget 与 `SwK`**（调研 §五之三的"正确做法"）。成本：(b) 在 `nLwe=N` 下 **8.0 GB**；要降到 **16 MB** 就得先做第 2 条 | ❌ 无关（是**模数**问题，不是噪声问题） |
+| **2** | 🔴 **独立的 `s_L`**（`缺陷总表:204`，未修） | 净旋转 `= Σ a_i(s_R,i − s_L,i) − r_a`，要 `≡ −r_a` 须对所有 `a` 有 `Σ a_i(…) ≡ 0`；实测**差 1 位 ⇒ 行偏 5767**。注册表口径：**与 P1-2 卡在同一结构点** ⇒ 推迟噪声**不会**让这一条变简单 | ❌ 无关（旋转恒等式） |
+| **3** | 🟠 **`Pack` 是 `ct^{BF}_j` 的来源 ⇒ P0-3 的另一半**（`缺陷总表:200-201`） | 响应字段 `ctPay` 名实不符（实际是**明文**载荷，已正名 `payloadPlain`）。真修要等 `Pack`；"发 `B_pay` 条密文"按实测单条 524,401 B 推算 ≈ **30.9 MB/响应**（**推算，未实测**） | ❌ 无关 |
+| **4** | 🟠 **两方密钥隔离 / P0-4** | 单 JVM、同一 `Mpc4jRgsw` 持私钥。⚠️ `缺陷总表:198` 记着：**回环里 P1-1 关掉的是线路上的明文列号（数据流），不是密钥隔离** | ❌ 无关 |
+| **5** | 🟠 **P1-1 的密钥切换未实现** | `LweRlweConversion:163` 强制 `d == N`（LWE-in-RLWE）；论文 §2.5 允许 `SampleExtract` 后切到后续计算用的 LWE 密钥，**该切换没有**。它同时决定第 1 条走 (b) 时是 8 GB 还是 16 MB | ❌ 无关 |
+| **6** | 🟠 **P1-3 的第二半** | `RingPack 4096` 曾 P2/P3/P4 失败 ⇒ 用 `N=8192`（**我已验：8192 上 7/7 + 13/13 全过**，第一半实际已解）。**第二半仍成立**：自检用的是**合成** `Z_t` 样本，不是 `SampleExtract` 输出 —— **我 §19 的 13/13 同样是在合成样本上做的**，别把它读成"链路已通" | ❌ 无关 |
+| **7** | 🟡 **P0-1 的修法②**（无噪声下唯一还行动的 P0-1 子项） | "盲旋转接口**显式拒绝**不匹配的编码"。因为一旦有人把 `LWE.encrypt`（带 `Δ=q/t` + `e`）直接接进来，旋转量会变成 `Δr = 256r` 而**静默算错** | ⚠️ 半相关：它就是为"以后加噪声"准备的绊线 |
+| **8** | ⚪ **Alg 4 / 5（`FusePIR-C` / `CAPE-C`）** | `缺陷总表:247` 明写：本项目基准 = **Alg 2（CAPE）+ Alg 1（FusePIR）**，**不实现 C 变体** | — 属"不做"，不是缺 |
+
+### 22.3 一句话
+
+**不要噪声只把 P0-1 的"后果 1"从缺陷降级成"已声明的口径"**（`缺陷总表:255` 口径 1 本来就这么写），
+**其余 7 条一条都没少**；其中 **①`Pack` 适配器的真障碍是模数、②独立 `s_L` 是旋转恒等式**，
+两者都与噪声无关，而且它们**互相牵制**（`s_L` 独立 ⇒ 适配器成本从 8 GB 降到 16 MB）。
+
+**并且：不要噪声让"查询隐私"从"待修"变成"不可达"**（§22.1），这一条要写进声明，不能只写在注释里。
+
+---
+
+## 23. 补缺口（2026-10-15）：`Pack` 槽位域适配器 + 盲旋转编码绊线
+
+用户指示：**「先补缺口不用链接 FusePIR」**。所以本轮的产出**全部没有生产调用方**，
+只有实现 + 自检；接线状态如实登记在每一条后面。
+
+### 23.1 ⚠️ 先说一条我先搞错的事实：**A1 通道本来就是 65537**
+
+`FusePirParams.NATIVE_PLAINTEXT_MODULUS = 65537`（`:281`，由 `FusePirAnswer:364` 强制对账）。
+
+⇒ **`Pack` 在 FusePIR 通道上根本没有模数障碍** —— `65537 − 1 = 65536` 是
+`2N = 16384`（N=8192）与 `32768`（N=16384，论文的 N）的整数倍，**两边都可批处理**。
+
+**§18.2 那条"`t = 2^32` 上不存在槽位选择子"的墙，挡的是 CAPE 演示服务那条载荷通道（D11 的第二个 `t`），
+不是 FusePIR。** 我此前在 §18.5 把两条通道并列时容易让读者以为 `Pack` 整体有问题 —— 已就地加注。
+
+### 23.2 交付物一：`fusepir/FusePirPackSlot.java` —— 槽位域适配器（论文那一步）
+
+与 `FusePirPack`（变体 R1，系数域，一条密文一个系数）**并列且分工明确**：
+本类才是"A1 ANSWER 13 → A2 ANSWER 3 能 parse 出 `ct^{BF}_j`"的那条路。
+
+**它把三条本来靠人记的契约绑成了类型**：
+
+| 契约 | 为什么必须绑 |
+|---|---|
+| **槽位布局** | 由 `FusePirSetup` 的算式**自己算**（`fpSlots`/`perValue`/`payloadBpay`/`bloomOffset`），不接受调用方手写下标 —— 手写会让"构造侧拆、解析侧拼"对不上，症状是"某些字段恒为 0" |
+| **最高参与槽** | `Packed.highestSlot()`。§19.3 的静默漏算根因就是"打包方知道、打分方不知道" |
+| **折叠轮数** | **不暴露** `bloomScore(…, lBf)`，只给 `scoreWithLayout` —— 把正确的轮数变成**唯一走法** |
+
+**自检 `probe/FusePirPackSlotTest`（N=8192、t=65537、ℓ_BF=18、m=3、B_pay=61）⇒ exit 0，4/4 全达成：**
+
+| 项 | 结果 |
+|---|---|
+| `P0.1/0.2` | `65537` 在 **N=8192 与 N=16384** 上均可批处理 ✅ |
+| `P0.3/0.5` | `[负对照]` `t=2^32` 必须被拒、`t=65539`（不满足 `t≡1 mod 2N`）必须被拒 ✅ |
+| `P1.1` | **`B_pay = 61` 个字段逐槽精确，错 0 个**（含最大 limb `t−1 = 65536`）✅ |
+| `P1.2` | 40-bit 指纹经适配器往返一致 ✅ |
+| `P2` | `scoreWithLayout` 得 **3**（按最高参与槽 60 取 6 轮折叠）✅ |
+| **`P3`** | ⚠️ **缺陷断言**：同一密文改用论文形状折叠（5 轮 ⇒ 够到槽 31）**必须漏算成 0** ⇒ 复现 ✅（这条是钉住"契约必需"的） |
+| `P4.1–P4.5` | `a` 行不等长 / `b` 条数 ≠ `B_pay` / gadget 覆盖 `65536 < t` / 交换密钥行数不足 / **槽数 4096 ≠ 环维度 8192 的 BatchEncoder** ⇒ **全部抛** ✅ |
+
+**成本（实测，本机）：** `nLwe=16`、`base=2^8`、`digits=3` ⇒ **48 条 × 524,288 B = 24.0 MB**。
+（`base=2^16, digits=2` 时是 32 条 = 16 MB —— 与 §18.4 那张表同口径。）
+
+**接线状态：❌ 零个生产调用方**（按指示）。调用点只有本探针。
+
+### 23.3 交付物二：盲旋转入口的编码绊线（P0-1 修法②）
+
+`prim/BlindRotateOps.java` 新增两个入口校验，并在 `blindRotateRow`（A1 ANSWER 6 的具名入口）里调用：
+
+* **`requireIndexConvention(a, β, n)`** —— 值域绊线：所有分量必须落在 `[0, 2N)`。
+* **`requireIndexModulus(qL, n)`** —— **完备版**：调用方**声明**模数，只有 `2N` 被接受。
+
+⚠️ **覆盖率我分三种情形算清并实测了，不敢含糊**（`probe/BlindRotateIndexGuardTest`，exit 0）：
+
+| 情形 | 命中 |
+|---|---|
+| **把通用 LWE 密文直接喂进来**（P0-1 的实际形态） | ✅ **64/64 命中** —— `a` 均匀于 `[0,q)`、`q ≈ 2^174 ≫ 2N` ⇒ 第一个分量就越界 |
+| 只有 `β` 是 Δ 缩放的（`a` 已归约） | ⚠️ **192/256**，解析式：`Δ·r < 2N ⟺ r < 2N/Δ = 64` 那 64 个漏掉 |
+| **`a` 与 `β` 都已预先 `mod 2N` 归约** | ❌ **0 命中，且原理上不可能命中** —— 值域与合法输入**完全一样**。**这是真实盲区，不是"覆盖率不够"** |
+
+`P3.1` **刻意断言那条盲区必须放行**（免得读者以为值域检查是完备的），
+`P3.2` 断言完备版 `requireIndexModulus` 能挡住同一输入。
+
+**回归：** `BlindRotateOps`(4 PASS) / `HashGenRhoTest`(31 PASS，**其中 P-9 正是走 `blindRotateRow` 的合法调用**) /
+`FusePirStateTest`(全部) / `FusePirAnswer`(1 PASS) —— **全部 exit 0，无回归**。
+⇒ 守卫挡的是坏输入，**没有误伤**合法路径。
+
+### 23.4 本轮**没有**补的（如实登记，别当作已补）
+
+| 项 | 状态 |
+|---|---|
+| **RNS + `q_R → Z_t` 的转换** | ❌ **未做**。适配器要求输入**已在 `Z_t` 内**。真实链路上 `SampleExtract_0` 的输出在 `q_R` 上、且是 **RNS 形态**（`LweRlweBridge.sampleExtract` 返回 `[prime][…]`），这一层桥仍未搭 ⇒ **P1-3 第二半仍开**，`P0-3` 的另一半也仍开 |
+| **独立 `s_L`** | ❌ **未做**（是旋转恒等式 + 架构决定，不是实现工作） |
+| **两方密钥隔离（P0-4）** | ❌ 未做（要拆进程） |
+| **Alg 4/5** | ❌ 按既有决定不做 |
+| **LWE 密钥切换 N→d（P1-1）** | ✅ **已实现并独立验收**：`prim/LweKeySwitch.java` + `probe/LweKeySwitchTest`，**30/30、exit 0（我自己重跑过，不采信代理自述）**。见 **§24** |
+
+---
+
+## 24. 缺口 ③ 与 RNS 桥（2026-10-15）：`LweKeySwitch` + `rnsToT`
+
+### 24.1 交付物三：`prim/LweKeySwitch.java`（P1-1 / 论文 §2.5）
+
+**独立验收**：我自己跑 `run-lwe-keyswitch.ps1 -N 8192 -D 16` ⇒ **exit 0，30 PASS / 0 FAIL**
+（不看代理给的那份日志）。维度网格 `(N,d) = (1024,4/16/64) (8192,4/16/64)` 六组**全部实建 + 往返 PASS**。
+
+### 24.2 ⚠️ 我给子代理的任务书里有**符号矛盾**，它按可验证判据改对了
+
+我同时写了三句：(a) ksk 载荷 `+B^k·s[j]`；(b) **加法**累加；(c) 要满足 `b' − ⟨a',s'⟩ ≡ b − ⟨a,s⟩`。
+在 (c) 自己规定的相位约定下，(a)+(b) 推出的是 `b + ⟨a,s⟩` ⇒ 用 `b = ⟨a,s⟩ + m` 解出来是
+`m + 2⟨a,s⟩`，**往返必失败。三句不能同时成立。**
+
+代理保留 (a)、把 (b) 改成**减法累加**（BV 密钥切换 `c' = (0,b) − Σ a_{j,τ}·c̃_{j,τ}`），
+并用**变异测试**证明判据有分辨力：换成字面加法版后同一探针 **20 PASS / 7 FAIL / exit 1**。
+⇒ **这条我认，是我写的任务书错了，它的取舍是对的。**
+
+### 24.3 ⚠️⚠️ 必须分开的两个"16 MB vs 8 GB"——**别混着引**
+
+代理报告里用 `(N+1)/(d+1) = 481.9×` 去对应我说的"16 MB ↔ 8 GB"。**那是两把不同的钥匙**：
+
+| 钥匙 | 条目形态 | 单条 | `nLwe = d = 16` | `nLwe = N = 8192` |
+|---|---|---|---|---|
+| **Pack 的交换密钥** `RingPack.switchingKey`（§18.4） | **RLWE 密文** | **524,288 B** | 32 条 = **16 MB** | 16,384 条 = **8.0 GB** |
+| **`LweKeySwitch` 的 ksk**（本节） | **LWE 样本**（`d+1` 个 long） | `(d+1)×8 = 136 B` | 24,576 条 = **3.34 MB** | 算术外推 ≈ **1.6 GB**（`digits=3`） |
+
+两组数**恰好都在 16 MB / 8 GB 附近纯属巧合**（比值分别是 `N/d = 512` 与 `(N+1)/(d+1) = 481.9`）。
+**它们是不同对象的钥匙，服务于不同步骤，不得互换引用。** 已在表里分列。
+
+### 24.4 交付物四（额外）：`FusePirPackSlot.rnsToT` —— RNS / `q_R → Z_t` 的桥
+
+`probe/FusePirPackSlotRnsTest` 实测：
+* **转换成立**：`β − ⟨a,s⟩` 与载荷一致，**最大偏差 39**（N=8192；理论 `std ≈ 20`，
+  与 `SampleToPackLink` 的 ≈30 同量级）；符号约定（`a` 取反）由"秘密改 1 位 ⇒ 偏差爆炸"的负对照确认。
+* 🔴 **本轮最重要的发现**：**真实 `SampleExtract_0` 的输出维数是 `N`，不是 16**
+  （RNS 形状 `[4][8193]`）。⇒ **给这条链路配 Pack 的交换密钥就是 `nLwe = N`**：
+  N=8192 ⇒ **12.0 GB**，本机装不下（加 `requireGadgetCovers` 之外的维数守卫**正确抛了**，探针 P2.2 断言过）。
+  ⇒ **"RNS 桥"与"密钥切换 N→d"不是两件独立的事**：Pack 要吃真实样本且密钥不炸，
+  必须**先**做密钥切换（③），这与论文的 `sk = (s_L, s_R)` 是同一件事。
+* ⚠️ **低于移植下限时不要跑**：N=1024 上 `工作层=1(27 bit)` ⇒ `q ≈ 2^27`、`Δ = q/t ≈ 2^11`，
+  Pack 装不下。**先前真跑过一次、P3a 解出垃圾（偏差 45575）——那种结果不能当作"Pack 失败/成功"**；
+  已改成**显式跳过并说明理由**（`MIN_N_FOR_PACK = 4096`，依据是缺陷总表『口径 2』的硬约束）。
+
+### 24.5 仍然没验的（不许当成已验证）
+
+| 项 | 状态 |
+|---|---|
+| **③ 与 RNS 桥的组合**（先 `LweKeySwitch` 再 `Pack`） | ❌ **未验**。代理自己也写明："与 `LweRlweBridge` 的符号对接**只写进 Javadoc、没实际跑通**"。这是**下一步最该做的实验**：它一跑通，`nLwe=d=16`（Pack 的 SwK = 16 MB）这条路才第一次被证明成立 |
+| **`nLwe = N` 的完整打包** | ❌ 未验（12 GB，本机装不下）。**不得**因此声称"N=8192 上的真实链路 Pack 通了" |
+| 噪声/安全 | 代理声明：`LweKeySwitch` **无噪声**、**无安全性结论**、样本是合成的。**如实接受**，不引用安全性 |
+| 独立 `s_L` / 两方隔离 / Alg 4-5 | 仍是"决定 / 不做"，不是"已补" |
+
+---
+
+## 25. 从工作区资料里补齐 FusePIR 缺口（2026-10-15）
+
+用户指示："想办法补齐，从工作区中所有文章里找参考"。
+
+### 25.1 找到的权威资料（此前**没有**被引到）
+
+| 文件 | 为什么关键 |
+|---|---|
+| **`coding/docs/CAPE-数学规范-SETUP到ANSWER.md`**（621 行） | **本项目的数学规范**，§0.5 密钥 / §1.3 载荷展平 / §2.3 行选择子 / §3.2-3.8 ANSWER 逐步 / §五 正确性条件 C1-C9。**它自己声明"实现时唯一依据"** |
+| **`coding/docs/reports/P1-2-行选择子加噪声-分析与判据-2026-10-14.md`**（123 行） | 噪声缺口的**完整判据 + 瓶颈 + 落地步骤**；本轮之前只被当成"未完成" |
+| `Hao 等 - Practical Keyword PIR…`（FusePIR 源论文）· `Submission_usenix_232/`（CAPE）· `mpc4j/ae/2025_USEC_…` | 原始出处 |
+| `coding/docs/论文原文-ANSWER摘录.md` · `默认实现一览.md` · `伪代码逐行复核-两处硬偏离` | 逐行对照类 |
+
+### 25.2 ✅ 补齐：A1 SETUP 6 的两个缺失函数
+
+`fusepir/FusePirSetup.java` 新增（依据 = 规范 §1.3 + §四）：
+
+| 函数 | 对应伪代码 |
+|---|---|
+| `padValuesToM(values, m)` | SETUP 6 前半 `Pad V_{K_i} to m values`（**补 0**，长于 m 直接抛） |
+| `assemblePayload(fpDigits, count, values, bloom, lBf)` | SETUP 6 后半 `y ← fp ‖ m_i ‖ v…` |
+| `parsePayload(y, m, t, lBf)` → `Payload` | DECODE 5 `Recover (f, m_K, v_1…v_m) ← y`（严格互逆） |
+
+**自检 `probe/FusePirPayloadLayoutTest` ⇒ exit 0，全部通过**（P1 pad 4 项、P2 下标 5 项、
+P3 互逆 5 项、P4 坏输入 6 项 —— 含"补的是 0 不是复制"、`count` 越界、
+Bloom 非二进制位、`y` 短于 `B_pay` 等负对照）。
+
+⇒ 这一条同时消掉了 `probe/CoeffPackTest:481` 那份"与 `CapeDemoData.buildPayload` **同分布重写**"
+的重复实现所暴露的缺口。**它不改变任何既有语义**（偏移仍走同一组函数）。
+
+### 25.3 ⚠️⚠️ 三处"缺口"被参考资料**改判**
+
+#### (1) `sk = (s_L, s_R)` **不是两把独立密钥** —— 规范 §0.5 说是"同源"
+
+```
+s_L = (s_L[0], …, s_L[d−1]) ∈ {0,1}^d          LWE 私钥
+s_R(X) = Σ_{j<d} s_L[j]·X^j ∈ R_q              RLWE 私钥（同源）
+```
+规范原文：**"同源"是整条链能闭合的关键**；`s_R` 的第 `j` 个系数就是 `s_L[j]`；**全程只有一套秘密**。
+C9：`d = LWE 维数 ≤ N`，注"`s_R` 按 `s_L` 铺开"。
+
+🔴 **它直接改掉 §18.4/§24.4 的"8 GB"结论**：按规范，`s_R` **只在 `[0,d)` 上非零**
+⇒ `SampleExtract_0` 出来的是 **`d` 维** LWE 样本；而规范 §3.6 的交换密钥是
+`SwK[j][k] = RLWE(B^k · s_L[j])`、**`j ∈ [0,d)`** ⇒ **Pack 的密钥是 `d × digits` 条，不是 `N × digits` 条**。
+
+**而本仓库两头不一致**：`cape.d` 默认 **16**（引导密钥与 `q^row` 用它），
+但 `Mpc4jRgsw` 生成的是**全 N 系数**三元秘密（`缺陷总表:203` 的直方图写明"全 8192 系数"）
+⇒ `SampleExtract` 得 N 维样本 ⇒ 交换密钥 12.0 GB。
+**⇒ "8 GB"不是 Pack 的固有代价，是 `s_R` 的支撑没按规范收缩到 `[0,d)` 的后果。**
+论文的 `d`：`P1-2` 报告 §4.3 写"**论文是 `d = 512`**" ⇒ 按规范应是 `512 × digits` 条。
+
+⚠️ **安全注记（别把"16 MB"当好消息）**：若 `s` 的支撑是**已知**的 `d` 元子集，则
+`c_0 + c_1·s = c_0 + Σ_{j<d} c_1[j]·s_j`，而 `c_1` 均匀 ⇒ **这恰好是一个 `d` 维 LWE 实例**。
+⇒ **安全性完全由 `d` 决定；`d = 16` 是玩具**（16 个未知量，线性代数即可解）。
+所以 Pack 的真实密钥成本是 `d × digits × 524,288 B`，**`d` 由安全级别定，不由我们定**。
+
+#### (2) `LWE.Enc_{s_L}(r_a)` 的"带噪声"：**两份参考资料互相冲突**
+
+| 出处 | 写法 |
+|---|---|
+| `P1-2` 报告 §一（引论文 §2.5） | `LWE.Enc` 里 `b = ⟨a,s⟩ + **Δ·m + e**`（**Δ + 噪声**） |
+| `CAPE-数学规范` §2.3 | `β = ⟨a, s_L⟩ + r_a mod q_L`（**Δ=1、无 `e`**） |
+
+⇒ 规范把论文的通用 `LWE.Enc` **简化**成了无噪声形式。**你选的"不要噪声"= 站在规范这一侧；
+`缺陷总表` P0-1 站论文那一侧。这不是谁写错，是两处口径**并存**。**已登记，不擅自改判。**
+⚠️ 规范 §2.3 还有一条与我们不同：`a ∈ Z_{q_L}^d`（模 `q_L`），我们用 `mod 2N`。
+
+#### (3) ⭐ 噪声缺口（P1-2）**已有解，且在我们这组参数下可行**
+
+`P1-2` §4.1-4.3 给了完整判据：`Δ/√d > 6σ`；容量约束 `Δ·R ≤ N` ⇒ **`R < N/(6σ√d)`**。
+取 `σ = 3.2`：**`N=8192`、`R=16` ⇒ `Δ ≤ 512` ⇒ 临界 `d ≈ 711`；论文 `d = 512 < 711` ⇒ 可行**（余量 1.4×）。
+§七 给了落地步骤（表加 `blockWidth`、客户端 `β = ⟨a,s⟩ + Δ·r_a + e`、按 §六 的"换旋钮"分法降规模测）。
+§五 说当时**主动停止**的理由是：(a) 降规模方法错、(b) **前提"先定 `R`"未定**。
+**⇒ 两条现在都不成立了**（`R = C = √L_BFF = 16` 已在 §12.7 定下）。
+⇒ 这条从"结构缺口"降级为 **"有判据、可落地、只差一个实现决定"**。
+
+### 25.4 参考资料另外暴露的三处**实现偏离**（新发现）
+
+| 出处 | 规范说 | 我们做 | 影响 |
+|---|---|---|---|
+| 规范 §1.3 | `B_pay = β_fp + **2** + m·(1+ℓ_BF)`（"个数"拆 **2** 个 limb） | `fpSlots + **1** + …` | **差 1，两者不可能同时对**。⚠️ **未改** —— 改了会静默打破既有 DB、`CapeDemoData`、`CapeAlgorithm2Diag` 等**全部载荷消费者**。探针 `P5` **刻意断言该差异存在**（改了就会变红，提醒更新文档） |
+| 规范 §3.6 | 分解是**平衡**的：`a_j = Σ d_k B^k`，`\|d_k\| ≤ B/2` | `RingPack.pack` 用 `digit = remaining % base ∈ [0,B)`（**非平衡**） | 平衡分解能省噪声 ⇒ **Pack 的一条可改进点**，且与 §19/§24 的噪声余量直接相关 |
+| 规范 §3.2 | `Acc_c = CtExtract_0(CtRotate(q^col, −c))` 再与 `P_{c,b}` 相乘 | 直接 `CtPtMul(q^col[c], P_{c,b})` | 规范 §2.2 自己记了两种读法；与 D3"列选择子 = C 个独立密文"是同一处 |
+
+### 25.5 结论：四个缺失函数的现状
+
+| 缺口 | 现状 |
+|---|---|
+| SETUP 6 `Pad V_{K_i} to m` | ✅ **已补**（§25.2） |
+| SETUP 6 `y_{K_i}` 装配 | ✅ **已补**（§25.2，含逆函数与互逆自检） |
+| SETUP 3 `sk = (s_L, s_R)` | ⚠️ **改判**：不是"生成两把密钥"，而是"把 `s_R` 按 `s_L` 铺开"（§25.3(1)）。**这是实现工作**（`Mpc4jRgsw` 接受 `SecretKey`），且有量化收益（`N/d` 倍密钥） |
+| QUERY 5 `LWE.Enc_{s_L}(r_a)` 带噪声 | ⚠️ **改判**：口径冲突（§25.3(2)）；且**判据已备、可行性已证**（§25.3(3)），只差"要不要做"的决定 |

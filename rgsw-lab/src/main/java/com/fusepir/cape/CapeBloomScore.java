@@ -1,5 +1,9 @@
 package com.fusepir.cape;
 
+import com.fusepir.common.BfGen;
+
+import com.fusepir.fusepir.*;
+
 
 import com.fusepir.prim.*;
 import com.fusepir.bloom.*;
@@ -77,8 +81,6 @@ import java.util.Map;
  */
 public final class CapeBloomScore {
 
-    /** 打分信道的明文模数。<b>不能是 2^32</b>（BatchEncoder 要求 {@code t ≡ 1 mod 2N}）。 */
-    public static final long SCORE_T = 65537L;
 
     /** 一个候选的完整应答：{@code (ct_v_j, ct_score,j)}（论文 A2 ANSWER 8）。 */
     public static final class Candidate {
@@ -124,124 +126,19 @@ public final class CapeBloomScore {
         }
     }
 
-    /** 打分信道的服务端状态：上下文 + 重线性化密钥 + Galois 密钥。SETUP 时建一次。 */
-    public static final class Scorer {
-        public final Mpc4jRgsw m;
-        public final RelinKeys relinKeys;
-        public final GaloisKeys galoisKeys;
-        public final int slots;
-        public final long setupMs;
-
-        private Scorer(int n, SecretKey sharedSk) {
-            long t0 = System.nanoTime();
-            // gadget 基取 2^16：它只影响 Mpc4jRgsw 自己的 RGSW 路径，本类不用那条路径，
-            // 但 Mpc4jRgsw 的构造函数要求给一个值（且 base < 2t 必须成立）。
-            this.m = new Mpc4jRgsw(n, SCORE_T, 0, 1 << 16, sharedSk);
-            this.relinKeys = m.relinKeys();
-            this.galoisKeys = BloomScoring.galoisKeysFor(m);
-            this.slots = new BatchEncoder(m.context).slotCount();
-            this.setupMs = (System.nanoTime() - t0) / 1_000_000;
-        }
-
-        /**
-         * 本信道的密钥。**客户端与服务端必须是同一把**，否则 {@code ct_score} 解出来是垃圾
-         * （不报错，只是数值离谱 —— 实测解成 26921 而不是 0..ℓ_BF）。
-         *
-         * <p>单进程回环里"同一个密钥持有者"就是这么表达的：见 {@link #setup(int, SecretKey)}。
-         */
-        public SecretKey secretKey() {
-            return m.sk;
-        }
-    }
-
     private CapeBloomScore() {
-    }
-
-    /**
-     * SETUP：建打分信道的密钥材料（重线性化 + Galois）——<b>新生成一把密钥</b>。
-     *
-     * <p><b>为什么 Galois 密钥是必需的</b>：论文 A2 ANSWER 6-7 的折叠就是
-     * {@code CtCtAdd(ct_score, CtRotate(ct_score, 2^r))}，而 {@code CtRotate} 走
-     * {@code Evaluator.rotateRowsInplace}，没有 Galois 密钥会直接抛。
-     * 实测 N=8192 的一次性成本见 {@link CapeScoreChannelProbe}。
-     */
-    public static Scorer setup(int n) {
-        return new Scorer(n, null);
-    }
-
-    /**
-     * SETUP：<b>复用一把已有的密钥</b>。
-     *
-     * <p>给"客户端与服务端必须是同一个密钥持有者"这个前提用（单进程回环）。
-     * 真两方部署里客户端生成 {@code sk} 后，服务端只需要评估材料
-     * （{@code relinKeys} / {@code galoisKeys}），<b>不该拿到 sk</b> ——
-     * 本重载是给测试用的，不是协议的一部分。
-     */
-    public static Scorer setup(int n, SecretKey sharedSk) {
-        return new Scorer(n, sharedSk);
-    }
-
-    // ------------------------------------------------------------------
-    //  客户端侧：q_BF
-    // ------------------------------------------------------------------
-
-    /**
-     * 把一个 Bloom 向量铺进槽位（客户端侧，{@code q_BF ← RLWE.Enc(b_qry)}）。
-     *
-     * <p><b>下标约定（本类的核心约定，实证见自检第 1 节）</b>：
-     * 第 {@code i} 位放进<b>槽位 i</b>。这一条把"下标"和"槽位"钉成同一个东西，
-     * 于是 {@code Sum_i b_qry[i]*b_v[i]} 就是逐槽相乘再折叠的结果。
-     *
-     * @param bits 长度必须不超过 {@code slots}（{@code l_BF <= N/2} 的硬约束从这里进来）
-     */
-    public static long[] toSlotVector(boolean[] bits, int slots) {
-        if (bits.length > slots) {
-            throw new IllegalArgumentException("l_BF = " + bits.length
-                + " 超过槽数 " + slots + "（l_BF <= N/2 是硬约束）");
-        }
-        long[] out = new long[slots];
-        for (int i = 0; i < bits.length; i++) {
-            out[i] = bits[i] ? 1 : 0;
-        }
-        return out;
-    }
-
-    /** {@code q_BF ← RLWE.Enc_{s_R}(b_qry)}，槽位形式。 */
-    public static Ciphertext encryptQuery(Scorer sc, boolean[] bQry) {
-        return BloomScoring.encryptBloomVector(sc.m, toSlotVector(bQry, sc.slots));
-    }
-
-    /**
-     * <b>客户端侧</b>：{@code q_BF} 加密并序列化成线上字节（D12 那条明文口的关闭方式）。
-     *
-     * <p>返回值直接放进 {@code /api/query} 请求体的 {@code qBFBytes} 字段。
-     * 实测长度见 {@link CapeScorerWire}（N=8192 时 211 KB）。
-     */
-    public static long[] encryptQueryWire(Scorer sc, boolean[] bQry) {
-        return CapeScorerWire.serialize(
-            BloomScoring.encryptBloomVector(sc.m, toSlotVector(bQry, sc.slots)));
-    }
-
-    /**
-     * 把不超过 {@code slots} 长的小数组补零铺进槽位。
-     *
-     * <p>补零是<b>正确性所必需</b>的（不是省事）：它保证下标 {@code >= l_BF} 的槽贡献为 0，
-     * 于是 {@code foldAllSlots} 折全部 N 个槽 == 论文只折 {@code l_BF} 项。
-     * 这正是规划书 P0-1「必须先核」那一条的落地方式。
-     */
-    public static long[] padToSlots(long[] bits, int slots) {
-        if (bits.length > slots) {
-            throw new IllegalArgumentException("l_BF = " + bits.length
-                + " 超过槽数 " + slots + "（l_BF <= N/2 是硬约束）");
-        }
-        long[] out = new long[slots];
-        System.arraycopy(bits, 0, out, 0, bits.length);
-        return out;
     }
 
     // ------------------------------------------------------------------
     //  服务端侧：分组 + 打包 + 打分
     // ------------------------------------------------------------------
+    //
+    //  ⚠️ 2026-10-14 深夜：打分信道的**状态与加密原语**已搬到 com.fusepir.bloom：
+    //    BloomChannel  —— BloomChannel.SCORE_T、BloomChannel.Scorer、setup、toSlotVector、padToSlots、
+    //                     BloomChannel.encryptQuery(Wire)、decryptSlots
+    //    ScorerWire    —— 线上格式（q^BF / ct_score 的序列化）
+    //  本类只剩 CAPE 专属的那一半：**按载荷布局分组候选、调 bloom 打分、组响应**。
+    //  这样 bloom/ 才"完全满足 CAPE 的调用"，而不是 CAPE 自带一份 Bloom 实现。
 
     /**
      * <b>论文 A2 ANSWER 4-8</b>：对每个候选算密文分数，按候选分组返回。
@@ -255,13 +152,27 @@ public final class CapeBloomScore {
      * @param maxCandidates 最多看几个候选（演示库里是 {@code maxValues}=3）
      * @param lBf           {@code l_BF}。<b>必须与建表时用的一致</b>，否则载荷被切错位。
      */
-    public static Result score(Scorer sc, Ciphertext qBF, long[] payload,
+    public static Result score(BloomChannel.Scorer sc, Ciphertext qBF, long[] payload,
                                int maxCandidates, int lBf) {
+        return score(sc, qBF, payload, maxCandidates, lBf, FusePirSetup.fpSlots(DEFAULT_T));
+    }
+
+    /** 载荷所在域 {@code t} 的默认值（native 信道）。{@code -Dcape.t} 可覆盖。 */
+    public static final long DEFAULT_T = Long.getLong("cape.t", 1L << 32);
+
+    /**
+     * 同 {@link #score(BloomChannel.Scorer, Ciphertext, long[], int, int)}，
+     * 但显式给出 {@code t}（由此定出 {@code fp} 占几个槽）。
+     *
+     * <p>⚠️ {@code fpSlots} 决定 `[0]=候选数` 的下标，所以它**必须与建表时一致**。
+     */
+    public static Result score(BloomChannel.Scorer sc, Ciphertext qBF, long[] payload,
+                               int maxCandidates, int lBf, int fpSlots) {
         long t0 = System.nanoTime();
-        if (payload.length < 2) {
+        if (payload.length < fpSlots + 1) {
             throw new IllegalArgumentException("payload 太短: " + payload.length);
         }
-        int count = (int) payload[1];
+        int count = (int) payload[FusePirSetup.countOffset(fpSlots)];
         int lookups = Math.min(maxCandidates, Math.max(0, count));
 
         List<Candidate> cands = new ArrayList<>();
@@ -269,7 +180,7 @@ public final class CapeBloomScore {
         int bPay = payload.length;
 
         for (int j = 0; j < lookups; j++) {
-            int base = 2 + j * (1 + lBf);
+            int base = FusePirSetup.valueOffset(fpSlots, j, 1 + lBf);
             if (base + 1 + lBf > bPay) {
                 break;                       // 载荷不够长（B_pay 与 maxValues 不一致）
             }
@@ -282,14 +193,40 @@ public final class CapeBloomScore {
                 bits[bi] = payload[base + 1 + bi] != 0 ? 1 : 0;
             }
             // (2) 服务端按候选 j 取出其 Bloom 段，打包成一个槽位 RLWE（每位一槽）
-            Ciphertext ctBF = BloomScoring.encryptBloomVector(sc.m,
-                padToSlots(bits, sc.slots));
+            Ciphertext ctBF = encryptCandidateBloom(sc, bits, lBf);
             // (3) ct_score,j ← CtCtMul(q_BF, ct_BF,j)，再折叠（A2 ANSWER 6-7）
-            Ciphertext ctScore = BloomScoring.bloomScore(sc.m, sc.galoisKeys, qBF, ctBF);
+            // ⚠️ 用**论文形状**的折叠（⌈log2 ℓ_BF⌉ 轮），不是折满 N/2 槽的那一版：
+            //    两者结果相同（两侧都已补齐 0），但折满的噪声增长大 256 倍。
+            Ciphertext ctScore = BloomScoring.bloomScore(sc.m, sc.galoisKeys, qBF, ctBF, lBf);
             cands.add(new Candidate(valueId, bits, ctBF, ctScore));
             plain[cands.size() - 1] = BloomScoring.decodeScore(sc.m, ctScore);
         }
         return new Result(cands, plain, (System.nanoTime() - t0) / 1_000_000);
+    }
+
+    /**
+     * <b>论文 A2 ANSWER 3 的 {@code ct^{BF}_j}</b> —— 但<b>我们这里是重新加密的</b>。
+     *
+     * <pre>
+     *   A2 ANSWER 3: Parse {(ct_{v_j}, ct^{BF}_j)}_{j=1}^m from resp_anc
+     *   而 resp_anc = Pack({ct_{pay,b}})   （A1 ANSWER 13）
+     * </pre>
+     *
+     * <p>论文要的是**从 {@code resp_anc} 里解析出来的**候选 Bloom 密文；
+     * 我们没有 {@code Pack}，所以只能把载荷里的 {@code ℓ_BF} 位重新加密成一个槽位密文。
+     * <b>这就是缺陷总表的 D2</b>，而 D2 的根因是 Pack 缺失，不是独立 bug。
+     *
+     * <p>这个函数存在的意义是**让那处替代在调用点上看得见** ——
+     * 否则 {@code padToSlots + encryptBloomVector} 会看起来像论文本来就这么做。
+     *
+     * @param bits 长度必须等于 {@code ℓ_BF}（载荷里那一截），元素 0/1
+     */
+    public static Ciphertext encryptCandidateBloom(BloomChannel.Scorer sc, long[] bits, int lBf) {
+        if (bits.length != lBf) {
+            throw new IllegalArgumentException("候选 Bloom 段长度 " + bits.length
+                + " != ℓ_BF " + lBf);
+        }
+        return BloomScoring.encryptBloomVector(sc.m, BloomChannel.padToSlots(bits, sc.slots));
     }
 
     /**
@@ -309,9 +246,37 @@ public final class CapeBloomScore {
         return s;
     }
 
-    /** 载荷里的指纹（{@code payload[0]}）。用于 P0-4 的 {@code f != fp(K) => 空}。 */
-    public static long fingerprintOf(long[] payload) {
-        return payload.length > 0 ? payload[0] : 0;
+    /**
+     * 载荷里的指纹 {@code f} —— A1 DECODE 5 的 {@code Recover} 里那一位，
+     * 用于 A1 DECODE 6 的 {@code f ≠ fp(K) ⇒ ⊥}。
+     *
+     * <p>⚠️ <b>不是一个槽</b>：论文 §5.1 的指纹是 <b>40 bit</b>，而我们与论文的
+     * {@code t} 都装不进一个槽（{@code t = 2^32} 是 32 bit/槽，论文的 65537 是 16 bit/槽）
+     * ⇒ 它占 {@code FusePirSetup.fpSlots(t)} 个槽。
+     * 这里用 {@code BffSetup.fpFromDigits} 把它们拼回 40-bit 值。
+     *
+     * <p>⚠️ 本函数此前是 {@code return payload[0]} —— 40-bit 上线后那会**静默取到
+     * 指纹的低 32 位**，于是 `f ≠ fp(K)` 恒成立、所有查询都返回 ⊥。
+     *
+     * @param t 载荷域（native 信道），必须与构造侧同一个
+     */
+    public static long fingerprintOf(long[] payload, long t) {
+        final int fpSlots = FusePirSetup.fpSlots(t);
+        if (payload.length < fpSlots) {
+            return 0;
+        }
+        return BffSetup.fpFromDigits(payload, 0, fpSlots, t);
+    }
+
+    /**
+     * {@code m_i}（候选数）—— A1 DECODE 5 的 {@code Recover} 里的第二位。
+     *
+     * <p>⚠️ 它的下标随 {@code fpSlots} 走（{@code FusePirSetup.countOffset}）。
+     * 本函数此前写成 {@code payload[1]}。
+     */
+    public static int valueCountOf(long[] payload, long t) {
+        final int off = FusePirSetup.countOffset(FusePirSetup.fpSlots(t));
+        return off < payload.length ? (int) payload[off] : 0;
     }
 
     // ------------------------------------------------------------------
@@ -339,9 +304,9 @@ public final class CapeBloomScore {
         int lBf = args.length > 1 ? Integer.parseInt(args[1]) : 18;
 
         System.out.println("=== CAPE A2 ANSWER 4-8：每候选密文分数 自检 ===");
-        System.out.printf("[参数] N=%d  l_BF=%d  t=%d（打分信道）%n%n", n, lBf, SCORE_T);
+        System.out.printf("[参数] N=%d  l_BF=%d  t=%d（打分信道）%n%n", n, lBf, BloomChannel.SCORE_T);
 
-        Scorer sc = setup(n);
+        BloomChannel.Scorer sc = BloomChannel.setup(n);
         System.out.printf("[setup] 打分信道 %.0f ms，槽数 = %d%n", (double) sc.setupMs, sc.slots);
         System.out.printf("        %s%n%n", sc.m.describe());
 
@@ -358,8 +323,8 @@ public final class CapeBloomScore {
         {
             boolean[] one = new boolean[lBf];
             one[7] = true;
-            long[] sv = toSlotVector(one, sc.slots);
-            long[] back = decryptSlots(sc, BloomScoring.encryptBloomVector(sc.m, sv));
+            long[] sv = BloomChannel.toSlotVector(one, sc.slots);
+            long[] back = BloomChannel.decryptSlots(sc, BloomScoring.encryptBloomVector(sc.m, sv));
             int mism = 0;
             for (int i = 0; i < sc.slots; i++) {
                 if (back[i] != sv[i]) {
@@ -378,14 +343,10 @@ public final class CapeBloomScore {
             bQry[i] = true;
         }
         long tau = 0;
-        for (boolean b : bQry) {
-            if (b) {
-                tau++;
-            }
-        }
+        tau = BfGen.hammingWeight(bQry);
         System.out.printf("       b_qry 置位 = %d 个，tau = %d%n", tau, tau);
 
-        Ciphertext qBF = encryptQuery(sc, bQry);
+        Ciphertext qBF = BloomChannel.encryptQuery(sc, bQry);
 
         long[] hit = bitsOf(bQry);                 // 完全命中
         long[] extra = bitsOf(bQry);
@@ -422,7 +383,7 @@ public final class CapeBloomScore {
             for (int i = 0; i < lBf; i++) {
                 t1[i] = 1;                          // 全部 l_BF 位都置 1
             }
-            Ciphertext ct = BloomScoring.encryptBloomVector(sc.m, padToSlots(t1, sc.slots));
+            Ciphertext ct = BloomScoring.encryptBloomVector(sc.m, BloomChannel.padToSlots(t1, sc.slots));
             Ciphertext sc1 = BloomScoring.bloomScore(sc.m, sc.galoisKeys, qBF, ct);
             long got = BloomScoring.decodeScore(sc.m, sc1);
             check("T1 候选 = 前 l_BF 位全 1 -> s = tau（下标 >= l_BF 的槽对结果无贡献）",
@@ -435,7 +396,7 @@ public final class CapeBloomScore {
         System.out.println();
         System.out.println("---------------- 4. 负对照（没有这些，判定做了没有证据）----------------");
         {
-            Ciphertext ctHit = BloomScoring.encryptBloomVector(sc.m, padToSlots(hit, sc.slots));
+            Ciphertext ctHit = BloomScoring.encryptBloomVector(sc.m, BloomChannel.padToSlots(hit, sc.slots));
             long honest = BloomScoring.decodeScore(sc.m,
                 BloomScoring.bloomScore(sc.m, sc.galoisKeys, qBF, ctHit));
             System.out.printf("      [基线] 诚实算出来的 s = %d（tau = %d）%n", honest, tau);
@@ -443,7 +404,7 @@ public final class CapeBloomScore {
 
             // N1：空查询（tau=0）—— 若判定真在比 tau，则任何候选都不该以 s=tau 通过
             boolean[] empty = new boolean[lBf];
-            Ciphertext qEmpty = encryptQuery(sc, empty);
+            Ciphertext qEmpty = BloomChannel.encryptQuery(sc, empty);
             long sEmpty = BloomScoring.decodeScore(sc.m,
                 BloomScoring.bloomScore(sc.m, sc.galoisKeys, qEmpty, ctHit));
             check("N1 空查询 b_qry 全 0 -> s = 0（而不是碰巧等于 tau）", sEmpty == 0,
@@ -464,7 +425,7 @@ public final class CapeBloomScore {
             boolean[] other = new boolean[lBf];
             other[0] = true;
             other[1] = true;
-            Ciphertext qOther = encryptQuery(sc, other);
+            Ciphertext qOther = BloomChannel.encryptQuery(sc, other);
             long sOther = BloomScoring.decodeScore(sc.m,
                 BloomScoring.bloomScore(sc.m, sc.galoisKeys, qOther, ctHit));
             check("N3 换成另一个 q_BF -> 分数改变（分数确实依赖查询）", sOther != tau,
@@ -495,10 +456,10 @@ public final class CapeBloomScore {
         return out;
     }
 
-    private static void scoreCase(Scorer sc, Ciphertext qBF, long tau, String what,
+    private static void scoreCase(BloomChannel.Scorer sc, Ciphertext qBF, long tau, String what,
                                   long[] candidateBits, long expected) {
         Ciphertext ctBF = BloomScoring.encryptBloomVector(sc.m,
-            padToSlots(candidateBits, sc.slots));
+            BloomChannel.padToSlots(candidateBits, sc.slots));
         Ciphertext score = BloomScoring.bloomScore(sc.m, sc.galoisKeys, qBF, ctBF);
         long got = BloomScoring.decodeScore(sc.m, score);
         boolean ok = got == expected;
@@ -506,22 +467,9 @@ public final class CapeBloomScore {
             + (ok && expected == tau ? " -> 接受" : ok ? "" : " X"));
     }
 
-    /** 解密整条密文的全部槽（自检用；只有客户端侧有 sk）。 */
-    public static long[] decryptSlots(Scorer sc, Ciphertext ct) {
-        Ciphertext copy = new Ciphertext();
-        copy.copyFrom(ct);
-        if (copy.isNttForm()) {
-            sc.m.evaluator.transformFromNttInplace(copy);
-        }
-        Plaintext pt = new Plaintext(sc.m.n);
-        sc.m.decryptor.decrypt(copy, pt);
-        long[] slots = new long[sc.slots];
-        new BatchEncoder(sc.m.context).decode(pt, slots);
-        return slots;
-    }
 
-    private static boolean allSlotsEqual(Scorer sc, Ciphertext ct) {
-        long[] s = decryptSlots(sc, ct);
+    private static boolean allSlotsEqual(BloomChannel.Scorer sc, Ciphertext ct) {
+        long[] s = BloomChannel.decryptSlots(sc, ct);
         for (int i = 1; i < s.length; i++) {
             if (s[i] != s[0]) {
                 return false;
@@ -530,8 +478,8 @@ public final class CapeBloomScore {
         return true;
     }
 
-    private static int countDistinctSlots(Scorer sc, Ciphertext ct) {
-        long[] s = decryptSlots(sc, ct);
+    private static int countDistinctSlots(BloomChannel.Scorer sc, Ciphertext ct) {
+        long[] s = BloomChannel.decryptSlots(sc, ct);
         int bad = 0;
         for (int i = 1; i < s.length; i++) {
             if (s[i] != s[0]) {

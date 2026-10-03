@@ -74,7 +74,7 @@ public final class CapeCGridProbe {
         CapeDemoData db = CapeDemoData.load(dbPath);
         int maxValues = db.intMeta("maxValues", 3);
         int lBf = db.intMeta("lBf", 35);
-        int bPay = 2 + maxValues * (1 + lBf);
+        int bPay = FusePirSetup.payloadBpay(1, maxValues, 1 + lBf);   // 1 槽指纹夹具
         int units = k * bPay;
 
         int cellsPerCol = FusePirSetup.cellsPerCol(r, maxValues);

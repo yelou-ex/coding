@@ -1,5 +1,9 @@
 package com.fusepir.cape;
 
+import com.fusepir.common.BfGen;
+
+import com.fusepir.fusepir.*;
+
 
 import com.fusepir.prim.*;
 import edu.alibaba.mpc4j.crypto.fhe.seal.Ciphertext;
@@ -74,13 +78,19 @@ public final class CapeQueryDecode {
             System.out.printf("    %s → %s%n", e.keyword, java.util.Arrays.toString(e.values));
         }
 
-        // 值 → 关联的关键字集合（决定 Bloom）
-        java.util.Map<Integer, java.util.Set<String>> kwOfValue = new java.util.TreeMap<>();
+        // 值 → 关联的关键字集合（决定 Bloom）—— A2 SETUP 3-4 的 S_v
+        // ⚠️ 2026-10-14 深夜：这里原先与 bff/CapeDemoData **各写一份**；
+        //    现在两边都走 bloom/BloomSetup.valueToKeywords（唯一实现）。
+        java.util.Map<String, java.util.List<Integer>> kwToVals = new java.util.LinkedHashMap<>();
         for (Entry e : db) {
+            java.util.List<Integer> vs = new java.util.ArrayList<>();
             for (int v : e.values) {
-                kwOfValue.computeIfAbsent(v, x -> new java.util.TreeSet<>()).add(e.keyword);
+                vs.add(v);
             }
+            kwToVals.put(e.keyword, vs);
         }
+        java.util.Map<Integer, java.util.List<String>> kwOfValue =
+            com.fusepir.bloom.BloomSetup.valueToKeywords(kwToVals);
         System.out.println("    值 → 关联关键字：");
         kwOfValue.forEach((v, ks) -> System.out.printf("        v=%-3d ← %s%n", v, ks));
 
@@ -113,7 +123,7 @@ public final class CapeQueryDecode {
             payload[i][0] = Math.floorMod(e.keyword.hashCode(), 1000) + 1;   // 指纹
             payload[i][1] = e.values.length;                                  // 数量（用高位存长度）
             for (int j = 0; j < e.values.length; j++) {
-                int base = 2 + j * (1 + lBf);       // j 从 0 起
+                int base = FusePirSetup.valueOffset(1, j, 1 + lBf);       // j 从 0 起（本探针自用 1 槽指纹）
                 payload[i][base] = e.values[j];
                 long[] b = bloom.get(e.values[j]);
                 for (int bi = 0; bi < lBf; bi++) payload[i][base + 1 + bi] = b[bi];
@@ -228,8 +238,7 @@ public final class CapeQueryDecode {
                 for (int bi = 0; bi < lBf; bi++) qBf[bi] |= b[bi];
             }
         }
-        long tau = 0;
-        for (long v : qBf) tau += v;
+        long tau = BfGen.hammingWeight(qBf);
         System.out.printf("    自举密钥 %d 个 RGSW，%.0f ms%n", d, (double) bkMs);
         System.out.printf("    行索引密文 %d 条（每个 BFF 位置一条）%n", kBff);
         System.out.printf("    查询 Bloom b_qry = %s，τ = |b_qry|₁ = %d%n",

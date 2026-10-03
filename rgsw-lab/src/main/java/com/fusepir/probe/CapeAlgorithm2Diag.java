@@ -1,5 +1,7 @@
 package com.fusepir.probe;
 
+import com.fusepir.common.BfGen;
+
 
 import com.fusepir.bloom.*;
 import com.fusepir.bff.*;
@@ -137,11 +139,7 @@ public final class CapeAlgorithm2Diag {
         }
         boolean[] bQry = bf.bits(query.subList(1, query.size()));
         long tau = 0;
-        for (boolean b : bQry) {
-            if (b) {
-                tau++;
-            }
-        }
+        tau = BfGen.hammingWeight(bQry);
         System.out.println("  查询（来自公开池子，不是隐私）: " + query);
         System.out.printf("  tau = ||b_qry||_1 = %d（**从不进入任何响应**）%n", tau);
         System.out.println("  b_qry 置位下标 = " + setBits(bQry));
@@ -202,14 +200,14 @@ public final class CapeAlgorithm2Diag {
         for (int i = 0; i < skWire.length; i++) {
             skWire[i] = ((Number) skBytes.get(i)).longValue();
         }
-        CapeBloomScore.Scorer tmp = CapeBloomScore.setup(n);
-        SecretKey sharedSk = CapeScorerWire.deserializeKey(tmp, skWire);
-        CapeBloomScore.Scorer sc = CapeBloomScore.setup(n, sharedSk);
+        BloomChannel.Scorer tmp = BloomChannel.setup(n);
+        SecretKey sharedSk = ScorerWire.deserializeKey(tmp, skWire);
+        BloomChannel.Scorer sc = BloomChannel.setup(n, sharedSk);
         System.out.println();
         System.out.println("---------------- 3. 完整判定（已取到服务端那把打分 sk）----------------");
         System.out.printf("  [scorer] 槽数=%d（sk 与服务端同一把）%n%n", sc.slots);
 
-        long[] qbfWire = CapeBloomScore.encryptQueryWire(sc, bQry);
+        long[] qbfWire = BloomChannel.encryptQueryWire(sc, bQry);
         System.out.printf("  q_BF 密文 %d 字节（%.1f KB）%n", qbfWire.length, qbfWire.length / 1024.0);
         // 锚查询的位置分量（公开哈希算出）：本类用的是池子里的查询，
         // 它的锚**未必**是关键词 #0 —— 所以必须显式带上，否则服务端只能返回 ⊥。
@@ -389,8 +387,8 @@ public final class CapeAlgorithm2Diag {
 
     /** 服务端侧：把候选 j 的 Bloom 段编成一条槽位密文 {@code ct_BF_j}（A2 ANSWER 4）。 */
     public static edu.alibaba.mpc4j.crypto.fhe.seal.Ciphertext encryptBloomSegment(
-        CapeBloomScore.Scorer sc, long[] bits) {
-        return BloomScoring.encryptBloomVector(sc.m, CapeBloomScore.padToSlots(bits, sc.slots));
+        BloomChannel.Scorer sc, long[] bits) {
+        return BloomScoring.encryptBloomVector(sc.m, BloomChannel.padToSlots(bits, sc.slots));
     }
 
     /**

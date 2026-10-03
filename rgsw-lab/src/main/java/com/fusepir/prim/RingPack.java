@@ -153,6 +153,7 @@ public final class RingPack {
      */
     public static Ciphertext pack(Mpc4jRgsw m, BatchEncoder be, Ciphertext[][] swk,
                                   int base, int digits, long[][] as, long[] bs, int[] slots) {
+        requireGadgetCovers(m.t, base, digits);
         Ciphertext acc = null;
         Ciphertext one = oneNtt(m);
         for (int i = 0; i < bs.length; i++) {
@@ -189,6 +190,43 @@ public final class RingPack {
             acc = (acc == null) ? selected : m.add(acc, selected);
         }
         return acc;
+    }
+
+    /**
+     * <b>前置条件：gadget 必须覆盖整个模数，即 {@code base^digits ≥ t}。</b>
+     *
+     * <p>为什么必须炸出来：{@link #pack} 对每条 {@code a_j} 只迭代 {@code digits} 次
+     * {@code digit = remaining % base; remaining /= base}，循环结束就把 {@code remaining}
+     * <b>丢掉</b>。若 {@code base^digits < t}，所有 {@code a_j ≥ base^digits} 的<b>高位被静默截断</b>
+     * —— 产物仍是一条"看起来正常"的密文，只是相位错了，解出来的槽位全是错的。
+     * 这正是本项目反复踩到的"假阴性"类别，所以做成断言而不是注释。
+     *
+     * <p>实测口径：{@code main} 用 {@code base=1<<8, digits=3} ⇒ 覆盖 {@code 2^24}。
+     * <ul>
+     *   <li>{@code t=65537}（论文 t、本项目打分域）⇒ {@code 2^24 > t} ✅ 够用，这也是原型 6/6 成立的原因；</li>
+     *   <li>{@code t=2^32}（本项目 native 载荷域）⇒ 只覆盖 {@code 1/256}，几乎每条 {@code a_j} 都被截断。
+     *       要用 {@code t=2^32} 就必须 {@code base=1<<16, digits=2}（恰好覆盖 {@code 2^32}，
+     *       且 {@code base ≤ t/2} 仍在明文窗口内）。</li>
+     * </ul>
+     *
+     * <p>自检见 {@code main} 的 P6.1–P6.7（含 {@code 2^8·2 = 65536 < 65537} 这种只差 1 的边界，
+     * 以及 t=2^32 那一对正/负对照；P6.7 专门验证 {@link #pack} 真的调了本守卫）。
+     */
+    private static void requireGadgetCovers(long t, int base, int digits) {
+        if (base < 2) {
+            throw new IllegalArgumentException("gadget 底必须 ≥ 2，否则分解不前进（base=" + base + "）");
+        }
+        if (digits < 1) {
+            throw new IllegalArgumentException("gadget 段数必须 ≥ 1（digits=" + digits + "）");
+        }
+        BigInteger coverage = BigInteger.valueOf(base).pow(digits);
+        BigInteger tt = BigInteger.valueOf(t);
+        if (coverage.compareTo(tt) < 0) {
+            throw new IllegalArgumentException(String.format(
+                "gadget 覆盖不足：base^digits = %d^%d = %s < t = %d，"
+                    + "pack 会静默丢弃每条 a_j 的高位（要求 base^digits ≥ t）",
+                base, digits, coverage, t));
+        }
     }
 
     // ==================================================================
@@ -319,6 +357,30 @@ public final class RingPack {
         // ---------- P5 尺度：真实 LWE 样本来在 q 尺度，必须缩放才能进这个构造 ----------
         System.out.println();
         boolean scalePass = scaleStepTest(m, be, gk, bits, rnd);
+
+        // ---------- P6 gadget 覆盖前置条件的正 / 负对照 ----------
+        //   没有这一条，requireGadgetCovers 就只是一句没人验证过的注释。
+        //   刻意**逐条**报，不用一个布尔量兜住 6 个子项——那正是本项目反复踩的"假通过"类别。
+        System.out.println();
+        System.out.println("--- P6 gadget 覆盖前置条件 base^digits ≥ t 的正 / 负对照 ---");
+        int gFail = 0;
+        gFail += sub("P6.1", "t=65537, 2^8·3 覆盖 2^24 ≥ t ⇒ 必须放行", !throwsCoverage(65537L, 1 << 8, 3));
+        gFail += sub("P6.2", "t=65537, 2^8·2 只覆盖 65536 < 65537 ⇒ 必须拦下（只差 1）", throwsCoverage(65537L, 1 << 8, 2));
+        gFail += sub("P6.3", "base=1 分解不前进 ⇒ 必须拦下", throwsCoverage(65537L, 1, 3));
+        gFail += sub("P6.4", "digits=0 一次都不分解 ⇒ 必须拦下", throwsCoverage(65537L, 1 << 8, 0));
+        // 真参数点：本项目 native 载荷域 t=2^32 下，原型那套 2^8/3 会静默截断高位
+        gFail += sub("P6.5", "t=2^32, 2^8·3 只覆盖 2^24 / 2^32 ⇒ 必须拦下", throwsCoverage(4294967296L, 1 << 8, 3));
+        gFail += sub("P6.6", "t=2^32, 2^16·2 恰好覆盖 2^32 ⇒ 必须放行", !throwsCoverage(4294967296L, 1 << 16, 2));
+        // P6.7 接线检查：上面的纯函数确实被 pack 调用（防止"守卫写在旁边没人用"）
+        boolean packThrows = false;
+        try {
+            pack(m, be, swk, 1 << 8, 2, as, bs, slots);
+        } catch (IllegalArgumentException e) {
+            packThrows = true;
+        }
+        gFail += sub("P6.7", "真调 pack（gadget 覆盖 65536 < t）也必须炸，而不是静默截断", packThrows);
+        report("P6 gadget 覆盖不足时必须拒绝打包（而不是静默截断每条 a_j 的高位）", gFail == 0,
+            String.format("7 个子项中 %d 项未达成", gFail));
 
         System.out.println();
         if (failed == 0) {
@@ -453,6 +515,22 @@ public final class RingPack {
 
     private static long centered(long v, long t) {
         return v > t / 2 ? v - t : v;
+    }
+
+    /** 负对照助手：{@code requireGadgetCovers} 在给定 gadget 下是否<b>必须</b>拒绝。 */
+    private static boolean throwsCoverage(long t, int base, int digits) {
+        try {
+            requireGadgetCovers(t, base, digits);
+            return false;
+        } catch (IllegalArgumentException e) {
+            return true;
+        }
+    }
+
+    /** 单个子项：打印 [PASS]/[FAIL] 并返回 0/1，便于把失败定位到具体一条。 */
+    private static int sub(String id, String name, boolean ok) {
+        System.out.println("      " + (ok ? "[PASS] " : "[FAIL] ") + id + " " + name);
+        return ok ? 0 : 1;
     }
 
     /** {@code x ∈ Z_q} → {@code Z_t}：四舍五入 {@code x·t/q} 后取模 t。 */

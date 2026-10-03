@@ -1,5 +1,7 @@
 package com.fusepir.probe;
 
+import com.fusepir.common.BfGen;
+
 
 import com.fusepir.bloom.*;
 import com.fusepir.cape.*;
@@ -56,9 +58,9 @@ public final class CapeWireFormatProbe {
         int lBf = args.length > 1 ? Integer.parseInt(args[1]) : 18;
 
         System.out.println("=== 打分信道线上往返探针 ===");
-        System.out.printf("[参数] N=%d  l_BF=%d  t=%d%n%n", n, lBf, CapeBloomScore.SCORE_T);
+        System.out.printf("[参数] N=%d  l_BF=%d  t=%d%n%n", n, lBf, BloomChannel.SCORE_T);
 
-        CapeBloomScore.Scorer sc = CapeBloomScore.setup(n);
+        BloomChannel.Scorer sc = BloomChannel.setup(n);
         System.out.printf("[setup] 打分信道 %.0f ms，槽数=%d%n%n",
             (double) sc.setupMs, sc.slots);
 
@@ -68,13 +70,9 @@ public final class CapeWireFormatProbe {
             bQry[i] = true;
         }
         long tau = 0;
-        for (boolean b : bQry) {
-            if (b) {
-                tau++;
-            }
-        }
+        tau = BfGen.hammingWeight(bQry);
         System.out.println("---------------- 1. 客户端：q_BF 序列化成字节 ----------------");
-        long[] slots = CapeBloomScore.toSlotVector(bQry, sc.slots);
+        long[] slots = BloomChannel.toSlotVector(bQry, sc.slots);
         SealSerializable<Ciphertext> ser = sc.m.encryptor.encryptSymmetric(encode(sc, slots));
         byte[] wire = ser.save();
         // 注：encryptSymmetric 返回的是 SealSerializable<Ciphertext>，不是 Ciphertext
@@ -93,7 +91,7 @@ public final class CapeWireFormatProbe {
         Ciphertext qBFLoaded = new Ciphertext();
         qBFLoaded.load(sc.m.context, wire);
         // 槽位逐位对拍（这一条证明"搬过线的就是同一条密文"）
-        long[] back = CapeBloomScore.decryptSlots(sc, qBFLoaded);
+        long[] back = BloomChannel.decryptSlots(sc, qBFLoaded);
         int mism = 0;
         for (int i = 0; i < slots.length; i++) {
             if (back[i] != slots[i]) {
@@ -110,7 +108,7 @@ public final class CapeWireFormatProbe {
             candBits[i] = bQry[i] ? 1 : 0;      // 完全命中
         }
         Ciphertext ctBF = BloomScoring.encryptBloomVector(sc.m,
-            CapeBloomScore.padToSlots(candBits, sc.slots));
+            BloomChannel.padToSlots(candBits, sc.slots));
         long scLocal = BloomScoring.decodeScore(sc.m,
             BloomScoring.bloomScore(sc.m, sc.galoisKeys, freshQuery(sc, slots), ctBF));
         long scWire = BloomScoring.decodeScore(sc.m,
@@ -169,8 +167,8 @@ public final class CapeWireFormatProbe {
      *
      * <h3>为什么单开一段测它</h3>
      * 列选择子流实测约 41 MB（k×C = 78 条 × 524,401 字节）。走
-     * {@link CapeScorerWire#bytesToWire} 那种"一字节一个 JSON 数字"会编出上亿个数字，
-     * 所以 P1-1 用了 {@link CapeScorerWire#bytesToPackedWire}（7 字节/long）。
+     * {@link ScorerWire#bytesToWire} 那种"一字节一个 JSON 数字"会编出上亿个数字，
+     * 所以 P1-1 用了 {@link ScorerWire#bytesToPackedWire}（7 字节/long）。
      * 这是一条<b>新的编解码路径</b>，而新编解码路径必须有往返断言 + 负对照，
      * 否则"打包对了"只是个说法。
      *
@@ -199,10 +197,10 @@ public final class CapeWireFormatProbe {
             len, k, c, perSel);
 
         long t0 = System.nanoTime();
-        long[] packed = CapeScorerWire.bytesToPackedWire(blob);
+        long[] packed = ScorerWire.bytesToPackedWire(blob);
         long packMs = (System.nanoTime() - t0) / 1_000_000;
         t0 = System.nanoTime();
-        byte[] back = CapeScorerWire.packedWireToBytes(packed, len);
+        byte[] back = ScorerWire.packedWireToBytes(packed, len);
         long unpackMs = (System.nanoTime() - t0) / 1_000_000;
         int diff = 0;
         for (int i = 0; i < len; i++) {
@@ -228,7 +226,7 @@ public final class CapeWireFormatProbe {
         // 变成一个"合法的、但选错列的查询"，那是最坏的一种失败。
         boolean threw = false;
         try {
-            CapeScorerWire.packedWireToBytes(new long[10], len);
+            ScorerWire.packedWireToBytes(new long[10], len);
         } catch (IllegalArgumentException e) {
             threw = true;
         }
@@ -237,14 +235,14 @@ public final class CapeWireFormatProbe {
     }
 
     /** 把槽位向量编成 Plaintext（NTT 域/系数域交给 SEAL 自己按需处理）。 */
-    private static Plaintext encode(CapeBloomScore.Scorer sc, long[] slots) {
+    private static Plaintext encode(BloomChannel.Scorer sc, long[] slots) {
         Plaintext pt = new Plaintext();
         new BatchEncoder(sc.m.context).encode(slots, pt);
         return pt;
     }
 
     /** 本地新造一条 q_BF（作为"没过线"的对照）。 */
-    private static Ciphertext freshQuery(CapeBloomScore.Scorer sc, long[] slots) {
+    private static Ciphertext freshQuery(BloomChannel.Scorer sc, long[] slots) {
         Ciphertext ct = new Ciphertext();
         sc.m.encryptor.encryptSymmetric(encode(sc, slots), ct);
         return ct;

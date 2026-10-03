@@ -156,6 +156,37 @@ public final class BfGen {
         return out;
     }
 
+    /**
+     * <b>论文 A2 QUERY 第 3 行 {@code τ ← ‖b_qry‖₁}</b> —— 查询向量 b_qry 的汉明重量。
+     *
+     * <p>{@code τ} 是 CAPE 的接受阈值：客户端拿它跟 {@code s_j = Dec(ct_score,j)} 比，
+     * 相等才收（A2 DECODE 9）。所以它**只在客户端**，从不进任何报文。
+     *
+     * <p>⚠️ 2026-10-14 深夜：这条算式此前在**全项目 9 处**各写一遍
+     * （`for (boolean b : bQry) { if (b) tau++; }`）。它是伪代码里**有编号的一行**，
+     * 不该靠各处手抄 —— 抄错一处就是"阈值错了但查询看起来正常"。
+     */
+    public static int hammingWeight(boolean[] bits) {
+        int w = 0;
+        for (boolean b : bits) {
+            if (b) {
+                w++;
+            }
+        }
+        return w;
+    }
+
+    /** {@link #hammingWeight(boolean[])} 的 {@code long[]}（0/1 槽向量）版本。 */
+    public static int hammingWeight(long[] bits) {
+        int w = 0;
+        for (long v : bits) {
+            if (v != 0) {
+                w++;
+            }
+        }
+        return w;
+    }
+
     /** 置位位置（诊断/人工核对用）。 */
     public int[] positions(String keyword) {
         byte[] base = keyword.getBytes(StandardCharsets.UTF_8);

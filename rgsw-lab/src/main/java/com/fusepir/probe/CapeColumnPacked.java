@@ -1,5 +1,7 @@
 package com.fusepir.probe;
 
+import com.fusepir.fusepir.*;
+
 
 import com.fusepir.prim.*;
 import edu.alibaba.mpc4j.crypto.fhe.seal.Ciphertext;
@@ -94,7 +96,7 @@ public final class CapeColumnPacked {
             payload[i][0] = Math.floorMod(kw[i].hashCode(), 1000) + 1;
             payload[i][1] = db[i].length;
             for (int j = 0; j < db[i].length; j++) {
-                int base = 2 + j * (1 + lBf);
+                int base = FusePirSetup.valueOffset(1, j, 1 + lBf);   // 1 槽指纹夹具
                 payload[i][base] = db[i][j];
                 long[] b = bloom.get(db[i][j]);
                 for (int bi = 0; bi < lBf; bi++) payload[i][base + 1 + bi] = b[bi];

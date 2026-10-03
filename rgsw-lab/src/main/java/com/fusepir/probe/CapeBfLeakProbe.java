@@ -61,11 +61,7 @@ public final class CapeBfLeakProbe {
                 new java.util.ArrayList<>(java.util.Arrays.asList(kws).subList(1, kws.length));
             boolean[] bits = g.bits(others);
             int w = 0;
-            for (boolean b : bits) {
-                if (b) {
-                    w++;
-                }
-            }
+            w = BfGen.hammingWeight(bits);
             System.out.printf("  %-34s τ = %d%n", String.join(" + ", kws), w);
         }
 

@@ -98,7 +98,7 @@ public final class CapeEndToEndNative {
         kwOf.forEach((v, ks) -> bV.put(v, bfGen.bits(ks)));
 
         int lBf = bfGen.length();
-        int bPay = 2 + maxValues * (1 + lBf);
+        int bPay = FusePirSetup.payloadBpay(1, maxValues, 1 + lBf);   // 1 槽指纹夹具
         System.out.printf("    %s（ε_BF=2^%.0f 是【玩具值】，论文 2^-20）%n",
             bfGen, Math.log(DEMO_EPS_BF) / Math.log(2));
         System.out.printf("    R×C = %d×%d = %d，B_pay = %d，maxValues = %d%n", R, C, R * C, bPay, maxValues);
@@ -109,7 +109,7 @@ public final class CapeEndToEndNative {
             payload[i][0] = Math.floorMod(kw[i].hashCode(), 1000) + 1;
             payload[i][1] = dbValues[i].length;
             for (int j = 0; j < dbValues[i].length; j++) {
-                int base = 2 + j * (1 + lBf);
+                int base = FusePirSetup.valueOffset(1, j, 1 + lBf);
                 payload[i][base] = dbValues[i][j];
                 boolean[] bv = bV.get(dbValues[i][j]);
                 for (int bi = 0; bi < lBf; bi++) {

@@ -1,5 +1,9 @@
 package com.fusepir.cape;
 
+import com.fusepir.bloom.*;
+
+import com.fusepir.common.BfGen;
+
 import com.fusepir.fusepir.*;
 
 
@@ -88,7 +92,7 @@ public final class CapeDemoService {
      *
      * <p>{@code -Dcape.nocape=true} 可跳建（把 SETUP 省下约 1.5 s，用于快速冒烟）。
      */
-    private final CapeBloomScore.Scorer scorer;
+    private final BloomChannel.Scorer scorer;
     private final long scoreSetupMs;
 
     // ---- last query, for polling ----
@@ -120,7 +124,7 @@ public final class CapeDemoService {
         // 所以本服务持有**两个** SEAL 上下文：native 的（t=库里值，跑盲旋转）
         // 与 Java 的（t=65537，跑加密 Bloom 打分）。这是一处必须写进报告的口径差。
         long s0 = System.nanoTime();
-        this.scorer = Boolean.getBoolean("cape.nocape") ? null : CapeBloomScore.setup(n);
+        this.scorer = Boolean.getBoolean("cape.nocape") ? null : BloomChannel.setup(n);
         this.scoreSetupMs = (System.nanoTime() - s0) / 1_000_000;
 
         long n0 = System.nanoTime();
@@ -283,7 +287,7 @@ public final class CapeDemoService {
      */
     private CapeAnswer.Answer answerCape(edu.alibaba.mpc4j.crypto.fhe.seal.Ciphertext qBF,
                                                  long[] payload) {
-        return CapeAnswer.answer(scorer, qBF, payload, tb.maxValues, tb.lBf);
+        return CapeAnswer.answer(scorer, qBF, payload, tb.maxValues, tb.lBf, t);   // t 定 fp 占几个槽
     }
 
     /**
@@ -330,7 +334,7 @@ public final class CapeDemoService {
             return err("qBFBytes 不可用：键存在=" + req.containsKey("qBFBytes")
                 + " 类型=" + (qbfObj == null ? "null" : qbfObj.getClass().getName())
                 + "（默认路径收的是 q_BF 的密文字节，客户端用 "
-                + "CapeBloomScore.encryptQueryWire 生成）");
+                + "BloomChannel.encryptQueryWire 生成）");
         }
 
         // ---------- 锚查询 q_anc（论文 Alg 2 ANSWER 2）----------
@@ -368,10 +372,10 @@ public final class CapeDemoService {
         long s0 = System.nanoTime();
         edu.alibaba.mpc4j.crypto.fhe.seal.Ciphertext qBF;
         try {
-            qBF = CapeScorerWire.deserialize(scorer, qbfWire);
+            qBF = ScorerWire.deserialize(scorer, qbfWire);
         } catch (RuntimeException e) {
             return err("q_BF 反序列化失败（打分信道参数必须与客户端一致：N=" + n
-                + "、scoreT=" + CapeBloomScore.SCORE_T + "）: " + e);
+                + "、scoreT=" + BloomChannel.SCORE_T + "）: " + e);
         }
         CapeAnswer.Answer ans = answerCape(qBF, payload);
         long scoreUs = (System.nanoTime() - s0) / 1_000;
@@ -412,7 +416,7 @@ public final class CapeDemoService {
         List<Object> cands = new ArrayList<>();
         List<Long> ctScoreLens = new ArrayList<>();
         for (CapeAnswer.Cand c : ans.candidates) {
-            long[] bytes = CapeScorerWire.serialize(c.ctScore);
+            long[] bytes = ScorerWire.serialize(c.ctScore);
             Map<String, Object> one = new LinkedHashMap<>();
             // ⚠️ 只放密文长度（公开的元信息），**不放 valueId**
             one.put("ctScoreBytes", bytes);
@@ -469,7 +473,7 @@ public final class CapeDemoService {
         }
         // 包成密文之后走**同一条**正式实现
         Map<String, Object> wrapped = new LinkedHashMap<>();
-        wrapped.put("qBFBytes", CapeBloomScore.encryptQueryWire(scorer, bQry));
+        wrapped.put("qBFBytes", BloomChannel.encryptQueryWire(scorer, bQry));
         // ⚠️ 锚位置要**透传**：runQueryCapeSealed 现在（2026-10-14 晚起）强制要锚查询，
         //    不再静默读关键词 #0。本出口的调用方要么在这条请求里带上
         //    anchorColIdx/anchorRowIdx，要么显式开 -Dcape.fixedAnchor=true。
@@ -553,7 +557,7 @@ public final class CapeDemoService {
     private Map<String, Object> scoreChannelNote() {
         Map<String, Object> m = new LinkedHashMap<>();
         m.put("nativeT", t);
-        m.put("scoreT", CapeBloomScore.SCORE_T);
+        m.put("scoreT", BloomChannel.SCORE_T);
         m.put("why", "BatchEncoder 要求 t ≡ 1 (mod 2N)；t=2^32 下 new BatchEncoder 直接抛 "
             + "\"encryption parameters are not valid for batching\"（实测 CapeScoreChannelProbe）");
         m.put("keys", "两条信道各持一把独立 sk（单进程回环里同一个 JVM 持有两把）");
@@ -579,11 +583,7 @@ public final class CapeDemoService {
         List<String> others = new ArrayList<>(kws.subList(1, kws.size()));
         boolean[] bQry = bloomBits(others);
         long tau = 0;
-        for (boolean b : bQry) {
-            if (b) {
-                tau++;
-            }
-        }
+        tau = BfGen.hammingWeight(bQry);
         long[] cIdx = new long[K];
         long[] rIdx = new long[K];
         for (int a = 0; a < K; a++) {
@@ -767,7 +767,7 @@ public final class CapeDemoService {
         params.put("epsBf", eps());
         // 打分信道（CAPE A2 ANSWER 4-8）的参数：它的 t 与上面那个 t 不同，必须分开报，
         // 否则客户端会拿到错误的模数去造 q_BF（那会静默解出垃圾）。
-        params.put("scoreT", CapeBloomScore.SCORE_T);
+        params.put("scoreT", BloomChannel.SCORE_T);
         params.put("scoreSlots", scorer == null ? -1 : scorer.slots);
         params.put("scoreReady", scorer != null);
         params.put("scoreSetupMs", scoreSetupMs);
@@ -789,7 +789,7 @@ public final class CapeDemoService {
             + "（约 30.9 MB/响应），要等 Pack 的决定。该字段 2026-10-14 晚从 ctPay 改名"
             + "（原名声称是密文、值是明文）");
         proto.put("defaultPathDecision", "客户端 Dec(ct_score) == tau，且 f == fp(K)");
-        proto.put("qbfBytesFrom", "CapeBloomScore.encryptQueryWire(scorer, b_qry)"
+        proto.put("qbfBytesFrom", "BloomChannel.encryptQueryWire(scorer, b_qry)"
             + "（客户端侧加密，服务器只收字节）");
         proto.put("responseDecisionFields", "fingerprint, candidates[].valueId, candidates[].ctScoreBytes");
         proto.put("legacyPath", "POST /api/query  {\"keywords\":[...]} —— 明文合取判定，"
@@ -820,7 +820,7 @@ public final class CapeDemoService {
         if (Boolean.getBoolean("cape.insecure.keyecho") && scorer != null) {
             Map<String, Object> leak = new LinkedHashMap<>();
             leak.put("insecureScoreSecretKeyBytes",
-                CapeScorerWire.serializeKey(scorer.secretKey()));
+                ScorerWire.serializeKey(scorer.secretKey()));
             leak.put("warning", "测试专用：真部署绝不能让服务器吐出 sk");
             m.put("insecureTestOnly", leak);
         }
@@ -1032,12 +1032,8 @@ public final class CapeDemoService {
             db.intMeta("maxSetSize", 4), epsFromMeta(), n);
         boolean[] bQry = bf.bits(query.subList(1, query.size()));
         long tau = 0;
-        for (boolean b : bQry) {
-            if (b) {
-                tau++;
-            }
-        }
-        long[] qbfWire = CapeBloomScore.encryptQueryWire(scorer, bQry);
+        tau = BfGen.hammingWeight(bQry);
+        long[] qbfWire = BloomChannel.encryptQueryWire(scorer, bQry);
         System.out.printf("  τ=%d（只在客户端）；q_BF 密文 %d 字节%n", tau, qbfWire.length);
 
         // ---- 服务器 ANSWER：default path 的那条入口，收字节 ----
@@ -1082,7 +1078,10 @@ public final class CapeDemoService {
         }
         // 候选值由客户端从 ctPay 自己解（服务器不再发 id）—— 论文 §4.1 的要求。
         valueIds.addAll(CapeDecode.decodePayload(resp));
-        long fpWant = CapeDemoData.inField(query.get(0).hashCode(), t);
+        // ⚠️ 此前是 `CapeDemoData.inField(kw.hashCode(), t)` —— 那是**旧的 32-bit 指纹**。
+        // 40-bit 上线后它必然对不上载荷里的指纹 ⇒ P0-4 恒 FAIL。
+        // 现在走 bff 层的唯一实现（A1 SETUP 1 的 fp）。
+        long fpWant = com.fusepir.bff.BffSetup.fp(query.get(0));
 
         int[] counts = {0, 0};
         CapeDecode.DecodeResult dr = decodeWire(valueIds, ctScores, fpWant, fGot, tau,
@@ -1226,7 +1225,6 @@ public final class CapeDemoService {
         CapeDemoData.PoolEntry pe = db.pool.get(0);
         List<String> query = Arrays.asList(pe.kws[0], pe.kws[1]);
         System.out.println("  查询（**不进 JSON**）: " + query);
-
         CapeQuery.Sealed q = CapeQuery.build(ctxHandle, n, K, R, tb.maxValues,
             tb.lBf, db.intMeta("maxSetSize", 4), epsFromMeta(), bootstrapBits(), db.keywords, query,
             true /* P1-1: 列选择子以密文送出 */);
@@ -1689,7 +1687,7 @@ public final class CapeDemoService {
         if (req.containsKey("colSel")) {
             long[] packed = toLongs(req.get("colSel"));
             int byteLen = ((Number) req.get("colSelLen")).intValue();
-            q.selBlob = CapeScorerWire.packedWireToBytes(packed, byteLen);
+            q.selBlob = ScorerWire.packedWireToBytes(packed, byteLen);
         }
         if (req.containsKey("colIdx")) {
             q.colIdx = toLongs(req.get("colIdx"));

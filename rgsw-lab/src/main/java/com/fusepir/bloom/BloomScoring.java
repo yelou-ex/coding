@@ -54,11 +54,19 @@ import edu.alibaba.mpc4j.crypto.fhe.seal.Plaintext;
  */
 public final class BloomScoring {
 
+    /** 第 6 段自检用的 {@code ℓ_BF}：远小于 N，专门覆盖"补齐 + 只折 ℓ_BF 项"这条路径。 */
+    private static final int SMALL_LBF = 18;
+
     private BloomScoring() {
     }
 
     /**
      * 客户端：把 Bloom 向量编成槽位密文。
+     *
+     * <p>⚠️ {@code bits} 的长度必须**恰好等于槽数 N**，不是"≤ N"。
+     * 调用方负责补齐（{@code BloomChannel.padToSlots}），
+     * 而"下标 {@code ≥ ℓ_BF} 的槽为 0"正是折叠只折 {@code ℓ_BF} 项就等于折满 N 项的前提
+     * —— 所以这里同时校验二进制性与长度。
      *
      * @param bits 长度必须等于槽数（= N）；元素取 0/1
      */
@@ -82,39 +90,172 @@ public final class BloomScoring {
     }
 
     /**
-     * 服务端：{@code ct_score ← CtCtMul(q_BF, ct_BF)} 再折叠求和。
+     * 服务端：{@code ct_score ← CtCtMul(q_BF, ct_BF)} 再折叠求和（<b>折全部 N 个槽</b>）。
      *
      * <p>输出密文的<b>每一个槽</b>都等于 {@code ⟨b_qry, b_v⟩}（证明：逐槽相乘得到 qᵢvᵢ，
      * 再把全部 N 个槽平移相加，每个槽就都变成总和）。
      *
-     * @param galoisKeys 需要包含步长 {@code {1,2,4,…,N/2}}；见 {@link #galoisKeysFor}
+     * <p>⚠️ 只有在**不知道 {@code ℓ_BF}** 时才该用这个版本。知道 {@code ℓ_BF} 时请用
+     * {@link #bloomScore(Mpc4jRgsw, GaloisKeys, Ciphertext, Ciphertext, int)} ——
+     * 它按论文折 {@code ⌈log2 ℓ_BF⌉} 轮，**噪声增长比这里小 2^(log2N − log2ℓ_BF) 倍**
+     * （本组参数：2^13 vs 2^5 = 256 倍）。
+     *
+     * @param galoisKeys 需要包含步长 {@code {0} ∪ {1,2,4,…,N/4}}；见 {@link #galoisKeysFor}
      */
     public static Ciphertext bloomScore(Mpc4jRgsw m, GaloisKeys galoisKeys,
                                         Ciphertext queryBloom, Ciphertext candidateBloom) {
-        Evaluator ev = m.evaluator;
-        Ciphertext prod = new Ciphertext();
-        ev.multiply(queryBloom, candidateBloom, prod);
-        ev.relinearizeInplace(prod, m.relinKeys());
+        // A2 ANSWER 4 的 `CtCtMul`（含 relinearize —— 收进 CtOps，免得漏）
+        Ciphertext prod = CtOps.ctCtMul(m, queryBloom, candidateBloom);
         return foldAllSlots(m, galoisKeys, prod);
     }
 
-    /** 折叠：行内按 {@code 2^r} 平移相加，最后做一次列旋转把两行合并。 */
+    /**
+     * 服务端：{@code CtCtMul} + <b>论文形状的折叠</b>（A2 ANSWER 5-6）。
+     *
+     * <p>与 4 参数版的差别只有折叠深度：这里折 {@code ⌈log2 ℓ_BF⌉} 轮，
+     * 而不是折满 {@code N/2} 个槽。
+     *
+     * @param lBf {@code ℓ_BF}，**必须与建表、建查询时用的一致**
+     */
+    public static Ciphertext bloomScore(Mpc4jRgsw m, GaloisKeys galoisKeys,
+                                        Ciphertext queryBloom, Ciphertext candidateBloom,
+                                        int lBf) {
+        // A2 ANSWER 4 的 `CtCtMul`（含 relinearize）
+        Ciphertext prod = CtOps.ctCtMul(m, queryBloom, candidateBloom);
+        return foldSlots(m, galoisKeys, prod, lBf);
+    }
+
+    /**
+     * <b>论文 A2 ANSWER 5-6 的折叠</b>：
+     * <pre>
+     *   for r = 0 to log2 ℓ_BF − 1 do
+     *       ct_score ← CtCtAdd(ct_score, CtRotate(ct_score, 2^r))
+     * </pre>
+     *
+     * <h3>⚠️ 轮数用 ⌈log2 ℓ_BF⌉，不是论文字面的 ⌊log2 ℓ_BF⌋</h3>
+     * 论文那一行写成 {@code log2 ℓ_BF}，而 {@code ℓ_BF} 不是 2 的幂时会**少折一轮**：
+     * {@code ℓ_BF = 18} 时 {@code log2(18) = 4.17} ⇒ 只折 4 轮 ⇒
+     * 只覆盖槽 {@code [0,16)}，**漏掉槽 16、17** ⇒ {@code s_j} 偏小 2 ⇒
+     * 本该接受的候选被拒。⇒ <b>照抄那一行会算错</b>，必须取 ⌈·⌉
+     * （或者约束 {@code ℓ_BF} 是 2 的幂）。
+     *
+     * <h3>为什么可以不做列旋转</h3>
+     * 两侧的向量都经 {@code padToSlots} 补齐 ⇒ 槽 {@code ≥ ℓ_BF} 全为 0
+     * ⇒ 乘积的支撑也全在 {@code [0, ℓ_BF)} 内。当 {@code ℓ_BF ≤ N/2} 时支撑完全落在
+     * <b>第 0 行</b>，所以只需行内平移，<b>列旋转纯属白做</b>（加的是 0，还多一份噪声）。
+     * {@code ℓ_BF > N/2} 时支撑跨两行，退回 {@link #foldAllSlots}。
+     *
+     * <p>正确性前提（由调用方保证，见 {@code BloomChannel.padToSlots}）：
+     * {@code ℓ_BF ≤ N/2} 且两侧向量的 {@code [ℓ_BF, N)} 段为 0。
+     *
+     * <p>⚠️ <b>候选是 {@code Pack} 的产物时不满足这条前提</b>（Bloom 位散布在整个
+     * {@code [0, B_pay)} 上，{@code B_pay = 61} 时最高到槽 60）⇒ 用本方法会<b>静默漏算</b>。
+     * 那种情况下请用 {@link #foldSlotsReaching}（它按最高参与槽取轮数）。
+     * 实测证据与判据见 {@code probe/PackLimbPayloadTest} 的 P4/P6。
+     */
+    public static Ciphertext foldSlots(Mpc4jRgsw m, GaloisKeys galoisKeys, Ciphertext ct, int lBf) {
+        BatchEncoder be = new BatchEncoder(m.context);
+        int slots = be.slotCount();
+        if (lBf <= 0 || lBf > slots) {
+            throw new IllegalArgumentException("ℓ_BF = " + lBf + " 不在 (0, " + slots + "] 内");
+        }
+        if (lBf > slots / 2) {
+            // 支撑跨两行 ⇒ 列旋转是必要的，退回"折满"的那一版
+            return foldAllSlots(m, galoisKeys, ct);
+        }
+        Evaluator ev = m.evaluator;
+        Ciphertext acc = new Ciphertext();
+        acc.copyFrom(ct);
+        // ⌈log2 ℓ_BF⌉ 轮：折完覆盖槽 [0, 2^rounds) ⊇ [0, ℓ_BF)
+        int rounds = 0;
+        for (int step = 1; step < lBf; step *= 2) {
+            ++rounds;
+        }
+        for (int i = 0; i < rounds; i++) {
+            int step = 1 << i;                 // ≤ N/4 < N/2 ⇒ rotateRows 的步长上限内
+            // A2 ANSWER 5 的 `CtRotate(ct, 2^r)`
+            Ciphertext shifted = CtOps.ctRotateRows(m, acc, step, galoisKeys);
+            CtOps.ctCtAddInplace(m, acc, shifted);   // A2 ANSWER 5 的 CtCtAdd
+        }
+        return acc;
+    }
+
+    /**
+     * <b>按"参与槽的最高下标"取折叠轮数</b> —— 当候选是 <b>{@code Pack} 的产物</b>时，
+     * 论文形状的 {@code ⌈log2 ℓ_BF⌉} 轮<b>不够</b>。
+     *
+     * <h3>为什么必须补这个入口（2026-10-15 实测，见 {@code probe/PackLimbPayloadTest}）</h3>
+     * {@link #foldSlots} 的正确性前提写得很清楚：支撑要落在 {@code [0, ℓ_BF)}。
+     * {@code BloomChannel.padToSlots} 造的候选满足它。但 <b>{@code Pack} 的产物不满足</b>——
+     * {@code Pack} 把 {@code B_pay} 个 limb 摆进槽 {@code 0..B_pay−1}，其中
+     * <b>Bloom 位就散布在整个 {@code [0, B_pay)} 上</b>，例如
+     * {@code t=65537}、{@code ℓ_BF=18}、{@code B_pay=61} 时三段 Bloom 位分别起于
+     * <b>槽 5 / 24 / 43</b>。
+     *
+     * <p>而 {@code ⌈log2 18⌉ = 5} 轮只够到 {@code [0,32)} ⇒ <b>槽 32 以上的命中位被静默漏掉</b>：
+     * 实测段 1（命中位在槽 39..41）与段 2（槽 58..60）都算出 <b>0 而不是 3</b>。
+     * 这是"漏算"而不是"算错"—— 分值偏小 ⇒ 本该接受的候选被拒，
+     * 也就是 {@code foldSlots} 注释里已经登记过的那种静默失败。
+     *
+     * <h3>正确的轮数</h3>
+     * {@code ⌈log2(最高参与槽 + 1)⌉}：{@code B_pay = 61} ⇒ 最高参与槽 60 ⇒ <b>6 轮</b>
+     * （够到 {@code [0,64)}）。它严格介于论文形状的 5 轮与 {@link #foldAllSlots} 的 13 轮之间
+     * —— 比论文多 1 轮，比折满少 7 轮。
+     *
+     * <p><b>本方法没有跑在 {@code CapeBloomScore} 那条现行路径上</b>（那里的候选是
+     * {@code BloomChannel} 造的 BF 向量、支撑在 {@code [0, ℓ_BF)}，5 轮是对的）。
+     * 它是为 A1 ANSWER 13 的 {@code Pack} 接线准备的 —— 一旦打包产物成为候选，
+     * 就必须走这一条，否则上面那个漏算会静默上线。
+     *
+     * @param highestSlotInclusive 参与内积的<b>最高槽下标</b>（含）。
+     *                             拿不准就传 {@code B_pay − 1}（载荷摆满时即最大）。
+     *                             传太小会静默漏算，传太大只是多付噪声。
+     */
+    public static Ciphertext bloomScoreReaching(Mpc4jRgsw m, GaloisKeys galoisKeys,
+                                                Ciphertext queryBloom, Ciphertext candidateBloom,
+                                                int highestSlotInclusive) {
+        Ciphertext prod = CtOps.ctCtMul(m, queryBloom, candidateBloom);
+        return foldSlotsReaching(m, galoisKeys, prod, highestSlotInclusive);
+    }
+
+    /**
+     * {@link #bloomScoreReaching} 的折叠那一半；见那里的说明。
+     *
+     * <p>实现在 {@link #foldSlots} 之上：{@code foldSlots} 的轮数算法是
+     * "最小的 {@code r} 使 {@code 2^r ≥ 入参}"，所以传 {@code 最高参与槽 + 1}
+     * 恰好等价于"够到该槽"。支撑跨行（{@code > 槽数/2}）时 {@code foldSlots} 自己会退回折满。
+     */
+    public static Ciphertext foldSlotsReaching(Mpc4jRgsw m, GaloisKeys galoisKeys, Ciphertext ct,
+                                               int highestSlotInclusive) {
+        if (highestSlotInclusive < 0) {
+            throw new IllegalArgumentException("参与槽的最高下标不能为负：" + highestSlotInclusive);
+        }
+        return foldSlots(m, galoisKeys, ct, highestSlotInclusive + 1);
+    }
+
+    /**
+     * <b>折满</b>折叠：行内按 {@code 2^r} 平移相加（{@code r = 1,2,…,N/4}，共 log2(N/2) 轮），
+     * 最后做一次列旋转把两行合并。
+     *
+     * <p>⚠️ 它的轮数是 <b>log2(N/2)+1</b>（N=8192 时 13 轮），而论文只折
+     * {@code ⌈log2 ℓ_BF⌉} 轮。两者在"两侧向量已补齐 0"时**结果相同**，
+     * 但本方法的**噪声增长大 256 倍**（2^13 vs 2^5）。
+     * ⇒ 知道 {@code ℓ_BF} 时请用 {@link #foldSlots}。
+     */
     public static Ciphertext foldAllSlots(Mpc4jRgsw m, GaloisKeys galoisKeys, Ciphertext ct) {
         Evaluator ev = m.evaluator;
         Ciphertext acc = new Ciphertext();
         acc.copyFrom(ct);
         // ① 行内折叠：seal 的两行布局，每行 N/2 个槽；平移步长上限是 N/2−1，所以只到 N/4
         for (int r = 1; r < m.n / 2; r *= 2) {
-            Ciphertext shifted = new Ciphertext();
-            shifted.copyFrom(acc);
-            ev.rotateRowsInplace(shifted, r, galoisKeys);
-            ev.addInplace(acc, shifted);
+            Ciphertext shifted = CtOps.ctRotateRows(m, acc, r, galoisKeys);
+            CtOps.ctCtAddInplace(m, acc, shifted);   // A2 ANSWER 5 的 CtCtAdd
         }
         // ② 合并两行：一次列旋转
         Ciphertext other = new Ciphertext();
         other.copyFrom(acc);
         ev.rotateColumnsInplace(other, galoisKeys);
-        ev.addInplace(acc, other);
+        CtOps.ctCtAddInplace(m, acc, other);   // A2 ANSWER 5 的 CtCtAdd
         return acc;
     }
 
@@ -128,7 +269,16 @@ public final class BloomScoring {
      *   <b>不能取到 N/2</b>：seal 的 {@code getEltFromStep} 在 {@code |step| ≥ N/2} 时抛
      *   {@code step count too large}（实测踩到过）。</li>
      * </ul>
-     * 一共 {@code log₂N} 个——与论文的 {@code for r = 0..log₂ℓ_BF−1} 轮数一致 ✓
+     * 一共 {@code 1 + log₂(N/2)} 个步长（N=8192 时 13 个）。
+     *
+     * <p>⚠️ <b>2026-10-14 深夜更正一句自欺的注释</b>：这里原先写着
+     * 「一共 {@code log₂N} 个 —— 与论文的 {@code for r = 0..log₂ℓ_BF−1} 轮数一致 ✓」。
+     * <b>13 ≠ 5，不一致。</b> 那个 ✓ 把"密钥里的步长个数"与"折叠的轮数"当成了同一件事，
+     * 结果是给"多折了 8 轮、噪声多 256 倍"盖了个章。折叠轮数现在由
+     * {@link #foldSlots} 显式取 {@code ⌈log2 ℓ_BF⌉}。
+     *
+     * <p>步长集合本身仍然按 {@code log2(N/2)} 生成 —— 因为
+     * {@link #foldAllSlots}（不知道 ℓ_BF 时的兜底）需要全套。
      */
     public static GaloisKeys galoisKeysFor(Mpc4jRgsw m) {
         java.util.List<Integer> steps = new java.util.ArrayList<>();
@@ -223,6 +373,46 @@ public final class BloomScoring {
         // ---- 候选 5：全 0 → 应得 0 ----
         check(m, be, gk, qBF, new long[slots], 0, "C5 空候选 → s = 0");
 
+        // ---- 6. ℓ_BF ≪ N：论文形状的折叠（foldSlots）必须与"折满"等价 ----
+        //
+        // ⚠️ 这一段是 2026-10-14 深夜补的。上面 C1..C5 全把 query 铺满**全部** N 个槽
+        //    （ℓ_BF = N），所以它们**测不到 ℓ_BF < N 的情形** —— 而那恰恰是折叠最容易错的一档：
+        //    折少了会漏掉高位（论文那一行的 log2 ℓ_BF 就有这个毛病），
+        //    折多了则纯粹涨噪声。这里用 ℓ_BF = 18 把两边钉在一起。
+        System.out.println();
+        System.out.println("---------------- 6. ℓ_BF = " + SMALL_LBF + " ≪ N：两种折叠必须等价 ----------------");
+        {
+            int lBf = SMALL_LBF;
+            long[] qSmall = new long[slots];
+            long[] cSmall = new long[slots];
+            for (int i = 0; i < lBf; i += 3) {
+                qSmall[i] = 1;                       // b_qry：置位 i = 0,3,6,…
+            }
+            long tauSmall = 0;
+            for (int i = 0; i < lBf; i++) {
+                cSmall[i] = (i % 3 == 0 || i % 5 == 0) ? 1 : 0;   // 候选：包含全部置位 + 额外位
+                tauSmall += qSmall[i];
+            }
+            long naive = 0;
+            for (int i = 0; i < lBf; i++) {
+                naive += qSmall[i] * cSmall[i];
+            }
+            Ciphertext q = encryptBloomVector(m, qSmall);
+            Ciphertext c = encryptBloomVector(m, cSmall);
+            long folded = decodeScore(m, bloomScore(m, gk, q, c, lBf));      // ⌈log2 ℓ_BF⌉ 轮
+            long allSlots = decodeScore(m, bloomScore(m, gk, q, c));         // 折满 N/2 槽
+            check("折叠值 == 朴素内积（ℓ_BF = " + lBf + "）", folded == naive,
+                "folded=" + folded + " naive=" + naive + " τ=" + tauSmall);
+            check("foldSlots(lBf) 与 foldAllSlots 结果相同（等价性）", folded == allSlots,
+                "foldSlots=" + folded + " foldAllSlots=" + allSlots);
+
+            // 负对照：把 ℓ_BF 报小（少折两轮）⇒ **必须算错**，否则说明这一段没有证明力
+            int tooSmall = lBf / 4;              // 4 < 18 ⇒ 只覆盖槽 [0,8)
+            long underFolded = decodeScore(m, bloomScore(m, gk, q, c, tooSmall));
+            check("[负对照] 把 ℓ_BF 报成 " + tooSmall + "（少折）⇒ 分数必须变小",
+                underFolded < folded, "underFolded=" + underFolded + " folded=" + folded);
+        }
+
         System.out.println();
         System.out.printf("[判定] 阈值 τ = %d：s = τ 接受，s < τ 拒绝。"
             + "C1/C2 应接受，C3/C4/C5 应拒绝。%n", tau);
@@ -236,6 +426,16 @@ public final class BloomScoring {
         }
     }
 
+    /** 断言（与 {@link #check(Mpc4jRgsw, BatchEncoder, GaloisKeys, Ciphertext, long[], long, String)} 并列）。 */
+    private static void check(String what, boolean ok, String detail) {
+        System.out.printf("  [%s] %s%s%n", ok ? "PASS" : "FAIL", what,
+            detail == null || detail.isEmpty() ? "" : "  --- " + detail);
+        if (!ok) {
+            failed++;
+        }
+    }
+
+    /** Bloom 打分专项断言：既比分数，也确认"每个槽都相同"。 */
     private static void check(Mpc4jRgsw m, BatchEncoder be, GaloisKeys gk,
                               Ciphertext qBF, long[] candidate, long expected, String name) {
         Ciphertext ctBF = encryptBloomVector(m, candidate);

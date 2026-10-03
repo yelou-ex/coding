@@ -1,5 +1,7 @@
 package com.fusepir.probe;
 
+import com.fusepir.fusepir.*;
+
 
 import com.fusepir.prim.*;
 import com.fusepir.cape.*;
@@ -273,7 +275,7 @@ public final class CapeSealedFlowTest {
 
         List<Integer> accepted = new ArrayList<>();
         for (int j = 0; j < maxValues && j < count; j++) {
-            int off = 2 + j * (1 + lBf);
+            int off = FusePirSetup.valueOffset(FusePirSetup.fpSlots(FusePirDecode.nativeFieldModulus()), j, 1 + lBf);
             int valueId = (int) payload[off];
             if (valueId <= 0) {
                 continue;

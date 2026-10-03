@@ -69,7 +69,7 @@ public final class CapeTableDiag {
             n, maxValues, kwTotal, cellsPerCol, c, t);
 
         CapeDemoData.Tables tb = db.buildTables(n, c, R, K, t, 20261013L);
-        int lBff = cellsPerCol * c;
+        int lBff = FusePirSetup.span(cellsPerCol, c);
         int dataRadius = (cellsPerCol - 1) * maxValues + K;
         System.out.printf("  tb: c=%d r=%d k=%d bPay=%d lBf=%d  L_BFF=cellsPerCol*C=%d"
             + "  dataRadius=%d%n", tb.c, tb.r, tb.k, tb.bPay, tb.lBf, lBff, dataRadius);
@@ -249,10 +249,15 @@ public final class CapeTableDiag {
                 for (int b = 0; b < tb.bPay; b++) {
                     pay[b] = readSum(tb, cc, ro, b, t);
                 }
-                int cnt = (int) pay[1];
+                // ⚠️ 布局：fp 占 fpSlots 个槽（40-bit 指纹装不进一个 Z_t 槽），
+                //    候选数在 countOffset(fpSlots)，值从 valueOffset(fpSlots, v, ...) 起。
+                //    这两句此前是硬编码的 `pay[1]` 与 `2 + v*(1+lBf)` —— 40-bit 指纹上线后
+                //    它们会**静默读错槽**（pay[1] 变成指纹的第 2 位），症状就是"假阴性 298"。
+                final int fpSlots = com.fusepir.fusepir.FusePirSetup.fpSlots(t);
+                int cnt = (int) pay[com.fusepir.fusepir.FusePirSetup.countOffset(fpSlots)];
                 java.util.Set<Integer> accepted = new java.util.TreeSet<>();
                 for (int v = 0; v < Math.min(cnt, maxValues); v++) {
-                    int base = 2 + v * (1 + tb.lBf);
+                    int base = com.fusepir.fusepir.FusePirSetup.valueOffset(fpSlots, v, 1 + tb.lBf);
                     int mv = (int) pay[base];
                     if (mv <= 0) {
                         continue;

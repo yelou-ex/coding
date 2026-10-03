@@ -86,15 +86,22 @@ public final class CapeAnswer {
      *
      * @param qBF  客户端的 {@code q^BF}（服务器看不到 {@code b_qry} 本身）
      * @param payload 锚检索解出来的载荷（{@code B_pay} 个系数）
+     * @param t       载荷域（native 信道）—— 它决定 {@code fp} 占几个槽，
+     *                进而决定 {@code m_i} 的下标。**必须与建表时同一个 t**
      */
-    public static Answer answer(CapeBloomScore.Scorer sc, Ciphertext qBF,
-                                long[] payload, int maxCandidates, int lBf) {
-        CapeBloomScore.Result r = CapeBloomScore.score(sc, qBF, payload, maxCandidates, lBf);
+    public static Answer answer(BloomChannel.Scorer sc, Ciphertext qBF,
+                                long[] payload, int maxCandidates, int lBf, long t) {
+        CapeBloomScore.Result r = CapeBloomScore.score(sc, qBF, payload, maxCandidates, lBf,
+            FusePirSetup.fpSlots(t));
         List<Cand> cands = new ArrayList<>();
         for (CapeBloomScore.Candidate c : r.candidates) {
             cands.add(new Cand(c.valueId, c.bloomBits, c.ctBloom, c.ctScore));
         }
-        return new Answer(CapeBloomScore.fingerprintOf(payload), (int) payload[1],
+        // ⚠️ 两处此前都是硬编码下标（`fingerprintOf(payload)` → `payload[0]`、
+        //    `(int) payload[1]`）—— 40-bit 指纹上线后会**静默读错槽**：
+        //    指纹只剩低 32 位、候选数变成指纹的第 2 位。
+        return new Answer(CapeBloomScore.fingerprintOf(payload, t),
+            CapeBloomScore.valueCountOf(payload, t),
             cands, r.plainScoreSlots, r.scoreMs);
     }
 }

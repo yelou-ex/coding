@@ -1,5 +1,7 @@
 package com.fusepir.probe;
 
+import com.fusepir.fusepir.*;
+
 
 import com.fusepir.prim.*;
 import edu.alibaba.mpc4j.crypto.fhe.seal.Ciphertext;
@@ -74,7 +76,7 @@ public final class CapeAnswerFull {
             payload[i][0] = Math.floorMod(kw[i].hashCode(), 1000) + 1;   // 指纹
             payload[i][1] = dbValues[i].length;                           // 值的数量
             for (int j = 0; j < dbValues[i].length; j++) {
-                int base = 2 + j * (1 + lBf);
+                int base = FusePirSetup.valueOffset(1, j, 1 + lBf);   // 本探针自建 1 槽指纹夹具
                 payload[i][base] = dbValues[i][j];
                 long[] bv = bloom.get(dbValues[i][j]);
                 for (int bi = 0; bi < lBf; bi++) payload[i][base + 1 + bi] = bv[bi];

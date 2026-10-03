@@ -114,34 +114,96 @@ public final class CapeQuery {
         if (query.isEmpty()) {
             throw new IllegalArgumentException("query must not be empty");
         }
-        int kwCount = keywords.size();
+        final int kwCount = keywords.size();
 
-        // ---- 公开哈希 H：与 CapeDemoData.keywordHash 必须逐位一致 ----
-        int cellsPerCol = FusePirSetup.cellsPerCol(r, maxValues);
-        int c = FusePirSetup.columns(kwCount, cellsPerCol);
-        int[] slotOf = keywordHash(keywords, cellsPerCol, c);
-        Map<String, Integer> kwIndex = new LinkedHashMap<>();
+        // ---- 旧几何：公开哈希 H（线性探测）+ cell 内的连续 k 行 ----
+        // ⚠️ 必须与 CapeDemoData.buildTables 的网格算式【逐位一致】，否则服务器查错槽：
+        //     colOf[i] = slotOf[i] / cellsPerCol
+        //     rowOf[i] = (slotOf[i] % cellsPerCol) * maxValues
+        //     a 路取该 cell 的第 a 行 ⇒ rowOf[i] + a
+        final int cellsPerCol = FusePirSetup.cellsPerCol(r, maxValues);
+        final int c = FusePirSetup.columns(kwCount, cellsPerCol);
+        final int[] slotOf = BffEncodeLegacy.keywordHash(keywords, cellsPerCol, c);
+        final Map<String, Integer> kwIndex = new LinkedHashMap<>();
         for (int i = 0; i < kwCount; i++) {
             kwIndex.put(keywords.get(i), i);
         }
-
-        String anchor = query.get(0);
-        Integer ai = kwIndex.get(anchor);
+        final Integer ai = kwIndex.get(query.get(0));
         if (ai == null) {
-            throw new IllegalArgumentException("unknown keyword: " + anchor);
+            throw new IllegalArgumentException("unknown keyword: " + query.get(0));
         }
-
-        Sealed q = new Sealed();
-        q.colIdx = new long[k];
-        q.rowIdx = new long[k];
-        // ⚠️ 必须与 CapeDemoData 的网格算式【逐位一致】，否则服务器查错槽：
-        //     colOf[i]   = slotOf[i] / cellsPerCol
-        //     rowOf[i]   = (slotOf[i] % cellsPerCol) * maxValues
-        //     a 路取该 cell 的第 a 行 ⇒ rowOf[i] + a
+        final long[] colIdx = new long[k];
+        final long[] rowIdx = new long[k];
         for (int a = 0; a < k; a++) {
-            q.colIdx[a] = slotOf[ai] / cellsPerCol;
-            q.rowIdx[a] = (slotOf[ai] % cellsPerCol) * maxValues + a;
+            colIdx[a] = slotOf[ai] / cellsPerCol;
+            rowIdx[a] = (slotOf[ai] % cellsPerCol) * maxValues + a;
         }
+        return buildWithIndices(ctxHandle, n, k, c, colIdx, rowIdx, lBf, maxSetSize, epsBf,
+            bskBits, query, encryptSelectors);
+    }
+
+    /**
+     * <b>论文几何</b>的查询构造 —— {@code A1 QUERY 3}：{@code u_a ← h_a(K)}，
+     * {@code r_a = u_a mod R}，{@code c_a = ⌊u_a/R⌋}。
+     *
+     * <p>与 {@link #build} 的唯一区别就是这三行；<b>密文构造那一段完全共用</b>
+     * （{@link #buildWithIndices}）—— 两条几何各写一份 β / 选择子 / Bloom 查询，
+     * 就是要出「客户端与服务端算法不一致但两边都不报错」那类静默错误。
+     *
+     * @param lo      A1 SETUP 4 的 {@code (R, C)}（来自 {@code BffSetup.layout}）
+     * @param pos     {@code [kwCount][k]}，{@code pos[i][a] = h_a(K_i)}（来自 {@code BffHash.positions}）
+     * @param kwIndex 关键词 → 下标（与建表时的同一份）
+     */
+    public static Sealed buildPaper(long ctxHandle, int n, int k, BffSetup.Layout lo,
+                                    int[][] pos, Map<String, Integer> kwIndex, int lBf,
+                                    int maxSetSize, double epsBf, int[] bskBits,
+                                    List<String> query, boolean encryptSelectors) {
+        if (query.isEmpty()) {
+            throw new IllegalArgumentException("query must not be empty");
+        }
+        final Integer ai = kwIndex.get(query.get(0));
+        if (ai == null) {
+            throw new IllegalArgumentException("unknown keyword: " + query.get(0));
+        }
+        final long[] colIdx = new long[k];
+        final long[] rowIdx = new long[k];
+        for (int a = 0; a < k; a++) {
+            final int u = pos[ai][a];
+            // QUERY 3 拆成具名函数（fusepir/FusePirQuery.split），算式一个字没变：
+            // 原先这里就是 `colIdx[a] = u / lo.r;` 与 `rowIdx[a] = u % lo.r;`。
+            // 拆解本身带的断言是 `0 ≤ u < R·C`（几何上界）。
+            final FusePirQuery.CellIndex cr = FusePirQuery.split(u, lo.r, lo.c);
+            colIdx[a] = cr.c();
+            rowIdx[a] = cr.r();
+            // ⚠️ 这一条**不是** split 那条断言的重复，不能删：
+            //   `h_a` 的值域上界是 L_BFF（BFF 的 arrayLength），而 `R·C` 只是几何上界，
+            //   A1 SETUP 4 只保证 `R·C ≥ L_BFF`。有尾部补零（A1 SETUP 9-11）时
+            //   `[L_BFF, R·C)` 里的 u 能过 split 那条，却**不可能**是任何 h_a 的输出
+            //   —— 那正是「查询与建表不同源」的症状，必须在这里拦住。
+            //   副作用：总覆盖 = R·C ∩ L_BFF = L_BFF ⇒ 严格强于改动前那一条单独的检查。
+            if (u < 0 || u >= lo.lBff) {
+                throw new IllegalStateException("h_" + a + "(K) = " + u
+                    + " 越界，L_BFF = " + lo.lBff + " —— 查询与建表不同源");
+            }
+        }
+        return buildWithIndices(ctxHandle, n, k, lo.c, colIdx, rowIdx, lBf, maxSetSize, epsBf,
+            bskBits, query, encryptSelectors);
+    }
+
+    /**
+     * 几何已经算好之后的**密文构造**（两条几何共用的唯一一份）。
+     *
+     * @param c      列数 {@code C}（列选择子要加密 {@code k×C} 条）
+     * @param colIdx {@code [k]} 每一路的列号 {@code c_a}
+     * @param rowIdx {@code [k]} 每一路的行号 {@code r_a}
+     */
+    public static Sealed buildWithIndices(long ctxHandle, int n, int k, int c,
+                                          long[] colIdx, long[] rowIdx, int lBf,
+                                          int maxSetSize, double epsBf, int[] bskBits,
+                                          List<String> query, boolean encryptSelectors) {
+        final Sealed q = new Sealed();
+        q.colIdx = colIdx.clone();
+        q.rowIdx = rowIdx.clone();
 
         // ---- 列选择子（A1 QUERY 4-5）：{@code q^col_a = RLWE.Enc_{s_R}(e)} ----
         // 论文的 e 是 {0,1}^C 里的 one-hot；本实现按「C 条独立标量密文」的读法落地
@@ -151,6 +213,10 @@ public final class CapeQuery {
         // ⚠️ 代价必须一起报（实测）：N=8192 时一条选择子 524,401 字节，
         //    k×C = 3×26 = 78 条 ⇒ **约 41 MB/查询**，而 q_BF 只有 211 KB。
         //    这是「C 条独立密文」这条读法的直接后果，见 P1-1 报告。
+        //
+        // ⚠️ 论文几何下 C=16（见表）⇒ 3×16 = 48 条 ⇒ 约 25 MB/查询。
+        //    论文自己那组实验是 C=1（3 条，见 MAP §13.3），所以两者差一个量级 ——
+        //    这是**我们主动选的偏离**（方格布局让"同态选列"真的在做事），已登记。
         if (encryptSelectors) {
             if (ctxHandle == 0L) {
                 throw new IllegalArgumentException(
@@ -225,14 +291,9 @@ public final class CapeQuery {
         }
         List<String> others = new ArrayList<>(query.subList(1, query.size()));
         q.bQry = bf.bits(others);
-        long tau = 0;
-        for (boolean b : q.bQry) {
-            if (b) {
-                tau++;
-            }
-        }
-        q.tau = tau;
-        q.bfSlots = toSlots(q.bQry, n);
+        // A2 QUERY 3: τ ← ‖b_qry‖₁（阈值只在客户端，从不进报文）
+        q.tau = BfGen.hammingWeight(q.bQry);
+        q.bfSlots = BloomChannel.toSlotVector(q.bQry, n);
         return q;
     }
 
@@ -257,9 +318,14 @@ public final class CapeQuery {
     public static byte[] encryptColumnSelectors(long ctxHandle, int k, int c, long[] colIdx) {
         long[] e = new long[k * c];
         for (int a = 0; a < k; a++) {
-            for (int cc = 0; cc < c; cc++) {
-                e[a * c + cc] = (cc == colIdx[a]) ? 1L : 0L;
-            }
+            // QUERY 4 拆成具名函数（fusepir/FusePirQuery.oneHot），逐项等价于原先的
+            //   `e[a*c + cc] = (cc == colIdx[a]) ? 1L : 0L;`
+            // （长度 C 的全零数组里只把下标 colIdx[a] 置 1；拷贝进路优先的偏移 a*c）。
+            // 附带收益：列号越界（A1 QUERY 4 要求 0 ≤ c_a < C）从此在这里就抛，
+            // 而不是静默产出一条**全零**选择子 —— 全零是合法输入，加密不会失败，
+            // 服务器照样算，只是载荷全 0，是典型的假阴性。
+            final long[] ea = FusePirQuery.oneHot(c, colIdx[a]);
+            System.arraycopy(ea, 0, e, a * c, c);
         }
         return NativeBlindRotate.nativeEncryptSealedColumns(ctxHandle, e);
     }
@@ -289,7 +355,7 @@ public final class CapeQuery {
                                           List<String> keywords, List<String> query) {
         int cellsPerCol = FusePirSetup.cellsPerCol(r, maxValues);
         int c = FusePirSetup.columns(keywords.size(), cellsPerCol);
-        int[] slotOf = keywordHash(keywords, cellsPerCol, c);
+        int[] slotOf = BffEncodeLegacy.keywordHash(keywords, cellsPerCol, c);
         Map<String, Integer> kwIndex = new LinkedHashMap<>();
         for (int i = 0; i < keywords.size(); i++) {
             kwIndex.put(keywords.get(i), i);
@@ -328,17 +394,6 @@ public final class CapeQuery {
             throw new IllegalStateException(e);
         }
         return s;
-    }
-
-    /**
-     * 论文的公开哈希 {@code H} —— <b>实现已搬到 {@link BffEncode#keywordHash}</b>。
-     *
-     * <p>⚠️ 这里以前有一份与 {@code CapeDemoData.keywordHash} **逐字重复**的实现，
-     * 两边各写一遍、靠注释"必须逐位一致"来约束。那种安排迟早会漂，
-     * 现在客户端与服务端都调 {@code BffEncode}，**只有一份**。
-     */
-    public static int[] keywordHash(List<String> keywords, int cellsPerCol, int c) {
-        return BffEncode.keywordHash(keywords, cellsPerCol, c);
     }
 
     /**
@@ -387,7 +442,7 @@ public final class CapeQuery {
         // 论文说"位置由公开参数定，不算泄露"只在 H 不可反查时成立。
         if (q.selBlob != null) {
             m.put("colSelLen", q.selBlob.length);
-            m.put("colSel", CapeScorerWire.bytesToPackedWire(q.selBlob));
+            m.put("colSel", ScorerWire.bytesToPackedWire(q.selBlob));
         } else {
             m.put("colIdx", q.colIdx);
         }

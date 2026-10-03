@@ -1,5 +1,11 @@
 package com.fusepir.probe;
 
+import com.fusepir.bloom.*;
+
+import com.fusepir.common.BfGen;
+
+import com.fusepir.fusepir.*;
+
 
 import com.fusepir.prim.*;
 import com.fusepir.cape.*;
@@ -154,10 +160,10 @@ public final class CapeDefaultPathTest {
             skWire[i] = ((Number) skBytes.get(i)).longValue();
         }
         // 先用一把新密钥建上下文（参数必须与服务器完全一致），再把它换成服务端那把 sk
-        CapeBloomScore.Scorer tmp = CapeBloomScore.setup(n);
+        BloomChannel.Scorer tmp = BloomChannel.setup(n);
         edu.alibaba.mpc4j.crypto.fhe.seal.SecretKey sharedSk =
-            CapeScorerWire.deserializeKey(tmp, skWire);
-        CapeBloomScore.Scorer sc = CapeBloomScore.setup(n, sharedSk);
+            ScorerWire.deserializeKey(tmp, skWire);
+        BloomChannel.Scorer sc = BloomChannel.setup(n, sharedSk);
         System.out.printf("  [setup] %.0f ms，槽数=%d（sk 已替换为服务端那把）%n",
             (double) sc.setupMs, sc.slots);
 
@@ -179,12 +185,8 @@ public final class CapeDefaultPathTest {
         }
         boolean[] bQry = bf.bits(query.subList(1, query.size()));
         long tau = 0;
-        for (boolean b : bQry) {
-            if (b) {
-                tau++;
-            }
-        }
-        long[] qbfWire = CapeBloomScore.encryptQueryWire(sc, bQry);
+        tau = BfGen.hammingWeight(bQry);
+        long[] qbfWire = BloomChannel.encryptQueryWire(sc, bQry);
         System.out.println("  查询（来自公开池子，不是隐私）: " + query);
         System.out.printf("  tau = %d（**不进请求**）; q_BF 密文 %d 字节（%.1f KB）%n",
             tau, qbfWire.length, qbfWire.length / 1024.0);
@@ -397,7 +399,7 @@ public final class CapeDefaultPathTest {
             // N4：换一个 q_BF 再问一次服务器 ⇒ 分数必须变
             boolean[] other = new boolean[lBf];
             other[0] = true;
-            long[] otherWire = CapeBloomScore.encryptQueryWire(sc, other);
+            long[] otherWire = BloomChannel.encryptQueryWire(sc, other);
             Map<String, Object> resp2 = CapeQuery.Http.post(base + "/api/query",
                 wireRequest(otherWire, lBf, anchorQ));
             long tauOther = 1;
@@ -459,12 +461,8 @@ public final class CapeDefaultPathTest {
                 com.fusepir.common.BfGen bf2 = com.fusepir.common.BfGen.choose(maxSetSize, epsBf, n);
                 boolean[] bq2 = bf2.bits(q2.subList(1, q2.size()));
                 long tau2 = 0;
-                for (boolean b : bq2) {
-                    if (b) {
-                        tau2++;
-                    }
-                }
-                long[] w2 = CapeBloomScore.encryptQueryWire(sc, bq2);
+                tau2 = BfGen.hammingWeight(bq2);
+                long[] w2 = BloomChannel.encryptQueryWire(sc, bq2);
                 CapeQuery.Sealed aq2 = CapeQuery.buildIndicesOnly(
                     n, k, r, maxValues, kws, q2);
                 boolean sameAsFixed = Arrays.equals(aq2.colIdx, anchorQ.colIdx);
@@ -596,7 +594,7 @@ public final class CapeDefaultPathTest {
      */
     private static boolean hasCiphertextNamedPlaintext(
         Map<String, Object> resp, int maxValues, int lBf) {
-        int bPay = 2 + maxValues * (1 + lBf);
+        int bPay = FusePirSetup.payloadBpay(FusePirSetup.fpSlots(FusePirDecode.nativeFieldModulus()), maxValues, 1 + lBf);
         for (String k : resp.keySet()) {
             if (!k.toLowerCase().startsWith("ct")) {
                 continue;

@@ -231,7 +231,7 @@ public final class CapeBffParamDiag {
         int R = 16, maxValues = 3, keywordCount = n == 128 ? 128 : 128;
         int cellsPerCol = FusePirSetup.cellsPerCol(R, maxValues);
         int C = (int) Math.ceil(keywordCount / (double) cellsPerCol);
-        long lOurs = (long) cellsPerCol * C;
+        long lOurs = FusePirSetup.span(cellsPerCol, C);
         System.out.printf("  我们：cellsPerCol = R/maxValues = %d/%d = %d（**这就是我们的段大小 s**）%n",
             R, maxValues, cellsPerCol);
         System.out.printf("        C = ceil(n/cellsPerCol) = ceil(%d/%d) = %d 列%n", keywordCount, cellsPerCol, C);
@@ -413,7 +413,7 @@ public final class CapeBffParamDiag {
      */
     public static int[] keywordHash(List<String> keywords, int cellsPerCol, int c) {
         final int n = keywords.size();
-        final int span = Math.max(n, cellsPerCol * c);
+        final int span = Math.max(n, FusePirSetup.span(cellsPerCol, c));
         int[] slot = new int[span];
         Arrays.fill(slot, -1);
         for (int i = 0; i < n; i++) {
