@@ -100,6 +100,36 @@ public final class CapeDemoService {
     private final AtomicReference<String> lastResult = new AtomicReference<>("{}");
     private volatile String currentKws = "";
 
+    // ---- 【前端用】客户端模拟器的状态（单查询槽，够演示用）----
+    /** 上一次 {@code /api/client/seal} 留下的**客户端私有量**（τ 与锚；它们从不进请求体）。 */
+    private final AtomicReference<ClientSeal> lastSeal = new AtomicReference<>();
+    /** 上一次 CAPE 响应里客户端判定要用的三样（类型化留一份，免得再解析嵌套 JSON）。 */
+    private final AtomicReference<CapeRespForClient> lastCapeResp = new AtomicReference<>();
+
+    /** {@code /api/client/seal} 的产物（客户端侧私有状态）。 */
+    private static final class ClientSeal {
+        final String anchor;
+        final List<String> others;
+        final long tau;
+        ClientSeal(String anchor, List<String> others, long tau) {
+            this.anchor = anchor;
+            this.others = others;
+            this.tau = tau;
+        }
+    }
+
+    /** 客户端判定需要的那三样：指纹 {@code f}、{@code V_{K_1}}、每候选的 {@code ct_score} 字节。 */
+    private static final class CapeRespForClient {
+        final long fingerprint;
+        final List<Integer> valueIds;
+        final List<long[]> ctScoreWire;
+        CapeRespForClient(long fingerprint, List<Integer> valueIds, List<long[]> ctScoreWire) {
+            this.fingerprint = fingerprint;
+            this.valueIds = valueIds;
+            this.ctScoreWire = ctScoreWire;
+        }
+    }
+
     private CapeDemoService(int port, int n, int d, CapeDemoData db) throws IOException {
         this.port = port;
         this.n = n;
@@ -415,6 +445,8 @@ public final class CapeDemoService {
         // 每条候选各带自己的 ct_score,j 字节 —— 客户端逐条解、逐条判定。
         List<Object> cands = new ArrayList<>();
         List<Long> ctScoreLens = new ArrayList<>();
+        // 【前端·客户端模拟器】顺手留一份类型化的 ct_score 字节（页面走 decide 时用）
+        final List<long[]> ctScoreWireForClient = new ArrayList<>();
         for (CapeAnswer.Cand c : ans.candidates) {
             long[] bytes = ScorerWire.serialize(c.ctScore);
             Map<String, Object> one = new LinkedHashMap<>();
@@ -422,6 +454,7 @@ public final class CapeDemoService {
             one.put("ctScoreBytes", bytes);
             cands.add(one);
             ctScoreLens.add((long) bytes.length);
+            ctScoreWireForClient.add(bytes);
         }
         out.put("candidates", cands);
         out.put("candidateCount", ans.candidates.size());
@@ -440,6 +473,12 @@ public final class CapeDemoService {
         out.put("decodeNote", "判定在客户端：f == fp(K) 且 s_j = Dec(ct_score,j) == tau 才收；"
             + "候选值由客户端从 payloadPlain 自己解出（**该字段是明文**，见 payloadPlainNote）。"
             + "服务端没发过 tau、没发过明文分数、也没发过候选值的 id");
+        // 【前端·客户端模拟器】把"客户端从线上收到的那三样"类型化留档：
+        //   指纹 f、V_K1（客户端自己按载荷布局解）、每候选 ct_score 字节。
+        //   ⚠️ 这不是新信道（out 里本来就有 payloadPlain 与 ctScoreBytes）；留档只是让
+        //      /api/client/decide 不必再解析一遍嵌套 JSON（本项目 JsonParser 不支持嵌套数组）。
+        lastCapeResp.set(new CapeRespForClient(ans.fingerprint,
+            FusePirDecode.decodePayloadCoefficients(payload, tb.t), ctScoreWireForClient));
         return Json.write(out);
     }
 
@@ -614,11 +653,21 @@ public final class CapeDemoService {
         }
         long fp = rec[0];
         long fpWant = want[0];
-        int count = (int) rec[1];
+        // 🔴 2026-10-15 修：这里是**所有读取侧**的那处 off-by-one。
+        //    载荷布局由 `FusePirSetup` 的四个偏移函数定义（全项目唯一一份）：
+        //        fp 占 `fpSlots = ⌈40/⌊log2 t⌋⌉` 个槽（native t=2^32 ⇒ **2** 个）
+        //        count 在 `countOffset(fpSlots)` = 2
+        //        第 j 个值在 `valueOffset(fpSlots, j, 1+ℓ_BF)` = 3 + 19j
+        //    本文件此前写的是「fp 占 1 槽」时代的 `rec[1]` 与 `2 + j*(1+ℓ_BF)` ⇒ 整体错一格：
+        //    `count` 读到的是**指纹的高位 limb**（实测 171），候选值读到的是别的槽
+        //    ⇒ 合取判定永远不命中（实测池内组合 ["Adam Sandler","family"] 返回 hit=false）。
+        //    ⚠️ 它**静默**：`rec[b] != want[b]` 那条整体比对照样全绿（它不按下标读）。
+        final int fpSlots = FusePirSetup.fpSlots(tb.t);
+        int count = (int) rec[FusePirSetup.countOffset(fpSlots)];
         List<Object> results = new ArrayList<>();
         int lookups = tb.maxValues;
         for (int j = 0; j < lookups && j < count; j++) {
-            int base = 2 + j * (1 + tb.lBf);
+            int base = FusePirSetup.valueOffset(fpSlots, j, 1 + tb.lBf);
             int valueId = (int) rec[base];
             if (valueId <= 0) {
                 continue;
@@ -721,6 +770,14 @@ public final class CapeDemoService {
         // CAPE Algorithm 2 的增量出口（G1 加密 Bloom 打分 + G2 每候选密文分数）。
         // 独立出口，不动 /api/query —— 见规划书 P0-1 的回滚要求。
         srv.createContext("/api/query-cape", this::hQueryCape);
+        // 【前端用】客户端模拟器（2026-10-15 新增）。**浏览器做不了 BFV**（加密 b_qry、
+        // 解密 ct_score），所以把"客户端那两步"单独放成两个出口，页面按
+        // 「seal → POST /api/query → decide」三步走，从而让**页面也走论文的默认路径**
+        // （服务器只收到 q_BF 密文字节 + 锚位置，收不到关键词）。
+        // ⚠️ 单进程回环：模拟器与服务端同 JVM，**不是真实两方部署**（见 /api/state 的
+        //    clientSimulator 自述与 cape-demo/README.md 的"已知边界"）。
+        srv.createContext("/api/client/seal", this::hClientSeal);
+        srv.createContext("/api/client/decide", this::hClientDecide);
         // P1-1 的进程内验收入口：列选择子改客户端加密（要进程内上下文句柄，
         // 所以只能在服务里跑；默认关闭，见 hColumnSelftest）。
         srv.createContext("/api/selftest/column", this::hColumnSelftest);
@@ -793,7 +850,15 @@ public final class CapeDemoService {
             + "（客户端侧加密，服务器只收字节）");
         proto.put("responseDecisionFields", "fingerprint, candidates[].valueId, candidates[].ctScoreBytes");
         proto.put("legacyPath", "POST /api/query  {\"keywords\":[...]} —— 明文合取判定，"
-            + "保留但不含 Algorithm 2 的判定；见 docs/缺陷总表.md 的偏差 D2");
+            + "保留但不含 Algorithm 2 的判定；见 docs/缺陷总表.md 的偏差 D2。"
+            + "⚠️ 2026-10-15 起前端**不再走这条路**（页面改走默认路径）");
+        proto.put("clientSimulator", "【前端用】POST /api/client/seal {keywords:[...]} → "
+            + "返回该发给服务器的**密文请求体**（d + 锚位置 + qBFBytes）与**客户端私有**的 τ；"
+            + "页面把它原样 POST 给 /api/query，再 POST /api/client/decide 用服务器回来的 "
+            + "ct_score 自己判定。⚠️ 单进程回环：模拟器与服务端同 JVM，"
+            + "**模拟的是「客户端能加密」这件事，不是密钥分离**");
+        proto.put("clientSimulatorWhy", "浏览器做不了 BFV（加密 b_qry / 解密 ct_score），"
+            + "所以把客户端那两步放成两个出口；服务器侧仍是同一条 sealed 实现，没有第二条 ANSWER");
         proto.put("d2OnlyPath", "POST /api/query-cape  {\"d2PlaintextBf\":[0/1 ...]} —— "
             + "P0 阶段的明文包密文通道，正式路径不用它");
         proto.put("sealedPath", "POST /api/query-sealed  {rowIdx, aFlat, beta, sBits, "
@@ -1276,12 +1341,17 @@ public final class CapeDemoService {
         for (int i = 0; i < payload.length; i++) {
             payload[i] = ((Number) raw.get(i)).longValue();
         }
-        int count = (int) payload[1];
+        final int fpSlotsSelftest = FusePirSetup.fpSlots(tb.t);
+        int count = (int) payload[FusePirSetup.countOffset(fpSlotsSelftest)];
         System.out.println("  3. 载荷 valueCount=" + count + " τ=" + q.tau
             + " 前 3 项=[" + payload[0] + ", " + payload[1] + ", " + payload[2] + "]");
         List<Integer> accepted = new ArrayList<>();
         for (int j = 0; j < tb.maxValues && j < count; j++) {
-            int off = 2 + j * (1 + tb.lBf);
+            // 🔴 2026-10-15 修（同 runQueryLegacy 的那处 off-by-one）：原来写 `2 + j*(1+ℓ_BF)`，
+            //    是按「指纹占 1 槽」算的；现在指纹占 `fpSlots` 个槽（t=2^32 ⇒ 2）
+            //    ⇒ count 落在 2、第 j 个值落在 3+19j。症状：`valueCount` 打出**指纹高位 limb**
+            //    （实测 171），`接受=[]` 而池内真值非空 ⇒ 本段第 4 条断言 FAIL。
+            int off = FusePirSetup.valueOffset(fpSlotsSelftest, j, 1 + tb.lBf);
             int valueId = (int) payload[off];
             if (valueId <= 0) {
                 continue;
@@ -1644,6 +1714,211 @@ public final class CapeDemoService {
             busy.set(false);
             currentKws = "";
         }
+    }
+
+    /**
+     * <b>【前端用】客户端模拟器 · 第 1 步：把查询封成密文（论文 Alg 2 QUERY 1-3）。</b>
+     *
+     * <pre>
+     *   POST /api/client/seal   {"keywords":["Adam Sandler","family"]}
+     *     → {ok, anchor, others, tau, qbfBytes, outboundFields, body:{d,anchorColIdx,anchorRowIdx,qBFBytes}}
+     * </pre>
+     *
+     * <p>页面拿到 {@code body} 后**原样** POST 给 {@code /api/query}。于是：
+     * <ul>
+     *   <li>服务器只收到 {@code d} + 锚位置 + {@code q_BF} 密文字节 —— 关键词与 {@code τ}
+     *       都留在客户端（{@code τ} 只出现在本响应里，从不进请求体）；</li>
+     *   <li>出站字段集与 {@code probe/CapeDefaultPathTest} 的白名单逐字一致
+     *       （{@code ["qBFBytes","d","anchorColIdx","anchorRowIdx"]}）。</li>
+     * </ul>
+     *
+     * <h3>⚠️ 单进程回环（必须一起说）</h3>
+     * 本出口与服务端在**同一个 JVM**里：{@code scorer} 就是服务端那把打分密钥。
+     * 它模拟的是"客户端能加密"这件事，<b>不是</b>真实的密钥分离。
+     * 真两方部署要求客户端自己持有 {@code sk}（论文里 {@code q_BF ← RLWE.Enc(b_qry)} 在客户端做）。
+     */
+    private void hClientSeal(HttpExchange ex) throws IOException {
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+            send(ex, 405, err("POST only"));
+            return;
+        }
+        if (scorer == null) {
+            send(ex, 200, err("打分信道未建（-Dcape.nocape=true 启动时不会建）"));
+            return;
+        }
+        List<String> kws = new ArrayList<>();
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> req =
+                (Map<String, Object>) new CapeDemoData.JsonParser(read(ex)).parse().v;
+            Object o = req.get("keywords");
+            if (o instanceof List) {
+                for (Object x : (List<?>) o) {
+                    kws.add(String.valueOf(x));
+                }
+            }
+        } catch (Exception e) {
+            send(ex, 200, err("bad client/seal 请求: " + e));
+            return;
+        }
+        if (kws.isEmpty()) {
+            send(ex, 200, err("keywords 不能为空"));
+            return;
+        }
+        List<String> unknown = new ArrayList<>();
+        for (String k : kws) {
+            if (!tb.kwIndex.containsKey(k)) {
+                unknown.add(k);
+            }
+        }
+        if (!unknown.isEmpty()) {
+            send(ex, 200, err("unknown keyword(s): " + unknown));
+            return;
+        }
+        final long q0 = System.nanoTime();
+        final String anchor = kws.get(0);
+        final List<String> others = new ArrayList<>(kws.subList(1, kws.size()));
+        // 与 runQueryLegacy / CapeDefaultPathTest 同一份口径：锚**不进** b_qry
+        final boolean[] bQry = bloomBits(others);
+        final long tau = BfGen.hammingWeight(bQry);
+        // 客户端侧加密 b_qry（这一步在真部署里发生在客户端；这里同 JVM）
+        final long[] qbfWire = BloomChannel.encryptQueryWire(scorer, bQry);
+        // 锚位置由**公开哈希 H**算出 —— 任何客户端都算得出，不含秘密
+        final CapeQuery.Sealed anchorQ = CapeQuery.buildIndicesOnly(n, K, R, tb.maxValues,
+            db.keywords, kws);
+        final long sealUs = (System.nanoTime() - q0) / 1_000;
+        lastSeal.set(new ClientSeal(anchor, others, tau));
+
+        final Map<String, Object> body = new LinkedHashMap<>();
+        body.put("d", tb.lBf);
+        body.put("anchorColIdx", anchorQ.colIdx);
+        body.put("anchorRowIdx", anchorQ.rowIdx);
+        body.put("qBFBytes", qbfWire);
+
+        final Map<String, Object> out = new LinkedHashMap<>();
+        out.put("ok", true);
+        out.put("anchor", anchor);
+        out.put("others", others);
+        out.put("tau", tau);
+        out.put("qbfBytes", qbfWire.length);
+        out.put("qbfKB", qbfWire.length / 1024.0);
+        out.put("sealUs", sealUs);
+        out.put("anchorColIdx", anchorQ.colIdx);
+        out.put("anchorRowIdx", anchorQ.rowIdx);
+        out.put("outboundFields", new ArrayList<>(body.keySet()));
+        out.put("body", body);
+        out.put("note", "客户端模拟器：b_qry 与 τ 只在本响应里；发给服务器的只有 "
+            + "d + 锚位置 + q_BF 密文字节。单进程回环：模拟器与服务端同 JVM。");
+        send(ex, 200, Json.write(out));
+    }
+
+    /**
+     * <b>【前端用】客户端模拟器 · 第 2 步：读服务器回来的 {@code ct_score} 自己判定（Alg 2 DECODE）。</b>
+     *
+     * <pre>
+     *   POST /api/client/decide   {"tau":5}      （tau 缺省则用 /api/client/seal 留下的那个）
+     *     → {ok, verdict, fingerprintOk, scores:[...], accepted:[valueId...], acceptedTitles:[...]}
+     * </pre>
+     *
+     * <p>判定规则与 {@code probe/CapeDefaultPathTest} 完全一致：
+     * {@code f == fp(K)} <b>且</b> {@code Dec(ct_score,j) == τ} 才收；
+     * 候选值由客户端从载荷布局自己解出（{@code CapeDecode.decodePayload}），
+     * <b>服务器从不发 {@code τ}、不发明文分数、不发候选值 id</b>。
+     *
+     * <p>它读的是"刚刚那条响应"（{@link #lastCapeResp}，由 {@code runQueryCapeSealed} 在返回前留档）
+     * —— 也就是客户端从线上收到的那三样。缺一步就报错，不猜。
+     */
+    private void hClientDecide(HttpExchange ex) throws IOException {
+        if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
+            send(ex, 405, err("POST only"));
+            return;
+        }
+        final ClientSeal sealed = lastSeal.get();
+        final CapeRespForClient resp = lastCapeResp.get();
+        if (sealed == null) {
+            send(ex, 200, err("还没有 /api/client/seal —— 判定要用客户端自己的 anchor/τ"));
+            return;
+        }
+        if (resp == null) {
+            send(ex, 200, err("还没有走过 CAPE 默认路径（/api/query + qBFBytes）."
+                + "判定读的是服务器回来的 ct_score 字节"));
+            return;
+        }
+        // ⚠️ 2026-10-15：这两个长度不一致时**必须报错、不许继续**。
+        //    实测踩到的那一次：留档的 V_K1 是空的（当时用了读 JSON 解析结果的入口去读
+        //    **进程内**的 long[] 载荷），而 ct_score 有 3 条 ⇒ `decodeWire` 里
+        //    `valueIds.get(0)` 抛 IndexOutOfBounds，被 HttpServer 掐掉连接，
+        //    前端只看到"服务器关闭了连接"，与"判定失败"分不开。
+        if (resp.valueIds.size() != resp.ctScoreWire.size()) {
+            send(ex, 200, err("客户端侧不一致：V_K1 有 " + resp.valueIds.size() + " 个，"
+                + "ct_score 有 " + resp.ctScoreWire.size() + " 条 ⇒ 不判定（不猜）"));
+            return;
+        }
+        long tau = sealed.tau;
+        try {
+            String raw = read(ex);
+            if (raw != null && !raw.trim().isEmpty()) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> req = (Map<String, Object>) new CapeDemoData.JsonParser(raw)
+                    .parse().v;
+                if (req.get("tau") instanceof Number) {
+                    tau = ((Number) req.get("tau")).longValue();
+                }
+            }
+        } catch (Exception e) {
+            send(ex, 200, err("bad client/decide 请求: " + e));
+            return;
+        }
+        final long d0 = System.nanoTime();
+        final Map<String, Object> out = new LinkedHashMap<>();
+        try {
+            final long fpWant = CapeDecode.fpOf(sealed.anchor, tb.t);
+            final CapeDecode.DecodeResult dr = CapeDecode.decodeWire(scorer, resp.ctScoreWire,
+                resp.valueIds, fpWant, resp.fingerprint, tau, 0);
+            out.put("ok", true);
+            out.put("anchor", sealed.anchor);
+            out.put("others", sealed.others);
+            out.put("tau", tau);
+            out.put("fingerprint", resp.fingerprint);
+            out.put("fingerprintWant", fpWant);
+            out.put("fingerprintOk", dr.fingerprintOk);
+            out.put("verdict", dr.verdict);
+            out.put("loadFailed", dr.loadFailed);
+            out.put("scores", dr.scores);
+            List<Object> cands = new ArrayList<>();
+            for (int j = 0; j < resp.valueIds.size() && j < dr.scores.size(); j++) {
+                final Map<String, Object> one = new LinkedHashMap<>();
+                one.put("valueId", resp.valueIds.get(j));
+                one.put("score", dr.scores.get(j));
+                one.put("accepted", dr.accepted.contains(resp.valueIds.get(j)));
+                cands.add(one);
+            }
+            out.put("candidates", cands);
+            out.put("accepted", dr.accepted);
+            List<Object> titles = new ArrayList<>();
+            for (Integer v : dr.accepted) {
+                final Map<String, Object> one = new LinkedHashMap<>();
+                one.put("valueId", v);
+                one.put("title", db.title(v));
+                one.put("rawMovieId", db.rawMovieId(v));
+                titles.add(one);
+            }
+            out.put("results", titles);
+            out.put("hit", !dr.accepted.isEmpty());
+            out.put("decodeUs", (System.nanoTime() - d0) / 1_000);
+            out.put("note", "判定只读 Dec(ct_score)：f == fp(K) 且 s_j == τ 才收。"
+                + "服务器没发 τ、没发明文分数、没发候选值 id。单进程回环：与服务端同 JVM。");
+        } catch (RuntimeException e) {
+            // ⚠️ 异常必须变成 JSON 回来。不包的话 `HttpServer` 会把连接直接掐掉，
+            //    前端只看到"服务器关闭了本应保持活动状态的连接" —— 与"判定失败"分不开
+            //    （2026-10-15 实测踩到：正控制那次就是这样丢的）。
+            out.clear();
+            out.put("ok", false);
+            out.put("error", "客户端判定抛异常: " + e);
+            final StackTraceElement[] st = e.getStackTrace();
+            out.put("at", st.length > 0 ? st[0].toString() : "?");
+        }
+        send(ex, 200, Json.write(out));
     }
 
     private void hQueryCape(HttpExchange ex) throws IOException {

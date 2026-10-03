@@ -73,7 +73,11 @@ if ($alive) {
     $baseOpts = if ($Jvm -ne '') { $Jvm } else { '' }
     $env:DSH_JVM_OPTS = ("$baseOpts -Dcape.web=$webDir").Trim()
     # run-mpc4j.ps1 compiles everything and sets java.library.path for the native DLL.
-    $argList = @('-Class', 'com.fusepir.demo.CapeDemoService',
+    # ⚠️ 2026-10-15 修：这里原先写的是 com.fusepir.demo.CapeDemoService —— **那个类不存在**
+    #    （服务真的家在 com.fusepir.cape.CapeDemoService），于是 Start-Process 起来的
+    #    JVM 直接 "找不到或无法加载主类"，而本脚本只会报 "service exited early"，
+    #    看起来像"服务起不来"，其实是类名写错。这就是"一键启动从来没通过"的根因。
+    $argList = @('-Class', 'com.fusepir.cape.CapeDemoService',
                  "$Port", "$N", "$D", $db)
     $p = Start-Process -FilePath 'powershell.exe' -PassThru -WindowStyle Minimized `
         -ArgumentList (@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $runner) + $argList)

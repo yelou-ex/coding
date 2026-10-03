@@ -215,6 +215,18 @@ h1,h2,h3{font-family:var(--disp);font-weight:600;letter-spacing:.01em}
 .res:last-child{border-bottom:0}
 .res .t{font-weight:600}
 .res .m{color:var(--muted);font-size:13px;font-family:var(--mono);font-variant-numeric:tabular-nums}
+/* 线路面板：客户端发了什么 / 服务器收到了什么 / 谁判定 */
+.wire{margin:12px 0 4px;padding:12px 14px;border:1px solid var(--rule);border-radius:10px;
+      background:var(--panel2, rgba(0,0,0,0.02))}
+.wire-row{display:flex;gap:12px;padding:5px 0;border-bottom:1px dashed var(--rule);align-items:baseline}
+.wire-row:last-child{border-bottom:0}
+.wire-k{flex:0 0 240px;color:var(--muted);font-size:13px}
+.wire-v{flex:1 1 auto;font-size:13px}
+.cand{display:flex;gap:10px;padding:3px 0;font-size:13px;
+      font-family:var(--mono);font-variant-numeric:tabular-nums}
+.cand .cid{flex:0 0 90px;color:var(--muted)}
+.cand .cs{flex:0 0 60px}
+.cand .cj{flex:1 1 auto}
 .hit-yes{color:var(--ok);font-weight:700}
 .hit-no{color:var(--bad);font-weight:700}
 .badge{display:inline-block;padding:1px 7px;border-radius:2px;font-size:12px;
@@ -382,7 +394,29 @@ h1,h2,h3{font-family:var(--disp);font-weight:600;letter-spacing:.01em}
     </div>
     <div class="pbody">
       <p class="hint" id="resHead" style="margin:0">还没有查询。添加关键词后按「开始查询」。</p>
+
+      <!-- 线路面板：把"客户端发了什么 / 服务器收到了什么 / 谁做的判定"摆出来 -->
+      <div id="wireBox" class="wire" style="display:none">
+        <div class="wire-row">
+          <span class="wire-k">① 客户端封查询（不在服务器）</span>
+          <span class="wire-v" id="wSeal">—</span>
+        </div>
+        <div class="wire-row">
+          <span class="wire-k">出站字段（服务器唯一看到的东西）</span>
+          <span class="wire-v mono" id="wFields">—</span>
+        </div>
+        <div class="wire-row">
+          <span class="wire-k">② 服务器 ANSWER</span>
+          <span class="wire-v" id="wAns">—</span>
+        </div>
+        <div class="wire-row">
+          <span class="wire-k">③ 客户端判定（读 ct_score）</span>
+          <span class="wire-v mono" id="wDecide">—</span>
+        </div>
+      </div>
+
       <div id="resList" style="margin-top:4px"></div>
+      <div id="candList" style="margin-top:10px"></div>
     </div>
   </section>
 
@@ -533,20 +567,30 @@ function setBusy(b){
 
 /* ---------- 计时面板 ---------- */
 var progTimer = null;
+/* 刻度不再写死 150 s：服务的 /api/state.expected.answerMs 是它在 SETUP 时按当前
+   配置标定出来的（本轮实测 ≈75 s），boot() 会把它填进来。写死的那版在
+   ANSWER 从 150 s 一路降到 75 s 后就一直是错的。 */
+var EXPECTED_MS = 150000;
 function startProgress(){
   var t0 = Date.now();
   $("progBar").style.width = "0%";
   progTimer = setInterval(function(){
     var el = (Date.now()-t0)/1000;
-    /* 经验值：N=8192 约 130~160 s，取 150 s 作刻度。到 95% 就停住，不做假完成。 */
-    var pct = Math.min(95, el/150*100);
+    var est = EXPECTED_MS/1000;
+    /* 到 95% 就停住，不做假完成。 */
+    var pct = Math.min(95, el/est*100);
     $("progBar").style.width = pct.toFixed(1) + "%";
-    $("progText").textContent = "已等待 " + el.toFixed(1) + " s / 预计约 150 s";
+    $("progText").textContent = "已等待 " + el.toFixed(1) + " s / 预计约 " + est.toFixed(0) + " s";
   }, 200);
 }
 function stopProgress(){ if(progTimer){ clearInterval(progTimer); progTimer=null; } }
 
-/* ---------- 查询 ---------- */
+/* ---------- 查询（论文 Alg 2 的默认密文路径，三步） ----------
+   ① POST /api/client/seal  —— 客户端模拟器：b_qry 加密成 q_BF、算锚位置、τ 留在客户端
+   ② POST /api/query        —— **服务器**：只收 {qBFBytes, anchorColIdx, anchorRowIdx, d}
+   ③ POST /api/client/decide—— 客户端模拟器：读服务器回来的 ct_score，判 Dec(ct_score)==τ
+   ⚠️ ①②③ 都发生在同一个 JVM（单进程回环）—— 该口径写在 cape-demo/README.md
+   的「已知边界」与 /api/state.protocol.clientSimulator 里；**页头不重复它**（用户 2026-10-15 要求）。 */
 function doSearch(){
   if(state.busy) return;
   if(state.selected.length < 1){ setInputStatus("至少添加一个关键词再查询。", true); return; }
@@ -555,63 +599,120 @@ function doSearch(){
   ["tQ","tA","tD","tT"].forEach(function(id){ $(id).textContent = "…"; });
   $("resHead").textContent = "查询中…";
   $("resList").innerHTML = "";
-  live("查询已开始，预计约 2 到 3 分钟。");
+  $("candList").innerHTML = "";
+  $("wireBox").style.display = "none";
+  live("查询已开始（客户端封查询 → 服务器 ANSWER → 客户端判定），预计约 1 到 3 分钟。");
 
-  fetch("/api/query", {
+  var sealRes = null, answerRes = null, decideRes = null;
+  fetch("/api/client/seal", {
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body: JSON.stringify({keywords: state.selected})
   }).then(function(r){ return r.json(); }).then(function(j){
+    if(!j.ok) throw new Error("客户端封查询失败：" + (j.error||"未知"));
+    sealRes = j;
+    // ② 服务器只收 body 里那四个字段
+    return fetch("/api/query", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(j.body)
+    }).then(function(r){ return r.json(); });
+  }).then(function(j){
+    if(!j.ok) throw new Error("服务器 ANSWER 失败：" + (j.error||"未知"));
+    answerRes = j;
+    // ③ 客户端读 ct_score 判定（τ 由客户端自己保留，不回传服务器）
+    return fetch("/api/client/decide", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({tau: sealRes.tau})
+    }).then(function(r){ return r.json(); });
+  }).then(function(j){
+    if(!j.ok) throw new Error("客户端判定失败：" + (j.error||"未知"));
+    decideRes = j;
     stopProgress();
     $("progBar").style.width = "100%";
     setBusy(false);
-    if(!j.ok){
-      $("resHead").innerHTML = '<span class="hit-no">失败：</span>' + (j.error||"未知错误");
-      $("progText").textContent = "已中止";
-      live("查询失败。");
-      return;
-    }
-    var t = j.timing;
+    // 三段计时：QUERY = 客户端封查询；ANSWER = 服务器（锚检索 + 打分）；DECODE = 客户端判定
+    var t = {
+      queryMs:  (sealRes.sealUs || 0) / 1000,
+      answerMs: answerRes.timing.totalMs,
+      decodeMs: (j.decodeUs || 0) / 1000
+    };
+    t.totalMs = t.queryMs + t.answerMs + t.decodeMs;
     $("tQ").textContent = fmt(t.queryMs);
     $("tA").textContent = fmt(t.answerMs);
     $("tD").textContent = fmt(t.decodeMs);
     $("tT").textContent = fmt(t.totalMs);
     $("progText").textContent = "完成，共 " + (t.totalMs/1000).toFixed(1) + " s";
+    renderWire(sealRes, answerRes, j);
     renderResults(j);
-    renderRuler({queryMs:t.queryMs, answerMs:t.answerMs, decodeMs:t.decodeMs, totalMs:t.totalMs}, true);
+    renderRuler(t, true);
     live("查询完成，共 " + (t.totalMs/1000).toFixed(1) + " 秒。");
   }).catch(function(e){
     stopProgress(); setBusy(false);
-    $("resHead").innerHTML = '<span class="hit-no">请求出错：</span>' + e;
+    $("resHead").innerHTML = '<span class="hit-no">失败：</span>' + e;
     $("progText").textContent = "已中止";
-    live("请求出错。");
+    live("查询失败。");
   });
+}
+
+/* 线路面板：把"谁看到了什么"摆出来（这是本演示要展示的协议形态） */
+function renderWire(seal, ans, dec){
+  $("wireBox").style.display = "";
+  $("wSeal").innerHTML = '锚 = <b>' + seal.anchor + '</b>　τ = <b>' + seal.tau +
+    '</b>（<b>留在客户端</b>）　b_qry 加密成 ' + seal.qbfKB.toFixed(1) + ' KB 的 q_BF 字节';
+  $("wFields").innerHTML = (seal.outboundFields||[]).join(", ") +
+    '　<span class="hit-yes">不含关键词、不含 τ</span>';
+  $("wAns").innerHTML = '挂钟 ' + fmt(ans.timing.totalMs) +
+    '（锚检索 ' + fmt(ans.timing.anchorMs) + ' + 打分 ' + fmt(ans.timing.scoreMs) + '）' +
+    '　返回 ' + ans.candidateCount + ' 条 ct_score';
+  $("wDecide").innerHTML = 'f == fp(K)：' +
+    (dec.fingerprintOk ? '<span class="hit-yes">通过</span>' : '<span class="hit-no">不通过</span>') +
+    '　判定 = Dec(ct_score) == τ（τ=' + dec.tau + '）　→ ' +
+    (dec.hit ? '<span class="hit-yes">收下 ' + dec.accepted.length + ' 条</span>'
+             : '<span class="hit-no">一条都不收</span>');
 }
 
 function renderResults(j){
   var hit = j.hit;
   $("resHead").innerHTML =
     '锚 = <b>' + j.anchor + '</b>　τ = ' + j.tau +
-    '　密文载荷自检 = ' + (j.integrity ? '<span class="hit-yes">逐位一致</span>'
-                                       : '<span class="hit-no">不一致(' + j.payloadMismatch + ')</span>') +
-    '　命中 = ' + (hit ? '<span class="hit-yes">是</span>' : '<span class="hit-no">否（0 条）</span>');
+    '　判定 = ' + (j.fingerprintOk ? 'f == fp(K) ✓' : '指纹不符 ⇒ ⊥') +
+    '　命中 = ' + (hit ? '<span class="hit-yes">是（' + j.results.length + ' 条）</span>'
+                      : '<span class="hit-no">否（0 条）</span>');
   var box = $("resList"); box.innerHTML = "";
   if(!j.results.length){
     box.innerHTML = '<p class="hint" style="margin:12px 0 0">没有条目同时满足全部关键词。' +
       '试试按「随机添加一组可命中的组合」——那会从已验证可命中的组合池里抽。</p>';
-    return;
+  } else {
+    j.results.forEach(function(r){
+      var d = document.createElement("div");
+      d.className = "res";
+      var t = document.createElement("div");
+      t.className = "t"; t.textContent = r.title;
+      var m = document.createElement("div");
+      m.className = "m";
+      m.textContent = "valueId = " + r.valueId + "　movielens movieId = " + r.rawMovieId;
+      d.appendChild(t); d.appendChild(m);
+      box.appendChild(d);
+    });
   }
-  j.results.forEach(function(r){
-    var d = document.createElement("div");
-    d.className = "res";
-    var t = document.createElement("div");
-    t.className = "t"; t.textContent = r.title;
-    var m = document.createElement("div");
-    m.className = "m";
-    m.textContent = "valueId = " + r.valueId + "　movielens movieId = " + r.rawMovieId;
-    d.appendChild(t); d.appendChild(m);
-    box.appendChild(d);
+  // 每候选的得分（客户端解出来的）：这是判定的原始依据，摆出来免得"结果"看起来像魔法
+  var cl = $("candList");
+  cl.innerHTML = '<p class="hint" style="margin:10px 0 4px">每候选的 ' +
+    '<span class="mono">Dec(ct_score)</span>（客户端自己解；服务器没发明文分数）：</p>';
+  var wrap = document.createElement("div");
+  (j.candidates||[]).forEach(function(c){
+    var row = document.createElement("div");
+    row.className = "cand";
+    row.innerHTML = '<span class="cid">v=' + c.valueId + '</span>' +
+      '<span class="cs">' + c.score + '</span>' +
+      '<span class="cj">' + (c.accepted
+        ? '<span class="hit-yes">== τ ⇒ 接受</span>'
+        : '<span class="hit-no">&lt; τ ⇒ 拒绝</span>') + '</span>';
+    wrap.appendChild(row);
   });
+  cl.appendChild(wrap);
 }
 
 /* ---------- 启动 ---------- */
@@ -624,6 +725,7 @@ function boot(){
 
     /* 首屏基线：用服务按【当前真实配置】标定出来的 expected，不再用写死的数 */
     if (s.expected && s.expected.answerMs > 0) {
+      EXPECTED_MS = s.expected.answerMs;      // 进度条的刻度也用它
       BASELINE = {
         queryMs:  (s.expected.queryUs  || 0) / 1000,
         answerMs: s.expected.answerMs,
